@@ -8,8 +8,15 @@ import {
   type EmailQueue,
   type InsertEmailQueue,
   type SystemHealth,
-  type InsertSystemHealth
+  type InsertSystemHealth,
+  users,
+  purchaseOrders,
+  errorLogs,
+  emailQueue,
+  systemHealth
 } from "@shared/schema";
+import { db } from "./db";
+import { eq, and, desc, count, gte, lt } from "drizzle-orm";
 import { randomUUID } from "crypto";
 
 export interface IStorage {
@@ -50,220 +57,219 @@ export interface IStorage {
   }>;
 }
 
-export class MemStorage implements IStorage {
-  private users: Map<string, User> = new Map();
-  private purchaseOrders: Map<string, PurchaseOrder> = new Map();
-  private errorLogs: Map<string, ErrorLog> = new Map();
-  private emailQueue: Map<string, EmailQueue> = new Map();
-  private systemHealth: Map<string, SystemHealth> = new Map();
-
+export class DatabaseStorage implements IStorage {
   constructor() {
-    // Initialize system health
-    const services = ['Gmail API', 'OpenAI', 'Airtable', 'NetSuite', 'Dropbox'];
-    services.forEach(service => {
-      const health: SystemHealth = {
-        id: randomUUID(),
-        service,
-        status: 'online',
-        lastCheck: new Date(),
-        responseTime: Math.floor(Math.random() * 100) + 50,
-        errorMessage: null,
-      };
-      this.systemHealth.set(service, health);
-    });
+    this.initializeSystemHealth();
+  }
 
-    // Set Airtable to delayed status for demo
-    const airtableHealth = this.systemHealth.get('Airtable');
-    if (airtableHealth) {
-      airtableHealth.status = 'delayed';
-      airtableHealth.responseTime = 2500;
+  private async initializeSystemHealth() {
+    // Initialize system health records for all services
+    const services = ['Gmail API', 'OpenAI', 'Airtable', 'NetSuite', 'Dropbox'];
+    for (const service of services) {
+      try {
+        await db.insert(systemHealth).values({
+          service,
+          status: service === 'Airtable' ? 'delayed' : 'online',
+          responseTime: service === 'Airtable' ? 2500 : Math.floor(Math.random() * 100) + 50,
+          errorMessage: null,
+        }).onConflictDoUpdate({
+          target: systemHealth.service,
+          set: {
+            lastCheck: new Date(),
+          }
+        });
+      } catch (error) {
+        console.log(`System health initialization: ${service} already exists or error occurred`);
+      }
     }
   }
 
+  // Users
   async getUser(id: string): Promise<User | undefined> {
-    return this.users.get(id);
+    const [user] = await db.select().from(users).where(eq(users.id, id));
+    return user || undefined;
   }
 
   async getUserByUsername(username: string): Promise<User | undefined> {
-    return Array.from(this.users.values()).find(user => user.username === username);
+    const [user] = await db.select().from(users).where(eq(users.username, username));
+    return user || undefined;
   }
 
   async createUser(insertUser: InsertUser): Promise<User> {
-    const id = randomUUID();
-    const user: User = { ...insertUser, id, role: insertUser.role || 'operator', createdAt: new Date() };
-    this.users.set(id, user);
+    const [user] = await db
+      .insert(users)
+      .values(insertUser)
+      .returning();
     return user;
   }
 
+  // Purchase Orders
   async createPurchaseOrder(po: InsertPurchaseOrder): Promise<PurchaseOrder> {
-    const id = randomUUID();
-    const now = new Date();
-    const purchaseOrder: PurchaseOrder = { 
-      ...po, 
-      id, 
-      status: po.status || 'pending',
-      customerMeta: po.customerMeta || null,
-      createdAt: now, 
-      updatedAt: now 
-    };
-    this.purchaseOrders.set(id, purchaseOrder);
+    const [purchaseOrder] = await db
+      .insert(purchaseOrders)
+      .values(po)
+      .returning();
     return purchaseOrder;
   }
 
   async getPurchaseOrder(id: string): Promise<PurchaseOrder | undefined> {
-    return this.purchaseOrders.get(id);
+    const [po] = await db.select().from(purchaseOrders).where(eq(purchaseOrders.id, id));
+    return po || undefined;
   }
 
   async getPurchaseOrderByNumber(poNumber: string): Promise<PurchaseOrder | undefined> {
-    return Array.from(this.purchaseOrders.values()).find(po => po.poNumber === poNumber);
+    const [po] = await db.select().from(purchaseOrders).where(eq(purchaseOrders.poNumber, poNumber));
+    return po || undefined;
   }
 
   async updatePurchaseOrder(id: string, updates: Partial<PurchaseOrder>): Promise<PurchaseOrder> {
-    const existing = this.purchaseOrders.get(id);
-    if (!existing) {
+    const [updated] = await db
+      .update(purchaseOrders)
+      .set({ ...updates, updatedAt: new Date() })
+      .where(eq(purchaseOrders.id, id))
+      .returning();
+    
+    if (!updated) {
       throw new Error('Purchase order not found');
     }
-    
-    const updated: PurchaseOrder = { 
-      ...existing, 
-      ...updates, 
-      updatedAt: new Date() 
-    };
-    this.purchaseOrders.set(id, updated);
     return updated;
   }
 
   async getPurchaseOrders(filters?: { status?: string; limit?: number }): Promise<PurchaseOrder[]> {
-    let orders = Array.from(this.purchaseOrders.values());
+    let query = db.select().from(purchaseOrders);
     
     if (filters?.status) {
-      orders = orders.filter(po => po.status === filters.status);
+      query = query.where(eq(purchaseOrders.status, filters.status));
     }
     
-    orders.sort((a, b) => (b.createdAt?.getTime() || 0) - (a.createdAt?.getTime() || 0));
+    query = query.orderBy(desc(purchaseOrders.createdAt));
     
     if (filters?.limit) {
-      orders = orders.slice(0, filters.limit);
+      query = query.limit(filters.limit);
     }
     
-    return orders;
+    return await query;
   }
 
+  // Error Logs
   async createErrorLog(error: InsertErrorLog): Promise<ErrorLog> {
-    const id = randomUUID();
-    const errorLog: ErrorLog = { 
-      ...error, 
-      id, 
-      relatedPoId: error.relatedPoId || null,
-      relatedPoNumber: error.relatedPoNumber || null,
-      resolved: error.resolved || false,
-      resolvedAt: error.resolvedAt || null,
-      resolvedBy: error.resolvedBy || null,
-      metadata: error.metadata || null,
-      createdAt: new Date() 
-    };
-    this.errorLogs.set(id, errorLog);
+    const [errorLog] = await db
+      .insert(errorLogs)
+      .values(error)
+      .returning();
     return errorLog;
   }
 
   async getErrorLogs(filters?: { resolved?: boolean; type?: string; limit?: number }): Promise<ErrorLog[]> {
-    let logs = Array.from(this.errorLogs.values());
+    let query = db.select().from(errorLogs);
+    const conditions = [];
     
     if (filters?.resolved !== undefined) {
-      logs = logs.filter(log => log.resolved === filters.resolved);
+      conditions.push(eq(errorLogs.resolved, filters.resolved));
     }
     
     if (filters?.type) {
-      logs = logs.filter(log => log.type === filters.type);
+      conditions.push(eq(errorLogs.type, filters.type));
     }
     
-    logs.sort((a, b) => (b.createdAt?.getTime() || 0) - (a.createdAt?.getTime() || 0));
+    if (conditions.length > 0) {
+      query = query.where(and(...conditions));
+    }
+    
+    query = query.orderBy(desc(errorLogs.createdAt));
     
     if (filters?.limit) {
-      logs = logs.slice(0, filters.limit);
+      query = query.limit(filters.limit);
     }
     
-    return logs;
+    return await query;
   }
 
   async updateErrorLog(id: string, updates: Partial<ErrorLog>): Promise<ErrorLog> {
-    const existing = this.errorLogs.get(id);
-    if (!existing) {
+    const [updated] = await db
+      .update(errorLogs)
+      .set(updates)
+      .where(eq(errorLogs.id, id))
+      .returning();
+    
+    if (!updated) {
       throw new Error('Error log not found');
     }
-    
-    const updated: ErrorLog = { ...existing, ...updates };
-    this.errorLogs.set(id, updated);
     return updated;
   }
 
+  // Email Queue
   async createEmailQueueItem(email: InsertEmailQueue): Promise<EmailQueue> {
-    const id = randomUUID();
-    const queueItem: EmailQueue = { 
-      ...email, 
-      id, 
-      status: email.status || 'pending',
-      body: email.body || null,
-      createdAt: new Date() 
-    };
-    this.emailQueue.set(id, queueItem);
+    const [queueItem] = await db
+      .insert(emailQueue)
+      .values(email)
+      .returning();
     return queueItem;
   }
 
   async getEmailQueueItem(id: string): Promise<EmailQueue | undefined> {
-    return this.emailQueue.get(id);
+    const [item] = await db.select().from(emailQueue).where(eq(emailQueue.id, id));
+    return item || undefined;
   }
 
   async getEmailQueueByGmailId(gmailId: string): Promise<EmailQueue | undefined> {
-    return Array.from(this.emailQueue.values()).find(item => item.gmailId === gmailId);
+    const [item] = await db.select().from(emailQueue).where(eq(emailQueue.gmailId, gmailId));
+    return item || undefined;
   }
 
   async updateEmailQueueItem(id: string, updates: Partial<EmailQueue>): Promise<EmailQueue> {
-    const existing = this.emailQueue.get(id);
-    if (!existing) {
+    const [updated] = await db
+      .update(emailQueue)
+      .set(updates)
+      .where(eq(emailQueue.id, id))
+      .returning();
+    
+    if (!updated) {
       throw new Error('Email queue item not found');
     }
-    
-    const updated: EmailQueue = { ...existing, ...updates };
-    this.emailQueue.set(id, updated);
     return updated;
   }
 
   async getEmailQueue(filters?: { status?: string; limit?: number }): Promise<EmailQueue[]> {
-    let queue = Array.from(this.emailQueue.values());
+    let query = db.select().from(emailQueue);
     
     if (filters?.status) {
-      queue = queue.filter(item => item.status === filters.status);
+      query = query.where(eq(emailQueue.status, filters.status));
     }
     
-    queue.sort((a, b) => (b.createdAt?.getTime() || 0) - (a.createdAt?.getTime() || 0));
+    query = query.orderBy(desc(emailQueue.createdAt));
     
     if (filters?.limit) {
-      queue = queue.slice(0, filters.limit);
+      query = query.limit(filters.limit);
     }
     
-    return queue;
+    return await query;
   }
 
+  // System Health
   async updateSystemHealth(health: InsertSystemHealth): Promise<SystemHealth> {
-    const existing = this.systemHealth.get(health.service);
-    const id = existing?.id || randomUUID();
+    const [updated] = await db
+      .insert(systemHealth)
+      .values({ ...health, lastCheck: new Date() })
+      .onConflictDoUpdate({
+        target: systemHealth.service,
+        set: {
+          status: health.status,
+          responseTime: health.responseTime,
+          errorMessage: health.errorMessage,
+          lastCheck: new Date(),
+        }
+      })
+      .returning();
     
-    const updated: SystemHealth = { 
-      ...health, 
-      id,
-      responseTime: health.responseTime || null,
-      errorMessage: health.errorMessage || null,
-      lastCheck: new Date() 
-    };
-    this.systemHealth.set(health.service, updated);
     return updated;
   }
 
   async getSystemHealth(): Promise<SystemHealth[]> {
-    return Array.from(this.systemHealth.values());
+    return await db.select().from(systemHealth);
   }
 
+  // Dashboard Metrics
   async getDashboardMetrics(): Promise<{
     emailsProcessedToday: number;
     posProcessed: number;
@@ -272,30 +278,46 @@ export class MemStorage implements IStorage {
   }> {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
-    
-    const emailsProcessedToday = Array.from(this.emailQueue.values())
-      .filter(item => 
-        item.status === 'processed' && 
-        item.processedAt && 
-        item.processedAt >= today
-      ).length;
-    
-    const posProcessed = Array.from(this.purchaseOrders.values())
-      .filter(po => po.status === 'processed').length;
-    
-    const pendingReview = Array.from(this.purchaseOrders.values())
-      .filter(po => po.route === 'REVIEW' || po.status === 'pending_review').length;
-    
-    const processingErrors = Array.from(this.errorLogs.values())
-      .filter(error => !error.resolved).length;
-    
+    const tomorrow = new Date(today);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+
+    // Count emails processed today
+    const [emailsResult] = await db
+      .select({ count: count() })
+      .from(emailQueue)
+      .where(
+        and(
+          eq(emailQueue.status, 'processed'),
+          gte(emailQueue.processedAt, today),
+          lt(emailQueue.processedAt, tomorrow)
+        )
+      );
+
+    // Count processed POs
+    const [posResult] = await db
+      .select({ count: count() })
+      .from(purchaseOrders)
+      .where(eq(purchaseOrders.status, 'processed'));
+
+    // Count POs pending review
+    const [reviewResult] = await db
+      .select({ count: count() })
+      .from(purchaseOrders)
+      .where(eq(purchaseOrders.route, 'REVIEW'));
+
+    // Count unresolved errors
+    const [errorsResult] = await db
+      .select({ count: count() })
+      .from(errorLogs)
+      .where(eq(errorLogs.resolved, false));
+
     return {
-      emailsProcessedToday,
-      posProcessed,
-      pendingReview,
-      processingErrors
+      emailsProcessedToday: emailsResult?.count || 0,
+      posProcessed: posResult?.count || 0,
+      pendingReview: reviewResult?.count || 0,
+      processingErrors: errorsResult?.count || 0,
     };
   }
 }
 
-export const storage = new MemStorage();
+export const storage = new DatabaseStorage();

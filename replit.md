@@ -26,9 +26,10 @@ Preferred communication style: Simple, everyday language.
 - **Development**: Hot reload with Vite middleware integration
 
 ### Database Design
-- **Primary Database**: PostgreSQL with Drizzle ORM
+- **Primary Database**: Neon PostgreSQL with Drizzle ORM for persistent data storage
 - **Tables**: Users (authentication), Purchase Orders (core data), Error Logs (monitoring), Email Queue (processing pipeline), System Health (monitoring)
 - **Schema Features**: UUID primary keys, JSONB columns for flexible data storage, timestamp tracking, status enums
+- **Connection**: Node.js pg driver with connection pooling and SSL support
 
 ### Email Processing Pipeline
 - **Classification Engine**: OpenAI GPT-4o exclusively handles all email gate logic and routing decisions
