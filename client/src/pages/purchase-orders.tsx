@@ -236,7 +236,7 @@ export default function PurchaseOrdersPage() {
               {/* Processing Results */}
               <div className="space-y-4">
                 {/* Gemini Extracted Data */}
-                {selectedOrder.extractedData && (
+                {selectedOrder.extractedData && (selectedOrder.extractedData as any) && (
                   <div>
                     <h3 className="font-semibold text-sm text-gray-700 mb-2">Gemini Extracted Data</h3>
                     <div className="bg-blue-50 p-3 rounded-lg space-y-3 text-sm">
