@@ -1,0 +1,129 @@
+import { sql } from "drizzle-orm";
+import { pgTable, text, varchar, timestamp, integer, boolean, jsonb, real } from "drizzle-orm/pg-core";
+import { createInsertSchema } from "drizzle-zod";
+import { z } from "zod";
+
+export const users = pgTable("users", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  username: text("username").notNull().unique(),
+  password: text("password").notNull(),
+  role: text("role").notNull().default("operator"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const purchaseOrders = pgTable("purchase_orders", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  poNumber: text("po_number").notNull().unique(),
+  customerMeta: jsonb("customer_meta"),
+  shippingCarrier: text("shipping_carrier"),
+  shippingMethod: text("shipping_method"),
+  originalJson: jsonb("original_json"),
+  validatedJson: jsonb("validated_json"),
+  originalPdfFilename: text("original_pdf_filename"),
+  nsExternalId: text("ns_external_id"),
+  nsInternalId: text("ns_internal_id"),
+  status: text("status").notNull().default("pending"),
+  comments: text("comments"),
+  pokey: text("pokey").unique(),
+  emailId: text("email_id"),
+  sender: text("sender"),
+  subject: text("subject"),
+  route: text("route"), // TEXT_PO, ATTACHMENT_PO, REVIEW
+  confidence: real("confidence"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const errorLogs = pgTable("error_logs", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  type: text("type").notNull(),
+  message: text("message").notNull(),
+  relatedPoId: varchar("related_po_id").references(() => purchaseOrders.id),
+  relatedPoNumber: text("related_po_number"),
+  resolved: boolean("resolved").notNull().default(false),
+  resolvedAt: timestamp("resolved_at"),
+  resolvedBy: varchar("resolved_by").references(() => users.id),
+  metadata: jsonb("metadata"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const emailQueue = pgTable("email_queue", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  gmailId: text("gmail_id").notNull().unique(),
+  sender: text("sender").notNull(),
+  subject: text("subject").notNull(),
+  body: text("body"),
+  attachments: jsonb("attachments"),
+  labels: text("labels").array(),
+  status: text("status").notNull().default("pending"), // pending, processing, processed, error
+  classificationResult: jsonb("classification_result"),
+  processingError: text("processing_error"),
+  processedAt: timestamp("processed_at"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const systemHealth = pgTable("system_health", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  service: text("service").notNull().unique(),
+  status: text("status").notNull(), // online, offline, delayed
+  lastCheck: timestamp("last_check").defaultNow(),
+  responseTime: integer("response_time"),
+  errorMessage: text("error_message"),
+});
+
+// Insert schemas
+export const insertUserSchema = createInsertSchema(users).omit({
+  id: true,
+  createdAt: true,
+});
+
+export const insertPurchaseOrderSchema = createInsertSchema(purchaseOrders).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const insertErrorLogSchema = createInsertSchema(errorLogs).omit({
+  id: true,
+  createdAt: true,
+});
+
+export const insertEmailQueueSchema = createInsertSchema(emailQueue).omit({
+  id: true,
+  createdAt: true,
+});
+
+export const insertSystemHealthSchema = createInsertSchema(systemHealth).omit({
+  id: true,
+});
+
+// Types
+export type User = typeof users.$inferSelect;
+export type InsertUser = z.infer<typeof insertUserSchema>;
+
+export type PurchaseOrder = typeof purchaseOrders.$inferSelect;
+export type InsertPurchaseOrder = z.infer<typeof insertPurchaseOrderSchema>;
+
+export type ErrorLog = typeof errorLogs.$inferSelect;
+export type InsertErrorLog = z.infer<typeof insertErrorLogSchema>;
+
+export type EmailQueue = typeof emailQueue.$inferSelect;
+export type InsertEmailQueue = z.infer<typeof insertEmailQueueSchema>;
+
+export type SystemHealth = typeof systemHealth.$inferSelect;
+export type InsertSystemHealth = z.infer<typeof insertSystemHealthSchema>;
+
+// Classification result type
+export const classificationResultSchema = z.object({
+  analysis_flags: z.object({
+    attachments_present: z.boolean(),
+    body_sufficiency: z.boolean(),
+    sample_flag: z.boolean(),
+    confidence: z.number().min(0).max(1),
+    artwork_only: z.boolean(),
+  }),
+  recommended_route: z.enum(["TEXT_PO", "ATTACHMENT_PO", "REVIEW"]),
+  tags: z.array(z.string()),
+});
+
+export type ClassificationResult = z.infer<typeof classificationResultSchema>;
