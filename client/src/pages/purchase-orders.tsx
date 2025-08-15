@@ -2,33 +2,145 @@ import { useQuery } from "@tanstack/react-query";
 import { PurchaseOrder } from "@shared/schema";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { useState } from "react";
-import { Eye, ExternalLink, FileText } from "lucide-react";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { useState, useMemo } from "react";
+import { Eye, ExternalLink, FileText, Search, Filter, ArrowUpDown, MoreHorizontal, MapPin, Calendar, User, Mail, Hash, CheckCircle, XCircle, Clock } from "lucide-react";
 
 export default function PurchaseOrdersPage() {
   const [selectedOrder, setSelectedOrder] = useState<PurchaseOrder | null>(null);
   const [isViewModalOpen, setIsViewModalOpen] = useState(false);
+  const [searchTerm, setSearchTerm] = useState("");
+  const [statusFilter, setStatusFilter] = useState("all");
+  const [routeFilter, setRouteFilter] = useState("all");
+  const [sortField, setSortField] = useState("createdAt");
+  const [sortDirection, setSortDirection] = useState<"asc" | "desc">("desc");
   
   const { data: purchaseOrders, isLoading } = useQuery<PurchaseOrder[]>({
     queryKey: ["/api/purchase-orders"],
     refetchInterval: 30000
   });
 
+  // Filtering and sorting logic
+  const filteredAndSortedOrders = useMemo(() => {
+    if (!purchaseOrders) return [];
+    
+    let filtered = purchaseOrders.filter(order => {
+      const matchesSearch = !searchTerm || 
+        order.poNumber.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        order.sender?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        order.subject?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (order.extractedData as any)?.customer?.customerName?.toLowerCase().includes(searchTerm.toLowerCase());
+      
+      const matchesStatus = statusFilter === "all" || order.status === statusFilter;
+      const matchesRoute = routeFilter === "all" || order.route === routeFilter;
+      
+      return matchesSearch && matchesStatus && matchesRoute;
+    });
+
+    // Sort the filtered results
+    filtered.sort((a, b) => {
+      let aValue: any, bValue: any;
+      
+      switch (sortField) {
+        case 'poNumber':
+          aValue = a.poNumber;
+          bValue = b.poNumber;
+          break;
+        case 'customer':
+          aValue = (a.extractedData as any)?.customer?.customerName || '';
+          bValue = (b.extractedData as any)?.customer?.customerName || '';
+          break;
+        case 'orderDate':
+          aValue = (a.extractedData as any)?.purchaseOrder?.orderDate || '';
+          bValue = (b.extractedData as any)?.purchaseOrder?.orderDate || '';
+          break;
+        case 'status':
+          aValue = a.status;
+          bValue = b.status;
+          break;
+        case 'confidence':
+          aValue = a.confidence || 0;
+          bValue = b.confidence || 0;
+          break;
+        default:
+          aValue = a.createdAt;
+          bValue = b.createdAt;
+      }
+      
+      if (aValue < bValue) return sortDirection === 'asc' ? -1 : 1;
+      if (aValue > bValue) return sortDirection === 'asc' ? 1 : -1;
+      return 0;
+    });
+    
+    return filtered;
+  }, [purchaseOrders, searchTerm, statusFilter, routeFilter, sortField, sortDirection]);
+
   const getStatusBadge = (status: string) => {
     switch (status) {
       case 'processed':
       case 'imported':
-        return 'bg-green-100 text-success';
-      case 'ready for NS import':
-        return 'bg-blue-100 text-primary';
+      case 'ready_for_netsuite':
+        return { class: 'bg-green-100 text-green-800 border-green-200', icon: CheckCircle };
+      case 'pending':
+      case 'processing':
+        return { class: 'bg-blue-100 text-blue-800 border-blue-200', icon: Clock };
       case 'pending_review':
-        return 'bg-amber-100 text-warning';
+        return { class: 'bg-amber-100 text-amber-800 border-amber-200', icon: Clock };
       case 'error':
-        return 'bg-red-100 text-error';
+        return { class: 'bg-red-100 text-red-800 border-red-200', icon: XCircle };
       default:
-        return 'bg-gray-100 text-gray-600';
+        return { class: 'bg-gray-100 text-gray-800 border-gray-200', icon: Clock };
     }
+  };
+
+  const getRouteBadge = (route: string) => {
+    switch (route) {
+      case 'ATTACHMENT_PO':
+        return { class: 'bg-purple-100 text-purple-800 border-purple-200', label: 'PDF Attachment' };
+      case 'TEXT_PO':
+        return { class: 'bg-indigo-100 text-indigo-800 border-indigo-200', label: 'Email Text' };
+      case 'REVIEW':
+        return { class: 'bg-orange-100 text-orange-800 border-orange-200', label: 'Manual Review' };
+      default:
+        return { class: 'bg-gray-100 text-gray-800 border-gray-200', label: 'Unknown' };
+    }
+  };
+
+  const handleSort = (field: string) => {
+    if (sortField === field) {
+      setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortField(field);
+      setSortDirection('asc');
+    }
+  };
+
+  const formatDate = (dateInput: string | Date | null) => {
+    if (!dateInput) return 'N/A';
+    const date = typeof dateInput === 'string' ? new Date(dateInput) : dateInput;
+    return date.toLocaleDateString('en-US', {
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric'
+    });
+  };
+
+  const getCustomerInfo = (order: PurchaseOrder) => {
+    const extractedData = order.extractedData as any;
+    return {
+      name: extractedData?.customer?.customerName || 'Unknown Customer',
+      email: extractedData?.customer?.email || order.sender || 'No email',
+      address: extractedData?.customer?.address1 || 'No address'
+    };
+  };
+
+  const getLineItemsCount = (order: PurchaseOrder) => {
+    const extractedData = order.extractedData as any;
+    return extractedData?.lineItems?.length || 0;
   };
 
   const handleImportToNetSuite = async (orderId: string) => {
@@ -55,111 +167,278 @@ export default function PurchaseOrdersPage() {
   };
 
   return (
-    <div>
+    <div className="min-h-screen bg-gray-50">
       {/* Header */}
-      <header className="bg-white border-b border-gray-200 px-8 py-4">
+      <div className="bg-white border-b border-gray-200 px-6 py-4">
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-2xl font-semibold text-slate-800">Purchase Orders</h1>
-            <p className="text-secondary mt-1">Manage and track purchase order processing</p>
+            <h1 className="text-2xl font-semibold text-gray-900">Purchase Order Admin Portal</h1>
+            <p className="text-gray-600 mt-1">Manage and track purchase order processing pipeline</p>
           </div>
-          <div className="flex items-center space-x-2">
-            <Button variant="outline">
-              <i className="fas fa-filter mr-2"></i>
-              Filter
+          <div className="flex items-center space-x-3">
+            <Badge variant="outline" className="text-sm">
+              {filteredAndSortedOrders.length} orders
+            </Badge>
+            <Button variant="outline" size="sm">
+              <FileText className="w-4 h-4 mr-2" />
+              Export
             </Button>
-            <Button>
-              <i className="fas fa-plus mr-2"></i>
+            <Button size="sm">
+              <Hash className="w-4 h-4 mr-2" />
               Manual Entry
             </Button>
           </div>
         </div>
-      </header>
+      </div>
 
-      <div className="p-8">
-        <div className="bg-white rounded-xl border border-gray-200">
-          <div className="overflow-hidden">
-            <table className="w-full">
-              <thead className="bg-gray-50">
-                <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-secondary uppercase tracking-wider">PO Number</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-secondary uppercase tracking-wider">Sender</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-secondary uppercase tracking-wider">Status</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-secondary uppercase tracking-wider">Route</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-secondary uppercase tracking-wider">Confidence</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-secondary uppercase tracking-wider">Created</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-secondary uppercase tracking-wider">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-200">
-                {isLoading ? (
-                  [...Array(5)].map((_, i) => (
-                    <tr key={i}>
-                      <td className="px-6 py-4"><div className="w-24 h-4 bg-gray-200 rounded animate-pulse"></div></td>
-                      <td className="px-6 py-4"><div className="w-32 h-4 bg-gray-200 rounded animate-pulse"></div></td>
-                      <td className="px-6 py-4"><div className="w-20 h-6 bg-gray-200 rounded animate-pulse"></div></td>
-                      <td className="px-6 py-4"><div className="w-16 h-4 bg-gray-200 rounded animate-pulse"></div></td>
-                      <td className="px-6 py-4"><div className="w-12 h-4 bg-gray-200 rounded animate-pulse"></div></td>
-                      <td className="px-6 py-4"><div className="w-24 h-4 bg-gray-200 rounded animate-pulse"></div></td>
-                      <td className="px-6 py-4"><div className="w-20 h-8 bg-gray-200 rounded animate-pulse"></div></td>
-                    </tr>
-                  ))
-                ) : purchaseOrders && purchaseOrders.length > 0 ? (
-                  purchaseOrders.map((order) => (
-                    <tr key={order.id} className="hover:bg-gray-50">
-                      <td className="px-6 py-4">
-                        <p className="text-sm font-medium text-slate-800">{order.poNumber}</p>
-                      </td>
-                      <td className="px-6 py-4">
-                        <p className="text-sm text-slate-800">{order.sender}</p>
-                        <p className="text-xs text-secondary truncate max-w-xs">{order.subject}</p>
-                      </td>
-                      <td className="px-6 py-4">
-                        <Badge className={getStatusBadge(order.status)}>
-                          {order.status.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase())}
+      {/* Filters and Search */}
+      <div className="bg-white border-b border-gray-200 px-6 py-4">
+        <div className="flex items-center justify-between space-x-4">
+          <div className="flex items-center space-x-4 flex-1">
+            <div className="relative flex-1 max-w-md">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
+              <Input
+                placeholder="Search by PO number, customer, or email..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="pl-10"
+              />
+            </div>
+            <Select value={statusFilter} onValueChange={setStatusFilter}>
+              <SelectTrigger className="w-48">
+                <SelectValue placeholder="Filter by status" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Statuses</SelectItem>
+                <SelectItem value="pending">Pending</SelectItem>
+                <SelectItem value="processing">Processing</SelectItem>
+                <SelectItem value="ready_for_netsuite">Ready for NetSuite</SelectItem>
+                <SelectItem value="imported">Imported</SelectItem>
+                <SelectItem value="error">Error</SelectItem>
+              </SelectContent>
+            </Select>
+            <Select value={routeFilter} onValueChange={setRouteFilter}>
+              <SelectTrigger className="w-48">
+                <SelectValue placeholder="Filter by route" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Routes</SelectItem>
+                <SelectItem value="ATTACHMENT_PO">PDF Attachment</SelectItem>
+                <SelectItem value="TEXT_PO">Email Text</SelectItem>
+                <SelectItem value="REVIEW">Manual Review</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <Button variant="outline" size="sm">
+            <Filter className="w-4 h-4 mr-2" />
+            More Filters
+          </Button>
+        </div>
+      </div>
+
+      {/* Table */}
+      <div className="flex-1 overflow-auto">
+        {isLoading ? (
+          <div className="flex items-center justify-center py-12">
+            <div className="text-center">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
+              <p className="text-gray-600 mt-2">Loading purchase orders...</p>
+            </div>
+          </div>
+        ) : (
+          <Table>
+            <TableHeader>
+              <TableRow className="bg-gray-50">
+                <TableHead className="w-[140px]">
+                  <Button 
+                    variant="ghost" 
+                    size="sm" 
+                    onClick={() => handleSort('poNumber')}
+                    className="h-8 p-0 font-medium text-left"
+                  >
+                    Purchase Number
+                    <ArrowUpDown className="ml-2 h-3 w-3" />
+                  </Button>
+                </TableHead>
+                <TableHead className="w-[100px]">Record ID</TableHead>
+                <TableHead className="w-[110px]">
+                  <Button 
+                    variant="ghost" 
+                    size="sm" 
+                    onClick={() => handleSort('orderDate')}
+                    className="h-8 p-0 font-medium text-left"
+                  >
+                    Order Date
+                    <ArrowUpDown className="ml-2 h-3 w-3" />
+                  </Button>
+                </TableHead>
+                <TableHead className="w-[110px]">
+                  <Button 
+                    variant="ghost" 
+                    size="sm" 
+                    onClick={() => handleSort('createdAt')}
+                    className="h-8 p-0 font-medium text-left"
+                  >
+                    Created
+                    <ArrowUpDown className="ml-2 h-3 w-3" />
+                  </Button>
+                </TableHead>
+                <TableHead className="w-[200px]">
+                  <Button 
+                    variant="ghost" 
+                    size="sm" 
+                    onClick={() => handleSort('customer')}
+                    className="h-8 p-0 font-medium text-left"
+                  >
+                    Customer
+                    <ArrowUpDown className="ml-2 h-3 w-3" />
+                  </Button>
+                </TableHead>
+                <TableHead className="w-[200px]">Customer Email</TableHead>
+                <TableHead className="w-[140px]">
+                  <Button 
+                    variant="ghost" 
+                    size="sm" 
+                    onClick={() => handleSort('status')}
+                    className="h-8 p-0 font-medium text-left"
+                  >
+                    Status
+                    <ArrowUpDown className="ml-2 h-3 w-3" />
+                  </Button>
+                </TableHead>
+                <TableHead className="w-[120px]">Route</TableHead>
+                <TableHead className="w-[100px]">Line Items</TableHead>
+                <TableHead className="w-[120px]">
+                  <Button 
+                    variant="ghost" 
+                    size="sm" 
+                    onClick={() => handleSort('confidence')}
+                    className="h-8 p-0 font-medium text-left"
+                  >
+                    Confidence
+                    <ArrowUpDown className="ml-2 h-3 w-3" />
+                  </Button>
+                </TableHead>
+                <TableHead className="w-[100px]">Actions</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {filteredAndSortedOrders.map((order) => {
+                const statusBadge = getStatusBadge(order.status);
+                const routeBadge = getRouteBadge(order.route || '');
+                const customer = getCustomerInfo(order);
+                const lineItemsCount = getLineItemsCount(order);
+                const StatusIcon = statusBadge.icon;
+                
+                return (
+                  <TableRow key={order.id} className="hover:bg-gray-50">
+                    <TableCell className="font-medium">
+                      <div className="flex items-center space-x-2">
+                        <Hash className="w-4 h-4 text-gray-400" />
+                        <span className="text-blue-600 font-mono">{order.poNumber}</span>
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <span className="text-gray-500 text-sm font-mono">
+                        {order.id.slice(0, 8)}...
+                      </span>
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex items-center space-x-2">
+                        <Calendar className="w-4 h-4 text-gray-400" />
+                        <span className="text-sm">
+                          {(order.extractedData as any)?.purchaseOrder?.orderDate || 'N/A'}
+                        </span>
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <span className="text-sm text-gray-600">
+                        {formatDate(order.createdAt)}
+                      </span>
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex items-center space-x-2">
+                        <User className="w-4 h-4 text-gray-400" />
+                        <div>
+                          <div className="font-medium text-sm">{customer.name}</div>
+                          <div className="text-xs text-gray-500 truncate max-w-[180px]">
+                            {customer.address}
+                          </div>
+                        </div>
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex items-center space-x-2">
+                        <Mail className="w-4 h-4 text-gray-400" />
+                        <span className="text-sm text-gray-600 truncate max-w-[180px]">
+                          {customer.email}
+                        </span>
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <Badge className={`${statusBadge.class} border`}>
+                        <StatusIcon className="w-3 h-3 mr-1" />
+                        {order.status.replace('_', ' ')}
+                      </Badge>
+                    </TableCell>
+                    <TableCell>
+                      <Badge className={`${routeBadge.class} border text-xs`}>
+                        {routeBadge.label}
+                      </Badge>
+                    </TableCell>
+                    <TableCell>
+                      <div className="text-center">
+                        <Badge variant="outline" className="text-xs">
+                          {lineItemsCount} items
                         </Badge>
-                      </td>
-                      <td className="px-6 py-4 text-sm text-slate-800">
-                        {order.route || 'N/A'}
-                      </td>
-                      <td className="px-6 py-4 text-sm text-slate-800">
-                        {order.confidence ? `${Math.round(order.confidence * 100)}%` : 'N/A'}
-                      </td>
-                      <td className="px-6 py-4 text-sm text-secondary">
-                        {order.createdAt ? new Date(order.createdAt).toLocaleDateString() : 'N/A'}
-                      </td>
-                      <td className="px-6 py-4">
-                        {order.status === 'ready for NS import' ? (
-                          <Button 
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <div className="text-center">
+                        {order.confidence ? (
+                          <Badge 
+                            variant="outline" 
+                            className={`text-xs ${
+                              order.confidence >= 0.8 ? 'bg-green-50 text-green-700 border-green-200' :
+                              order.confidence >= 0.6 ? 'bg-amber-50 text-amber-700 border-amber-200' :
+                              'bg-red-50 text-red-700 border-red-200'
+                            }`}
+                          >
+                            {Math.round(order.confidence * 100)}%
+                          </Badge>
+                        ) : (
+                          <span className="text-gray-400 text-sm">N/A</span>
+                        )}
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex items-center space-x-1">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => handleViewOrder(order)}
+                          className="h-8 w-8 p-0"
+                        >
+                          <Eye className="h-4 w-4" />
+                        </Button>
+                        {order.status === 'ready_for_netsuite' && (
+                          <Button
+                            variant="ghost"
                             size="sm"
                             onClick={() => handleImportToNetSuite(order.id)}
+                            className="h-8 w-8 p-0 text-blue-600 hover:text-blue-700"
                           >
-                            Import
-                          </Button>
-                        ) : (
-                          <Button 
-                            variant="outline" 
-                            size="sm"
-                            onClick={() => handleViewOrder(order)}
-                          >
-                            <Eye className="h-4 w-4 mr-2" />
-                            View
+                            <ExternalLink className="h-4 w-4" />
                           </Button>
                         )}
-                      </td>
-                    </tr>
-                  ))
-                ) : (
-                  <tr>
-                    <td colSpan={7} className="px-6 py-8 text-center text-gray-500">
-                      No purchase orders found
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
-        </div>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                );
+              })}
+            </TableBody>
+          </Table>
+        )}
       </div>
 
       {/* View Order Modal */}
@@ -188,7 +467,7 @@ export default function PurchaseOrdersPage() {
                     </div>
                     <div className="flex justify-between">
                       <span className="text-gray-600">Status:</span>
-                      <Badge className={getStatusBadge(selectedOrder.status)}>
+                      <Badge className={`${getStatusBadge(selectedOrder.status).class} border`}>
                         {selectedOrder.status.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase())}
                       </Badge>
                     </div>
