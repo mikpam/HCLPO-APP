@@ -2,8 +2,14 @@ import { useQuery } from "@tanstack/react-query";
 import { PurchaseOrder } from "@shared/schema";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { useState } from "react";
+import { Eye, ExternalLink, FileText } from "lucide-react";
 
 export default function PurchaseOrdersPage() {
+  const [selectedOrder, setSelectedOrder] = useState<PurchaseOrder | null>(null);
+  const [isViewModalOpen, setIsViewModalOpen] = useState(false);
+  
   const { data: purchaseOrders, isLoading } = useQuery<PurchaseOrder[]>({
     queryKey: ["/api/purchase-orders"],
     refetchInterval: 30000
@@ -41,6 +47,11 @@ export default function PurchaseOrdersPage() {
     } catch (error) {
       console.error('Error importing to NetSuite:', error);
     }
+  };
+
+  const handleViewOrder = (order: PurchaseOrder) => {
+    setSelectedOrder(order);
+    setIsViewModalOpen(true);
   };
 
   return (
@@ -126,7 +137,12 @@ export default function PurchaseOrdersPage() {
                             Import
                           </Button>
                         ) : (
-                          <Button variant="outline" size="sm">
+                          <Button 
+                            variant="outline" 
+                            size="sm"
+                            onClick={() => handleViewOrder(order)}
+                          >
+                            <Eye className="h-4 w-4 mr-2" />
                             View
                           </Button>
                         )}
@@ -145,6 +161,162 @@ export default function PurchaseOrdersPage() {
           </div>
         </div>
       </div>
+
+      {/* View Order Modal */}
+      <Dialog open={isViewModalOpen} onOpenChange={setIsViewModalOpen}>
+        <DialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <FileText className="h-5 w-5" />
+              Purchase Order Details - {selectedOrder?.poNumber}
+            </DialogTitle>
+            <DialogDescription>
+              Complete details and processing information for this purchase order
+            </DialogDescription>
+          </DialogHeader>
+
+          {selectedOrder && (
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              {/* Basic Information */}
+              <div className="space-y-4">
+                <div>
+                  <h3 className="font-semibold text-sm text-gray-700 mb-2">Basic Information</h3>
+                  <div className="space-y-2 text-sm">
+                    <div className="flex justify-between">
+                      <span className="text-gray-600">PO Number:</span>
+                      <span className="font-medium">{selectedOrder.poNumber}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-600">Status:</span>
+                      <Badge className={getStatusBadge(selectedOrder.status)}>
+                        {selectedOrder.status.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase())}
+                      </Badge>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-600">Route:</span>
+                      <span className="font-medium">{selectedOrder.route || 'N/A'}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-600">Confidence:</span>
+                      <span className="font-medium">
+                        {selectedOrder.confidence ? `${Math.round(selectedOrder.confidence * 100)}%` : 'N/A'}
+                      </span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-600">Created:</span>
+                      <span className="font-medium">
+                        {selectedOrder.createdAt ? new Date(selectedOrder.createdAt).toLocaleDateString() : 'N/A'}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Email Information */}
+                <div>
+                  <h3 className="font-semibold text-sm text-gray-700 mb-2">Email Information</h3>
+                  <div className="space-y-2 text-sm">
+                    <div>
+                      <span className="text-gray-600">From:</span>
+                      <div className="font-medium">{selectedOrder.sender}</div>
+                    </div>
+                    <div>
+                      <span className="text-gray-600">Subject:</span>
+                      <div className="font-medium">{selectedOrder.subject}</div>
+                    </div>
+                    <div>
+                      <span className="text-gray-600">Email ID:</span>
+                      <div className="font-mono text-xs bg-gray-100 p-1 rounded">
+                        {selectedOrder.emailId}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Processing Results */}
+              <div className="space-y-4">
+                {selectedOrder.classificationResult && (
+                  <div>
+                    <h3 className="font-semibold text-sm text-gray-700 mb-2">AI Classification</h3>
+                    <div className="bg-gray-50 p-3 rounded-lg space-y-2 text-sm">
+                      <div className="flex justify-between">
+                        <span className="text-gray-600">Recommended Route:</span>
+                        <span className="font-medium">{selectedOrder.classificationResult.recommended_route}</span>
+                      </div>
+                      {selectedOrder.classificationResult.analysis_flags && (
+                        <>
+                          <div className="flex justify-between">
+                            <span className="text-gray-600">Has Attachments:</span>
+                            <span className="font-medium">
+                              {selectedOrder.classificationResult.analysis_flags.has_attachments ? 'Yes' : 'No'}
+                            </span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className="text-gray-600">Confidence Score:</span>
+                            <span className="font-medium">
+                              {selectedOrder.classificationResult.analysis_flags.confidence_score ? 
+                                `${Math.round(selectedOrder.classificationResult.analysis_flags.confidence_score * 100)}%` : 
+                                'N/A'
+                              }
+                            </span>
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* NetSuite Information */}
+                {selectedOrder.netsuiteResult && (
+                  <div>
+                    <h3 className="font-semibold text-sm text-gray-700 mb-2">NetSuite Integration</h3>
+                    <div className="bg-gray-50 p-3 rounded-lg space-y-2 text-sm">
+                      <div className="flex justify-between">
+                        <span className="text-gray-600">Status:</span>
+                        <span className="font-medium">{selectedOrder.netsuiteResult.status}</span>
+                      </div>
+                      {selectedOrder.netsuiteResult.salesOrderId && (
+                        <div className="flex justify-between">
+                          <span className="text-gray-600">Sales Order ID:</span>
+                          <span className="font-medium">{selectedOrder.netsuiteResult.salesOrderId}</span>
+                        </div>
+                      )}
+                      {selectedOrder.netsuiteResult.error && (
+                        <div>
+                          <span className="text-gray-600">Error:</span>
+                          <div className="text-red-600 text-xs mt-1">{selectedOrder.netsuiteResult.error}</div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* Actions */}
+                <div className="pt-4">
+                  <div className="flex gap-2">
+                    {selectedOrder.status === 'ready for NS import' && (
+                      <Button 
+                        size="sm"
+                        onClick={() => handleImportToNetSuite(selectedOrder.id)}
+                      >
+                        Import to NetSuite
+                      </Button>
+                    )}
+                    <Button 
+                      variant="outline" 
+                      size="sm"
+                      onClick={() => window.open(`/api/purchase-orders/${selectedOrder.id}/export`, '_blank')}
+                    >
+                      <ExternalLink className="h-4 w-4 mr-2" />
+                      Export Data
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
