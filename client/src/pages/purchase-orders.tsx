@@ -266,6 +266,84 @@ export default function PurchaseOrdersPage() {
                   </div>
                 )}
 
+                {/* Gemini Extracted Data */}
+                {selectedOrder.extractedData && (
+                  <div>
+                    <h3 className="font-semibold text-sm text-gray-700 mb-2">Extracted PO Data</h3>
+                    <div className="bg-blue-50 p-3 rounded-lg space-y-3 text-sm">
+                      {selectedOrder.extractedData.purchaseOrder && (
+                        <>
+                          <div className="space-y-2">
+                            <h4 className="font-medium text-blue-800">Purchase Order Details</h4>
+                            {selectedOrder.extractedData.purchaseOrder.purchaseOrderNumber && (
+                              <div className="flex justify-between">
+                                <span className="text-gray-600">PO Number:</span>
+                                <span className="font-medium">{selectedOrder.extractedData.purchaseOrder.purchaseOrderNumber}</span>
+                              </div>
+                            )}
+                            {selectedOrder.extractedData.purchaseOrder.orderDate && (
+                              <div className="flex justify-between">
+                                <span className="text-gray-600">Order Date:</span>
+                                <span className="font-medium">{selectedOrder.extractedData.purchaseOrder.orderDate}</span>
+                              </div>
+                            )}
+                            {selectedOrder.extractedData.purchaseOrder.customer?.company && (
+                              <div className="flex justify-between">
+                                <span className="text-gray-600">Customer:</span>
+                                <span className="font-medium">{selectedOrder.extractedData.purchaseOrder.customer.company}</span>
+                              </div>
+                            )}
+                            {selectedOrder.extractedData.purchaseOrder.shippingMethod && (
+                              <div className="flex justify-between">
+                                <span className="text-gray-600">Shipping:</span>
+                                <span className="font-medium">{selectedOrder.extractedData.purchaseOrder.shippingMethod}</span>
+                              </div>
+                            )}
+                          </div>
+                          
+                          {selectedOrder.extractedData.lineItems && selectedOrder.extractedData.lineItems.length > 0 && (
+                            <div className="space-y-2 border-t border-blue-200 pt-3">
+                              <h4 className="font-medium text-blue-800">Line Items ({selectedOrder.extractedData.lineItems.length})</h4>
+                              {selectedOrder.extractedData.lineItems.slice(0, 3).map((item: any, index: number) => (
+                                <div key={index} className="bg-white p-2 rounded border">
+                                  <div className="flex justify-between items-start">
+                                    <div className="flex-1">
+                                      <div className="font-medium text-xs">{item.description || item.sku || 'Unknown Item'}</div>
+                                      {item.sku && <div className="text-gray-500 text-xs">SKU: {item.sku}</div>}
+                                    </div>
+                                    <div className="text-right ml-2">
+                                      {item.quantity && <div className="font-medium text-xs">Qty: {item.quantity}</div>}
+                                      {item.unitPrice && <div className="text-gray-600 text-xs">${item.unitPrice}</div>}
+                                    </div>
+                                  </div>
+                                </div>
+                              ))}
+                              {selectedOrder.extractedData.lineItems.length > 3 && (
+                                <div className="text-center text-xs text-gray-500">
+                                  ... and {selectedOrder.extractedData.lineItems.length - 3} more items
+                                </div>
+                              )}
+                            </div>
+                          )}
+                          
+                          {selectedOrder.extractedData.subtotals?.grandTotal && (
+                            <div className="border-t border-blue-200 pt-2">
+                              <div className="flex justify-between font-medium">
+                                <span className="text-gray-600">Grand Total:</span>
+                                <span className="text-blue-800">${selectedOrder.extractedData.subtotals.grandTotal}</span>
+                              </div>
+                            </div>
+                          )}
+                        </>
+                      )}
+                      
+                      <div className="text-xs text-blue-600 border-t border-blue-200 pt-2">
+                        Extracted by: {selectedOrder.extractedData.engine || 'Gemini'} AI
+                      </div>
+                    </div>
+                  </div>
+                )}
+
                 {/* NetSuite Information */}
                 {selectedOrder.netsuiteResult && (
                   <div>

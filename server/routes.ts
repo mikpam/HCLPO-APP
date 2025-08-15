@@ -143,7 +143,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       await storage.updateEmailQueueItem(queueItem.id, updateData);
 
       let purchaseOrder = null;
-      let attachmentPaths: string[] = [];
+      let extractionResult = null; // Moved to higher scope
+      let attachmentPaths: Array<{filename: string; storagePath: string; buffer?: Buffer}> = [];
 
       // Store PDF attachments if any
       if (messageToProcess.attachments.length > 0) {
@@ -158,7 +159,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
           processingResult.classification.recommended_route !== 'REVIEW') {
         
         // Process PDF attachments with Gemini FIRST if this is an attachment route
-        let extractionResult = null;
         console.log(`Classification route: ${processingResult.classification.recommended_route}`);
         console.log(`Has attachments: ${attachmentPaths.length > 0}`);
         
@@ -222,7 +222,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           subject: messageToProcess.subject,
           preprocessing: {
             classification: processingResult.preprocessing.response,
-            confidence: processingResult.preprocessing.score ? Math.round(processingResult.preprocessing.score * 100) : null,
+            confidence: (processingResult.preprocessing.score && typeof processingResult.preprocessing.score === 'number') ? Math.round(processingResult.preprocessing.score * 100) : null,
             shouldProceed: processingResult.preprocessing.shouldProceed
           },
           classification: processingResult.classification ? {
