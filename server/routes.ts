@@ -739,7 +739,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         success: true, 
         connection: 'working',
         message: `Successfully connected to Gmail. Found ${messages.length} messages in inbox.`,
-        account: 'hclpurchaseorders@metrixdigital.com',
+        account: 'hcl@metrixdigital.com',
         sampleMessages: messages.slice(0, 3).map(m => ({
           id: m.id,
           sender: m.sender,

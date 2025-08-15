@@ -29,7 +29,7 @@ export class GmailService {
         'https://www.googleapis.com/auth/gmail.modify'
       ],
       // Impersonate the target Gmail account
-      subject: 'hclpurchaseorders@metrixdigital.com'
+      subject: 'hcl@metrixdigital.com'
     });
 
     this.gmail = google.gmail({ version: 'v1', auth });

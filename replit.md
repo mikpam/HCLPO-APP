@@ -54,7 +54,7 @@ Preferred communication style: Simple, everyday language.
 ## External Dependencies
 
 ### Email Integration
-- **Gmail API**: Service account authentication for automated email retrieval
+- **Gmail API**: Service account authentication for automated email retrieval from hcl@metrixdigital.com
 - **Filtering**: Label-based filtering for "purchase-order" and "unprocessed" emails
 - **Attachments**: PDF processing and content extraction capabilities
 
