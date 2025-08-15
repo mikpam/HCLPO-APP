@@ -363,13 +363,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Gmail connection test
   app.get("/api/gmail/test", async (req, res) => {
-    try {
-      // Test Gmail connection by fetching a single message
-      const messages = await gmailService.getMessages('label:inbox');
+    try {      
+      // Test Gmail connection by fetching inbox messages
+      const messages = await gmailService.getMessages('in:inbox');
       res.json({ 
         success: true, 
         connection: 'working',
         message: `Successfully connected to Gmail. Found ${messages.length} messages in inbox.`,
+        account: 'hclpurchaseorders@metrixdigital.com',
         sampleMessages: messages.slice(0, 3).map(m => ({
           id: m.id,
           sender: m.sender,
