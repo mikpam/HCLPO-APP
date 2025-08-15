@@ -20,7 +20,20 @@ export default function Dashboard() {
   });
 
   const processSingleEmail = useMutation({
-    mutationFn: () => apiRequest("/api/emails/process-single", { method: "POST" }),
+    mutationFn: async () => {
+      const response = await fetch("/api/emails/process-single", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+      });
+      
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      
+      return await response.json();
+    },
     onSuccess: (result) => {
       setLastProcessResult(result);
       toast({
@@ -34,6 +47,7 @@ export default function Dashboard() {
       queryClient.invalidateQueries({ queryKey: ["/api/email-queue"] });
     },
     onError: (error: any) => {
+      console.error("Processing error:", error);
       toast({
         title: "Processing Failed",
         description: error.message || "Failed to process email",

@@ -143,7 +143,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       await storage.updateEmailQueueItem(queueItem.id, updateData);
 
       let purchaseOrder = null;
-      let attachmentPaths = [];
+      let attachmentPaths: string[] = [];
 
       // Store PDF attachments if any
       if (messageToProcess.attachments.length > 0) {
@@ -182,7 +182,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           subject: messageToProcess.subject,
           preprocessing: {
             classification: processingResult.preprocessing.response,
-            confidence: Math.round(processingResult.preprocessing.score * 100),
+            confidence: processingResult.preprocessing.score ? Math.round(processingResult.preprocessing.score * 100) : null,
             shouldProceed: processingResult.preprocessing.shouldProceed
           },
           classification: processingResult.classification ? {
