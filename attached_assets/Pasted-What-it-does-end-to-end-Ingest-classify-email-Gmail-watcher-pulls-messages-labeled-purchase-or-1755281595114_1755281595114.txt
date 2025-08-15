@@ -1,0 +1,73 @@
+What it does (end‑to‑end)
+
+Ingest & classify email
+
+Gmail watcher pulls messages labeled purchase order + unprocessed, then an LLM judges whether the PO lives in the body vs. attachments, flags samples, and sets a recommended route (TEXT_PO / ATTACHMENT_PO / REVIEW). Errors are logged to Airtable.
+
+Extraction & routing
+
+The classifier outputs structured flags (attachments present, artwork‑only, body has enough PO detail, confidence score) and tags that drive downstream branching.
+
+Correction loop (Ops assist)
+
+A lightweight “correction engine” surfaces the next “Processing Error” record from the Airtable Error Logs view for operators to resolve, then marks it as resolved with a timestamp.
+
+NetSuite import preparation
+
+When a PO record’s status becomes ready for NS import, the scenario fetches the PO + validated JSON/line items from Airtable, optionally finds the original PDF in Dropbox by filename, and proceeds down import branches.
+
+NetSuite SO creation (User Event script)
+
+The UE script builds a Sales Order: matches shipping method by name (fallback FedEx Ground), formats dates, creates a new customer if not found, maps line items (prefers FinalSKU; falls back to OE_MISC_ITEM/CHARGE rules and hard‑coded SET UP item), attaches the source PDF to the SO, and writes back results.
+
+Core components
+
+Email intake & triage
+Gmail trigger + OpenAI classification deciding body vs. attachment source, PO vs. sample, with an “overall PO nature” probability + confidence score.
+
+Airtable (Operational DB)
+Tables: Purchase Orders (status, JSON, validated JSON, customer meta, POkey) and Error Logs (type, message, resolved flag, related PO). These drive import readiness and error dashboards.
+
+Dropbox (Document store)
+Source PDFs are searched by filename before attaching to the NS Sales Order.
+
+NetSuite (Target system)
+A UE script handles: customer lookup/activation or on‑the‑fly creation; ship‑method mapping with FedEx Ground default; robust date formatting; line‑item mapping with FinalSKU first; fallbacks to OE_MISC items when necessary; and PDF attach to the SO.
+
+Notable rules & safeguards
+
+Artwork‑only filter
+Files ending in .ai/.eps/.svg/.png/.jpg/.jpeg/.tif/.gif (or matching illustrator/postscript/image MIME types) are classified as artwork, preventing false “attachment POs.”
+
+Body‑text sufficiency check
+Requires item descriptions + explicit quantities + price/total to route as TEXT_PO. Small total quantities (<5) flip to TEXT_SAMPLE.
+
+Engine/branching controls
+Import flow has branches that treat non‑“Text engine” items differently and verify the original PDF in Dropbox before proceeding.
+
+Line‑item resilience
+FinalSKU → exact item match; if multiple or none, a “best match” attempt is made; failing that, SET UP or OE_MISC_ITEM/CHARGE is applied by quantity/color heuristics.
+
+Primary stack & integrations
+
+Automation layer: Make.com scenarios for intake, classification, error handling, and NS import.
+
+LLM: OpenAI chat completion (o‑series) for routing/classification.
+
+Datastores: Airtable (records, statuses, JSON payloads), Dropbox (PO PDFs).
+
+ERP target: NetSuite (Sales Orders, Customers) via a User Event Script.
+
+Email source: Gmail API (label‑based pull).
+
+Data objects (at a glance)
+
+Purchase Order record (Airtable): PO Number, customer meta, shipping carrier/method, original/validated JSON, original PDF filename, NS external/internal IDs, status, comments, POkey.
+
+Classifier output JSON: analysis_flags (attachments/body sufficiency/sample flag/confidence) + recommended_route + tags.
+
+Ops surfaces
+
+Error Logs view for “Processing Error” → surfaced, timestamped, marked resolved by the correction engine.
+
+Import queue using {Status}="ready for NS import" to feed NetSuite.
