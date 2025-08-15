@@ -225,24 +225,63 @@ export class GmailService {
     }
   }
 
-  async markAsProcessed(messageId: string): Promise<void> {
+  async markAsProcessed(messageId: string, preprocessingResult?: { shouldProceed: boolean; response: string }): Promise<void> {
     try {
-      // For now, just remove the unprocessed label to avoid label creation issues
-      // We can add back proper processed labeling once all labels are set up correctly
-      console.log(`Marking message ${messageId} as processed (skipping label modification for now)`);
+      console.log(`Updating Gmail labels for message ${messageId}`);
       
-      // Skip label modification to avoid errors during testing
-      // await this.gmail.users.messages.modify({
-      //   userId: 'me',
-      //   id: messageId,
-      //   requestBody: {
-      //     removeLabelIds: [unprocessedId],
-      //     addLabelIds: [processedId]
-      //   }
-      // });
+      // Get label IDs (these should exist in the Gmail account)
+      const unprocessedId = await this.getLabelId('unprocessed');
+      
+      let removeLabels: string[] = [];
+      let addLabels: string[] = [];
+      
+      // Always remove 'unprocessed' label if it exists
+      if (unprocessedId) {
+        removeLabels.push(unprocessedId);
+      }
+      
+      if (preprocessingResult) {
+        if (preprocessingResult.shouldProceed) {
+          // Email passed preprocessing - will be processed further
+          const processedId = await this.getLabelId('processed');
+          if (processedId) {
+            addLabels.push(processedId);
+            console.log(`   └─ Adding 'processed' label (passed preprocessing: ${preprocessingResult.response})`);
+          }
+        } else {
+          // Email was filtered out by preprocessing
+          const filteredId = await this.getLabelId('filtered');
+          if (filteredId) {
+            addLabels.push(filteredId);
+            console.log(`   └─ Adding 'filtered' label (blocked by preprocessing: ${preprocessingResult.response})`);
+          }
+        }
+      } else {
+        // Fallback - just mark as processed
+        const processedId = await this.getLabelId('processed');
+        if (processedId) {
+          addLabels.push(processedId);
+        }
+      }
+      
+      // Apply label changes if we have any
+      if (removeLabels.length > 0 || addLabels.length > 0) {
+        await this.gmail.users.messages.modify({
+          userId: 'me',
+          id: messageId,
+          requestBody: {
+            ...(removeLabels.length > 0 && { removeLabelIds: removeLabels }),
+            ...(addLabels.length > 0 && { addLabelIds: addLabels })
+          }
+        });
+        console.log(`   ✅ Successfully updated Gmail labels`);
+      } else {
+        console.log(`   ⚠️  No label changes needed (labels may not exist in Gmail)`);
+      }
+      
     } catch (error) {
-      console.error('Error marking message as processed:', error);
-      throw new Error(`Failed to update message labels: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      console.error('   ❌ Error updating Gmail labels:', error);
+      // Don't throw error - label updates shouldn't stop email processing
     }
   }
 

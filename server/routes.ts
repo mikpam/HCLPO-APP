@@ -254,8 +254,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
       }
 
-      // Mark as processed in Gmail
-      await gmailService.markAsProcessed(messageToProcess.id);
+      // Mark as processed in Gmail with preprocessing result
+      await gmailService.markAsProcessed(messageToProcess.id, processingResult.preprocessing);
 
       res.json({ 
         message: `Successfully processed: ${messageToProcess.subject}`,
@@ -379,8 +379,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
             console.log(`Email filtered out: ${processingResult.preprocessing.response} (${processingResult.preprocessing.score})`);
           }
 
-          // Mark as processed in Gmail
-          await gmailService.markAsProcessed(message.id);
+          // Mark as processed in Gmail with preprocessing result
+          await gmailService.markAsProcessed(message.id, processingResult.preprocessing);
 
         } catch (error) {
           console.error(`Error processing email ${message.id}:`, error);
