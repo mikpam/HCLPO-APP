@@ -116,6 +116,28 @@ class AIServiceManager {
     }
   }
 
+  async extractPODataFromPDF(pdfBuffer: Buffer, filename: string): Promise<any & { engine: AIEngine }> {
+    // Use Gemini 2.5 Pro specifically for PDF attachment extraction
+    const engine = this.attachmentEngine;
+    
+    try {
+      const service = this.getService(engine);
+      if (engine === 'gemini' && 'extractPODataFromPDF' in service) {
+        const result = await service.extractPODataFromPDF(pdfBuffer, filename);
+        console.log(`Successfully extracted PO data from PDF using ${engine}: ${filename}`);
+        return { ...result, engine };
+      } else {
+        throw new Error(`${engine} engine does not support direct PDF processing`);
+      }
+    } catch (error) {
+      console.error(`${engine} PDF extraction failed:`, error);
+      
+      // For PDF extraction, only Gemini supports direct processing
+      // If it fails, we can't fallback effectively since we need the PDF parsing capability
+      throw new Error(`PDF extraction failed with ${engine}: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }
+
   // PDF analysis is handled via extractPOData with attachmentText
   async analyzePDFContent(pdfText: string): Promise<any & { engine: AIEngine }> {
     return this.extractPOData("", pdfText);

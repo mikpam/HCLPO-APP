@@ -251,7 +251,7 @@ export class GmailService {
     contentType: string;
     size: number;
     attachmentId?: string;
-  }>): Promise<Array<{ filename: string; storagePath: string }>> {
+  }>): Promise<Array<{ filename: string; storagePath: string; buffer?: Buffer }>> {
     const storedAttachments = [];
     
     for (const attachment of attachments) {
@@ -273,7 +273,8 @@ export class GmailService {
           
           storedAttachments.push({
             filename: attachment.filename,
-            storagePath
+            storagePath,
+            buffer: attachmentData
           });
 
           console.log(`Stored PDF attachment: ${attachment.filename} at ${storagePath}`);

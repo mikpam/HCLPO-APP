@@ -1,4 +1,7 @@
 import { GoogleGenAI } from "@google/genai";
+import * as fs from "fs";
+import * as path from "path";
+import * as os from "os";
 
 // DON'T DELETE THIS COMMENT
 // Follow these instructions when using this blueprint:
@@ -75,6 +78,142 @@ export class GeminiService {
       recommended_route: 'REVIEW',
       suggested_tags: ['Gemini Not Used For Classification']
     };
+  }
+
+  async extractPODataFromPDF(pdfBuffer: Buffer, filename: string): Promise<any> {
+    try {
+      console.log(`Processing PDF with Gemini: ${filename} (${pdfBuffer.length} bytes)`);
+
+      // Convert PDF buffer to base64 for inline data
+      const base64Data = pdfBuffer.toString('base64');
+
+      const prompt = `Analyze the PDF file and create the most accurate data according to this schema, outputting only a valid JSON object:
+
+JSON Schema:
+{
+  "purchaseOrder": {
+    "purchaseOrderNumber": "string",
+    "orderDate": "date",
+    "inHandsDate": "date", 
+    "requiredShipDate": "date",
+    "customer": {
+      "customerNumber": "string",
+      "company": "string",
+      "firstName": "string",
+      "lastName": "string",
+      "email": "string",
+      "address1": "string",
+      "address2": "string",
+      "city": "string",
+      "state": "string",
+      "country": "string",
+      "zipCode": "string",
+      "phone": "string"
+    },
+    "ppaiNumber": "string",
+    "asiNumber": "string",
+    "salesPersonName": "string",
+    "salesPersonEmail": "string",
+    "vendor": {
+      "name": "string",
+      "address1": "string",
+      "address2": "string",
+      "city": "string",
+      "state": "string", 
+      "country": "string",
+      "zipCode": "string",
+      "phone": "string",
+      "email": "string"
+    },
+    "shipTo": {
+      "name": "string",
+      "company": "string",
+      "address1": "string",
+      "address2": "string",
+      "city": "string",
+      "state": "string",
+      "country": "string",
+      "zipCode": "string"
+    },
+    "shippingMethod": "string",
+    "shippingCarrier": "string"
+  },
+  "lineItems": [
+    {
+      "sku": "string",
+      "itemColor": "string",
+      "imprintColor": "string",
+      "description": "string",
+      "quantity": "number",
+      "unitPrice": "number", 
+      "totalPrice": "number",
+      "finalSKU": "string"
+    }
+  ],
+  "subtotals": {
+    "merchandiseSubtotal": "number",
+    "additionalChargesSubtotal": "number",
+    "grandTotal": "number"
+  },
+  "specialInstructions": "string",
+  "additionalNotes": ["string"]
+}
+
+Color Code Mapping for finalSKU:
+{"00": "White", "00M": "Matte White", "00S": "Shiny White", "01": "Blue", "01M": "Matte Blue", "01S": "Shiny Blue", "01T": "Transparent Blue", "02": "Red", "02S": "Solid Red", "02T": "Transparent Red", "03": "Green", "03M": "Matte Green", "04": "Orange", "04M": "Matte Orange", "05": "Purple", "06": "Black", "06M": "Matte Black", "07": "Gray", "07M": "Matte Gray", "08": "Yellow", "09": "Silver", "10": "Navy Blue", "10M": "Matte Navy Blue", "11": "Light Blue", "12": "Pink"}
+
+Processing Rules:
+1. OCR Error Handling: Correct "1"vs"l"vs"i", "0"vs"O", "8"vs"B", "5"vs"S", "2"vs"Z", "/"vs"1", "."vs",".
+2. Critical Role Identification:
+   a) ALWAYS identify Vendor first: "High Caliber Line" or aliases ("CALIBRE INTERNATIONAL LLC", "HCL", "High Caliber")
+   b) Customer: Main company from header/logo (NEVER from Ship To section, NEVER "High Caliber Line")
+   c) Ship-To: Final delivery destination from "Ship To"/"Deliver To" section
+3. Contact: Email priority: header contact → billing contact → sales rep email → empty string
+4. Address: Convert state abbreviations to full names, default country to "United States"
+5. SKU Processing:
+   a) Setup charges: description contains "setup charge"/"SETUP"/"setup"/"SU"/"set charge"/"Setup Fee" → sku="SET UP"
+   b) Extra color: description contains "extra color" → sku="EC" 
+   c) Extra location: description contains "extra location" → sku="EL"
+   d) Standard items: combine base SKU with color code as "SKUCODE-COLORCODE", default "OE-MISC-CHARGE"
+6. Dates: MM/DD/YYYY format, ensure logical sequence
+7. Price Validation: Verify calculations, flag discrepancies >$0.01 in additionalNotes
+8. Required Fields: Use "" for missing text, null for missing numbers
+9. Replace all null values with "". DO NOT use dummy data.`;
+
+      const response = await this.ai.models.generateContent({
+        model: "gemini-2.5-pro",
+        config: {
+          systemInstruction: "You are a specialized purchase order extraction expert. Extract data following the exact schema and processing rules. Return only valid JSON without markdown formatting.",
+          responseMimeType: "application/json"
+        },
+        contents: [
+          {
+            role: "user",
+            parts: [
+              { text: prompt },
+              {
+                inlineData: {
+                  data: base64Data,
+                  mimeType: "application/pdf"
+                }
+              }
+            ]
+          }
+        ],
+      });
+
+      const rawJson = response.text;
+      if (rawJson) {
+        const result = JSON.parse(rawJson);
+        // Replace any null values with empty strings as per user requirements
+        return this.replaceNullsWithEmptyStrings(result);
+      } else {
+        throw new Error("Empty response from Gemini");
+      }
+    } catch (error) {
+      console.error('Gemini PDF extraction error:', error);
+      throw new Error(`PDF data extraction failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
   }
 
   async extractPOData(body: string, attachmentText?: string): Promise<any> {

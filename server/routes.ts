@@ -156,7 +156,45 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Create purchase order if email passed both steps
       if (processingResult.preprocessing.shouldProceed && processingResult.classification && 
           processingResult.classification.recommended_route !== 'REVIEW') {
-        const poNumber = `PO-${new Date().getFullYear()}-${String(Date.now()).slice(-6)}`;
+        
+        // Process PDF attachments with Gemini FIRST if this is an attachment route
+        let extractionResult = null;
+        console.log(`Classification route: ${processingResult.classification.recommended_route}`);
+        console.log(`Has attachments: ${attachmentPaths.length > 0}`);
+        
+        if ((processingResult.classification.recommended_route === 'ATTACHMENT_PO' || 
+             processingResult.classification.recommended_route === 'ATTACHMENT_SAMPLE') &&
+            attachmentPaths.length > 0) {
+          
+          // Find PDF attachments and process them
+          const pdfAttachments = attachmentPaths.filter(att => att.buffer);
+          console.log(`Found ${pdfAttachments.length} PDF attachments with buffers`);
+          if (pdfAttachments.length > 0) {
+            try {
+              console.log(`Processing ${pdfAttachments.length} PDF attachments with Gemini`);
+              // Process the first PDF attachment
+              const firstPdf = pdfAttachments[0];
+              extractionResult = await aiService.extractPODataFromPDF(firstPdf.buffer!, firstPdf.filename);
+              console.log(`Successfully extracted PO data from PDF: ${firstPdf.filename}`);
+              console.log(`Extracted PO Number: ${extractionResult?.purchaseOrder?.purchaseOrderNumber || 'not found'}`);
+            } catch (error) {
+              console.error('Failed to extract PO data from PDF:', error);
+              // Continue without extraction result
+            }
+          }
+        } else {
+          console.log(`Skipping PDF processing. Route: ${processingResult.classification.recommended_route}, Attachments: ${attachmentPaths.length}`);
+        }
+        
+        // Use extracted PO number if available, otherwise generate synthetic one
+        let poNumber;
+        if (extractionResult?.purchaseOrder?.purchaseOrderNumber) {
+          poNumber = extractionResult.purchaseOrder.purchaseOrderNumber;
+          console.log(`Using client PO number: ${poNumber}`);
+        } else {
+          poNumber = `PO-${new Date().getFullYear()}-${String(Date.now()).slice(-6)}`;
+          console.log(`Generated synthetic PO number: ${poNumber}`);
+        }
         
         purchaseOrder = await storage.createPurchaseOrder({
           poNumber,
@@ -165,8 +203,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
           subject: messageToProcess.subject,
           route: processingResult.classification.recommended_route,
           confidence: processingResult.classification.analysis_flags?.confidence_score || 0,
-          status: processingResult.classification.recommended_route === 'TEXT_PO' ? 'ready_for_extraction' : 'pending_review',
-          originalJson: processingResult.classification
+          status: extractionResult ? 'ready_for_netsuite' : 
+                  (processingResult.classification.recommended_route === 'TEXT_PO' ? 'ready_for_extraction' : 'pending_review'),
+          originalJson: processingResult.classification,
+          extractedData: extractionResult
         });
       }
 
@@ -193,7 +233,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
           } : null,
           purchaseOrder: purchaseOrder ? {
             poNumber: purchaseOrder.poNumber,
-            status: purchaseOrder.status
+            status: purchaseOrder.status,
+            extractedData: purchaseOrder.extractedData ? 'Available' : 'None'
+          } : null,
+          extractionResult: extractionResult ? {
+            clientPO: extractionResult.purchaseOrder?.purchaseOrderNumber || 'Not found',
+            engine: extractionResult.engine || 'Unknown'
           } : null,
           attachments: attachmentPaths
         }
