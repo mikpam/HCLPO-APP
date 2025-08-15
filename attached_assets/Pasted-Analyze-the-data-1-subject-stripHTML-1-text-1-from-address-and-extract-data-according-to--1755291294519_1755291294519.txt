@@ -1,0 +1,83 @@
+Analyze the data {{1.subject}}{{stripHTML(1.text)}}{{1.from.address}} and extract data according to this schema. Output the result as a valid JSON object without any markdown formatting or additional text:
+
+{  
+  "purchaseOrder": {    
+    "purchaseOrderNumber": "string",    
+    "orderDate": "date",    
+    "inHandsDate": "date",    
+    "requiredShipDate": "date",    
+    "customer": {      
+      "company": "string",  
+      "customernumber": "string",    
+      "firstName": "string",      
+      "lastName": "string",      
+      "email": "string",      
+      "address1": "string",      
+      "address2": "string",      
+      "city": "string",      
+      "state": "string",      
+      "country": "string",      
+      "zipCode": "string",      
+      "phone": "string"    
+    },    
+    "ppaiNumber": "string",    
+    "asiNumber": "string",    
+    "salesPersonName": "string",    
+    "salesPersonEmail": "string",    
+    "vendor": {      
+      "name": "string",      
+      "address1": "string",      
+      "address2": "string",      
+      "city": "string",      
+      "state": "string",      
+      "country": "string",      
+      "zipCode": "string",      
+      "phone": "string",      
+      "email": "string"    
+    },    
+    "shipTo": {      
+      "name": "string",      
+      "company": "string",      
+      "address1": "string",      
+      "address2": "string",      
+      "city": "string",      
+      "state": "string",      
+      "country": "string",      
+      "zipCode": "string"    
+    },    
+    "shippingMethod": "string",    
+    "shippingCarrier": "string"  
+  },  
+  "lineItems": [    
+    {      
+      "sku": "string",      
+      "itemColor": "string",      
+      "imprintColor": "string",      
+      "description": "string",      
+      "quantity": "number",      
+      "unitPrice": "number",      
+      "totalPrice": "number",      
+      "finalSKU": "string"    
+    }  
+  ],  
+  "subtotals": {    
+    "merchandiseSubtotal": "number",    
+    "additionalChargesSubtotal": "number",    
+    "grandTotal": "number"  
+  },  
+  "specialInstructions": "string",  
+  "additionalNotes": ["string"]
+}
+
+---
+
+**Normalization Rules for `sku`:**
+
+1. Remove vendor prefixes like `199-`, `4AP-`, `ALLP-`, `AP-` from the beginning of the SKU.
+2. If the SKU has a suffix (e.g., `-O`, `-99`, `-X`) and it is **not** in the approved color codes list, strip the suffix.
+3. If a SKU is blank or malformed, try to infer it from the `description`.
+4. Always return SKUs in uppercase, without trailing dashes or invalid tokens.
+
+**Use the normalized `sku` value when forming the `finalSKU`.**
+
+

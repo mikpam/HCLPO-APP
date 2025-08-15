@@ -198,8 +198,33 @@ export async function registerRoutes(app: Express): Promise<Server> {
               // Continue without extraction result
             }
           }
+        } else if (processingResult.classification.recommended_route === 'TEXT_PO') {
+          // Process TEXT_PO route with Gemini email text extraction
+          try {
+            console.log(`\n🧠 GEMINI: Processing email text for TEXT_PO extraction...`);
+            console.log(`   └─ Subject: ${messageToProcess.subject}`);
+            console.log(`   └─ Body length: ${messageToProcess.body.length} characters`);
+            console.log(`   └─ From: ${messageToProcess.sender}`);
+            
+            extractionResult = await aiService.extractPODataFromText(
+              messageToProcess.subject,
+              messageToProcess.body,
+              messageToProcess.sender
+            );
+            console.log(`   ✅ SUCCESS: Extracted PO data from email text`);
+            console.log(`   └─ Client PO Number: ${extractionResult?.purchaseOrder?.purchaseOrderNumber || 'NOT FOUND'}`);
+            if (extractionResult?.purchaseOrder?.customer?.company) {
+              console.log(`   └─ Customer: ${extractionResult.purchaseOrder.customer.company}`);
+            }
+            if (extractionResult?.lineItems?.length) {
+              console.log(`   └─ Line Items: ${extractionResult.lineItems.length}`);
+            }
+          } catch (error) {
+            console.error(`   ❌ FAILED: Email text extraction error:`, error);
+            // Continue without extraction result
+          }
         } else {
-          console.log(`   └─ Skipping PDF processing (not attachment route or no attachments)`);
+          console.log(`   └─ Skipping Gemini processing (not PO route or unsupported route)`);
         }
         
         // Use extracted PO number if available, otherwise generate synthetic one

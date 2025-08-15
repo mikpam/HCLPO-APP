@@ -38,8 +38,12 @@ Preferred communication style: Simple, everyday language.
 - **Filtering Logic**: Follow Up and "None of these" emails are filtered out before detailed analysis
 - **Classification Routes**: TEXT_PO, TEXT_SAMPLE, ATTACHMENT_PO, ATTACHMENT_SAMPLE, REVIEW (5-route classification system)
 - **Advanced Gate Logic**: Artwork detection, body text sufficiency analysis, sample vs full order distinction, confidence scoring
-- **Processing Flow**: Gmail ingestion → Pre-processing classification → Detailed analysis (if qualified) → Gemini PDF extraction (if attachment route) → validation → NetSuite import
-- **Database Storage**: Both preprocessing and detailed classification results stored in Neon PostgreSQL
+- **Dual Gemini Extraction Routes**: 
+  - ATTACHMENT_PO: PDF processing with file upload API and OCR extraction
+  - TEXT_PO: Email text processing with structured schema extraction from subject + body + sender
+- **Processing Flow**: Gmail ingestion → Pre-processing classification → Detailed analysis (if qualified) → Gemini extraction (PDF or text) → real client PO extraction → NetSuite import
+- **Database Storage**: Preprocessing, classification, and extracted data (with real client PO numbers) stored in Neon PostgreSQL
+- **Manual Processing Mode**: Development uses single-email processing with detailed console tracing for debugging
 
 ### Authentication & Authorization
 - **Strategy**: Session-based authentication with role-based access control
@@ -57,10 +61,13 @@ Preferred communication style: Simple, everyday language.
 - **OpenAI API**: GPT-4o model for both pre-processing intent classification AND detailed 5-route email gate logic
 - **Pre-processing Prompt**: Exact replica of Make.com workflow classification (Purchase Order, Sample Request, Rush Order, Follow Up, None)
 - **Detailed Classification**: Advanced gate logic with artwork detection, body text analysis, attachment routing decisions
-- **Google Gemini API**: Gemini 2.5 Pro reserved exclusively for PDF attachment extraction with comprehensive purchase order parsing
+- **Google Gemini API**: Gemini 2.5 Flash for dual extraction routes with structured purchase order parsing
+- **ATTACHMENT_PO Route**: Gemini processes PDF attachments using file upload API with OCR and data extraction
+- **TEXT_PO Route**: Gemini processes email text content (subject + body + sender) using structured schema extraction
 - **Specialized Prompt Engineering**: Advanced OCR error correction, vendor/customer/ship-to identification, SKU processing with color mapping
-- **Two-Step Workflow**: Pre-processing filters emails → Detailed analysis for qualified emails → PDF extraction for attachments
-- **Clear Separation**: OpenAI handles all email analysis, Gemini handles all PDF extraction - no fallback between engines for different tasks
+- **Two-Step Workflow**: Pre-processing filters emails → Detailed analysis for qualified emails → Gemini extraction (PDF or text-based)
+- **Real Client PO Numbers**: System extracts actual client PO numbers (e.g., "650494") instead of generating synthetic ones
+- **Clear Separation**: OpenAI handles all email classification, Gemini handles all structured data extraction for both routes
 
 ### Data Storage Services
 - **Airtable API**: Operational database for purchase orders and error logs

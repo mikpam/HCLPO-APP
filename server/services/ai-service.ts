@@ -138,6 +138,25 @@ class AIServiceManager {
     }
   }
 
+  async extractPODataFromText(subject: string, body: string, fromAddress: string): Promise<any & { engine: AIEngine }> {
+    // Use Gemini specifically for TEXT_PO extraction from email content
+    const engine = 'gemini';
+    
+    try {
+      const service = this.getService(engine);
+      if (engine === 'gemini' && 'extractPODataFromText' in service) {
+        const result = await service.extractPODataFromText(subject, body, fromAddress);
+        console.log(`Successfully extracted PO data from email text using ${engine}`);
+        return { ...result, engine };
+      } else {
+        throw new Error(`${engine} engine does not support text extraction`);
+      }
+    } catch (error) {
+      console.error(`${engine} text extraction failed:`, error);
+      throw new Error(`Text extraction failed with ${engine}: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }
+
   // PDF analysis is handled via extractPOData with attachmentText
   async analyzePDFContent(pdfText: string): Promise<any & { engine: AIEngine }> {
     return this.extractPOData("", pdfText);

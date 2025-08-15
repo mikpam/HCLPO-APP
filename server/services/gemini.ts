@@ -80,6 +80,130 @@ export class GeminiService {
     };
   }
 
+  async extractPODataFromText(subject: string, body: string, fromAddress: string): Promise<any> {
+    try {
+      console.log(`Processing email text with Gemini for TEXT_PO extraction`);
+
+      const prompt = `Analyze the data ${subject}${body}${fromAddress} and extract data according to this schema. Output the result as a valid JSON object without any markdown formatting or additional text:
+
+{  
+  "purchaseOrder": {    
+    "purchaseOrderNumber": "string",    
+    "orderDate": "date",    
+    "inHandsDate": "date",    
+    "requiredShipDate": "date",    
+    "customer": {      
+      "company": "string",  
+      "customernumber": "string",    
+      "firstName": "string",      
+      "lastName": "string",      
+      "email": "string",      
+      "address1": "string",      
+      "address2": "string",      
+      "city": "string",      
+      "state": "string",      
+      "country": "string",      
+      "zipCode": "string",      
+      "phone": "string"    
+    },    
+    "ppaiNumber": "string",    
+    "asiNumber": "string",    
+    "salesPersonName": "string",    
+    "salesPersonEmail": "string",    
+    "vendor": {      
+      "name": "string",      
+      "address1": "string",      
+      "address2": "string",      
+      "city": "string",      
+      "state": "string",      
+      "country": "string",      
+      "zipCode": "string",      
+      "phone": "string",      
+      "email": "string"    
+    },    
+    "shipTo": {      
+      "name": "string",      
+      "company": "string",      
+      "address1": "string",      
+      "address2": "string",      
+      "city": "string",      
+      "state": "string",      
+      "country": "string",      
+      "zipCode": "string"    
+    },    
+    "shippingMethod": "string",    
+    "shippingCarrier": "string"  
+  },  
+  "lineItems": [    
+    {      
+      "sku": "string",      
+      "itemColor": "string",      
+      "imprintColor": "string",      
+      "description": "string",      
+      "quantity": "number",      
+      "unitPrice": "number",      
+      "totalPrice": "number",      
+      "finalSKU": "string"    
+    }  
+  ],  
+  "subtotals": {    
+    "merchandiseSubtotal": "number",    
+    "additionalChargesSubtotal": "number",    
+    "grandTotal": "number"  
+  },  
+  "specialInstructions": "string",  
+  "additionalNotes": ["string"]
+}
+
+---
+
+**Normalization Rules for \`sku\`:**
+
+1. Remove vendor prefixes like \`199-\`, \`4AP-\`, \`ALLP-\`, \`AP-\` from the beginning of the SKU.
+2. If the SKU has a suffix (e.g., \`-O\`, \`-99\`, \`-X\`) and it is **not** in the approved color codes list, strip the suffix.
+3. If a SKU is blank or malformed, try to infer it from the \`description\`.
+4. Always return SKUs in uppercase, without trailing dashes or invalid tokens.
+
+**Use the normalized \`sku\` value when forming the \`finalSKU\`.**`;
+
+      const response = await ai.models.generateContent({
+        model: "gemini-2.5-flash",
+        contents: prompt,
+      });
+
+      const rawResponse = response.text || "";
+      console.log(`Raw Gemini response length: ${rawResponse.length} characters`);
+
+      if (!rawResponse) {
+        throw new Error("Empty response from Gemini");
+      }
+
+      // Clean the response to extract JSON
+      let jsonStr = rawResponse.trim();
+      
+      // Remove markdown code blocks if present
+      if (jsonStr.startsWith('```json')) {
+        jsonStr = jsonStr.replace(/^```json\s*/, '').replace(/\s*```$/, '');
+      } else if (jsonStr.startsWith('```')) {
+        jsonStr = jsonStr.replace(/^```\s*/, '').replace(/\s*```$/, '');
+      }
+
+      const extractedData = JSON.parse(jsonStr);
+      
+      // Add metadata
+      extractedData.engine = 'gemini';
+      extractedData.extractionType = 'text';
+      extractedData.processedAt = new Date().toISOString();
+
+      console.log(`Successfully extracted PO data from email text using gemini`);
+      
+      return extractedData;
+    } catch (error) {
+      console.error('Gemini email text extraction failed:', error);
+      throw error;
+    }
+  }
+
   async extractPODataFromPDF(pdfBuffer: Buffer, filename: string): Promise<any> {
     try {
       console.log(`Processing PDF with Gemini: ${filename} (${pdfBuffer.length} bytes)`);
