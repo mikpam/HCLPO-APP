@@ -1,0 +1,1974 @@
+{
+    "name": "A1.0-Pre Processing Step",
+    "flow": [
+        {
+            "id": 3,
+            "module": "google-email:TriggerNewEmail",
+            "version": 2,
+            "parameters": {
+                "from": "",
+                "text": "",
+                "folder": "INBOX",
+                "account": 39164,
+                "subject": "",
+                "criteria": "ALL",
+                "markSeen": false,
+                "maxResults": 5,
+                "searchType": "simple"
+            },
+            "mapper": {},
+            "metadata": {
+                "designer": {
+                    "x": -139,
+                    "y": 916
+                },
+                "restore": {
+                    "parameters": {
+                        "folder": {
+                            "path": [
+                                "INBOX"
+                            ]
+                        },
+                        "account": {
+                            "data": {
+                                "scoped": "true",
+                                "connection": "google-restricted"
+                            },
+                            "label": "HCL PO gmail (hclpurchaseorders@metrixdigital.com)"
+                        },
+                        "criteria": {
+                            "label": "All emails"
+                        },
+                        "searchType": {
+                            "label": "Simple filter"
+                        }
+                    }
+                },
+                "parameters": [
+                    {
+                        "name": "account",
+                        "type": "account:google-restricted",
+                        "label": "Connection",
+                        "required": true
+                    },
+                    {
+                        "name": "searchType",
+                        "type": "select",
+                        "label": "Filter type",
+                        "required": true,
+                        "validate": {
+                            "enum": [
+                                "simple",
+                                "gmail"
+                            ]
+                        }
+                    },
+                    {
+                        "name": "markSeen",
+                        "type": "boolean",
+                        "label": "Mark email message(s) as read when fetched"
+                    },
+                    {
+                        "name": "maxResults",
+                        "type": "uinteger",
+                        "label": "Maximum number of results",
+                        "required": true
+                    },
+                    {
+                        "name": "folder",
+                        "type": "folder",
+                        "label": "Folder",
+                        "required": true
+                    },
+                    {
+                        "name": "criteria",
+                        "type": "select",
+                        "label": "Criteria",
+                        "required": true,
+                        "validate": {
+                            "enum": [
+                                "ALL",
+                                "SEEN",
+                                "UNSEEN"
+                            ]
+                        }
+                    },
+                    {
+                        "name": "from",
+                        "type": "email",
+                        "label": "Sender email address"
+                    },
+                    {
+                        "name": "subject",
+                        "type": "text",
+                        "label": "Subject"
+                    },
+                    {
+                        "name": "text",
+                        "type": "text",
+                        "label": "Search phrase"
+                    }
+                ],
+                "advanced": true
+            }
+        },
+        {
+            "id": 29,
+            "module": "openai-gpt-3:CreateCompletion",
+            "version": 1,
+            "parameters": {
+                "__IMTCONN__": 29202
+            },
+            "mapper": {
+                "model": "o1",
+                "top_p": "1",
+                "select": "chat",
+                "messages": [
+                    {
+                        "role": "user",
+                        "content": "Analyze the email with subject {{3.subject}} and body text {{3.text}} and attachments file name: {{3.attachments[].fileName}} . Determine its intent based on the following detailed options:\n\nPurchase Order: The email includes a new order for product items (typically 10 or more) with details such as billing, delivery, or payment information. If the email is part of a follow-up but clearly includes new purchase order details, classify it as a Purchase Order.\nSample Request: The email requests product samples, typically for quantities less than 10 items for evaluation purposes.\nRush Order: The email communicates urgency, indicating that the order should be processed and delivered as quickly as possible.\nFollow Up: The email is a continuation of previous communication regarding an order or inquiry and does not introduce new order details. If the email references a previous purchase order without including new purchase order details, classify it as a Follow Up.\nNone of these: The email does not match any of the above categories.\n\nProvide your answer as a JSON object with two keys:\n\n\"response\": containing one of the options exactly as listed above.\n\"score\": containing a simulated confidence score (derived from log probabilities) expressed as a percentage (with 100% being the highest).\n\n**Crucially, your ENTIRE output MUST be a valid JSON object. Nothing else. No surrounding text, no explanations, no backticks, no markdown, no \"json\" label. Just the JSON. For example:**\n\n{\n  \"response\": \"Purchase Order\",\n  \"score\": \"87%\"\n}",
+                        "imageDetail": "auto"
+                    }
+                ],
+                "temperature": "1",
+                "n_completions": "1",
+                "response_format": "text"
+            },
+            "metadata": {
+                "designer": {
+                    "x": 288,
+                    "y": 917
+                },
+                "restore": {
+                    "expect": {
+                        "stop": {
+                            "mode": "chose"
+                        },
+                        "model": {
+                            "mode": "chose",
+                            "label": "o1 (system)"
+                        },
+                        "select": {
+                            "label": "Create a Chat Completion (GPT and o1 models)"
+                        },
+                        "messages": {
+                            "mode": "chose",
+                            "items": [
+                                {
+                                    "role": {
+                                        "mode": "chose",
+                                        "label": "User"
+                                    },
+                                    "imageDetail": {
+                                        "mode": "chose",
+                                        "label": "Auto"
+                                    },
+                                    "imageInputType": {
+                                        "mode": "chose",
+                                        "label": "Empty"
+                                    }
+                                }
+                            ]
+                        },
+                        "logit_bias": {
+                            "mode": "chose"
+                        },
+                        "max_tokens": {
+                            "empty": true
+                        },
+                        "tool_choice": {
+                            "mode": "chose",
+                            "label": "Empty"
+                        },
+                        "response_format": {
+                            "mode": "chose",
+                            "label": "Text"
+                        },
+                        "reasoning_effort": {
+                            "mode": "chose",
+                            "label": "Empty"
+                        },
+                        "additionalParameters": {
+                            "mode": "chose"
+                        }
+                    },
+                    "parameters": {
+                        "__IMTCONN__": {
+                            "data": {
+                                "scoped": "true",
+                                "connection": "openai-gpt-3"
+                            },
+                            "label": "PO1"
+                        }
+                    }
+                },
+                "parameters": [
+                    {
+                        "name": "__IMTCONN__",
+                        "type": "account:openai-gpt-3",
+                        "label": "Connection",
+                        "required": true
+                    }
+                ],
+                "expect": [
+                    {
+                        "name": "select",
+                        "type": "select",
+                        "label": "Select Method",
+                        "required": true,
+                        "validate": {
+                            "enum": [
+                                "chat",
+                                "prompt"
+                            ]
+                        }
+                    },
+                    {
+                        "name": "temperature",
+                        "type": "number",
+                        "label": "Temperature",
+                        "validate": {
+                            "max": 2,
+                            "min": 0
+                        }
+                    },
+                    {
+                        "name": "top_p",
+                        "type": "number",
+                        "label": "Top P",
+                        "validate": {
+                            "max": 1,
+                            "min": 0
+                        }
+                    },
+                    {
+                        "name": "n_completions",
+                        "type": "number",
+                        "label": "Number"
+                    },
+                    {
+                        "name": "frequency_penalty",
+                        "type": "number",
+                        "label": "Frequency Penalty",
+                        "validate": {
+                            "max": 2,
+                            "min": -2
+                        }
+                    },
+                    {
+                        "name": "presence_penalty",
+                        "type": "number",
+                        "label": "Presence Penalty",
+                        "validate": {
+                            "max": 2,
+                            "min": -2
+                        }
+                    },
+                    {
+                        "name": "logit_bias",
+                        "spec": {
+                            "name": "value",
+                            "spec": [
+                                {
+                                    "name": "token",
+                                    "type": "text",
+                                    "label": "Token ID",
+                                    "required": true
+                                },
+                                {
+                                    "name": "probability",
+                                    "type": "number",
+                                    "label": "Probability",
+                                    "required": true,
+                                    "validate": {
+                                        "max": 100,
+                                        "min": -100
+                                    }
+                                }
+                            ],
+                            "type": "collection",
+                            "label": "Token Probability"
+                        },
+                        "type": "array",
+                        "label": "Token Probability"
+                    },
+                    {
+                        "name": "seed",
+                        "type": "integer",
+                        "label": "Seed"
+                    },
+                    {
+                        "name": "tool_choice",
+                        "type": "select",
+                        "label": "Tool Choice",
+                        "validate": {
+                            "enum": [
+                                "none",
+                                "auto",
+                                "required"
+                            ]
+                        }
+                    },
+                    {
+                        "name": "stop",
+                        "spec": {
+                            "name": "value",
+                            "type": "text",
+                            "label": "Stop Sequence"
+                        },
+                        "type": "array",
+                        "label": "Stop Sequences",
+                        "validate": {
+                            "maxItems": 4
+                        }
+                    },
+                    {
+                        "name": "additionalParameters",
+                        "spec": {
+                            "name": "value",
+                            "spec": [
+                                {
+                                    "name": "key",
+                                    "type": "text",
+                                    "label": "Parameter Name",
+                                    "required": true
+                                },
+                                {
+                                    "name": "type",
+                                    "type": "select",
+                                    "label": "Input Type",
+                                    "options": [
+                                        {
+                                            "label": "Text",
+                                            "value": "text",
+                                            "nested": [
+                                                {
+                                                    "name": "value",
+                                                    "type": "text",
+                                                    "label": "Parameter Value"
+                                                }
+                                            ],
+                                            "default": true
+                                        },
+                                        {
+                                            "label": "Number",
+                                            "value": "number",
+                                            "nested": [
+                                                {
+                                                    "name": "value",
+                                                    "type": "number",
+                                                    "label": "Parameter Value"
+                                                }
+                                            ]
+                                        },
+                                        {
+                                            "label": "Boolean",
+                                            "value": "boolean",
+                                            "nested": [
+                                                {
+                                                    "name": "value",
+                                                    "type": "boolean",
+                                                    "label": "Parameter Value"
+                                                }
+                                            ]
+                                        },
+                                        {
+                                            "label": "Date",
+                                            "value": "date",
+                                            "nested": [
+                                                {
+                                                    "name": "value",
+                                                    "type": "date",
+                                                    "label": "Parameter Value"
+                                                }
+                                            ]
+                                        },
+                                        {
+                                            "label": "Any",
+                                            "value": "any",
+                                            "nested": [
+                                                {
+                                                    "name": "value",
+                                                    "type": "any",
+                                                    "label": "Parameter Value"
+                                                }
+                                            ]
+                                        }
+                                    ]
+                                }
+                            ],
+                            "type": "collection",
+                            "label": "Input Parameter"
+                        },
+                        "type": "array",
+                        "label": "Other Input Parameters"
+                    },
+                    {
+                        "name": "model",
+                        "type": "select",
+                        "label": "Model",
+                        "required": true
+                    },
+                    {
+                        "name": "max_tokens",
+                        "type": "uinteger",
+                        "label": "Max Completion Tokens"
+                    },
+                    {
+                        "name": "messages",
+                        "spec": {
+                            "name": "value",
+                            "spec": [
+                                {
+                                    "name": "role",
+                                    "type": "select",
+                                    "label": "Role",
+                                    "options": {
+                                        "store": [
+                                            {
+                                                "label": "User",
+                                                "value": "user",
+                                                "nested": [
+                                                    {
+                                                        "help": "Text content of the message on behalf of the selected __Role__.",
+                                                        "name": "content",
+                                                        "type": "text",
+                                                        "label": "Text Content"
+                                                    },
+                                                    {
+                                                        "name": "imageInputType",
+                                                        "type": "select",
+                                                        "label": "Image Input Type",
+                                                        "options": [
+                                                            {
+                                                                "label": "URL",
+                                                                "value": "url",
+                                                                "nested": [
+                                                                    {
+                                                                        "help": "Make sure to use a publicly accessible URL.\nYou can test if your image is publicly accessible by opening the link in an incognito tab.",
+                                                                        "name": "imageUrl",
+                                                                        "type": "url",
+                                                                        "label": "Image URL"
+                                                                    }
+                                                                ]
+                                                            },
+                                                            {
+                                                                "label": "Image File",
+                                                                "value": "file",
+                                                                "nested": [
+                                                                    {
+                                                                        "name": "imageFile",
+                                                                        "spec": [
+                                                                            {
+                                                                                "help": "Accepted extensions: `.jpg`, `.jpeg`, `.png`, `.webp` and `.gif`.",
+                                                                                "name": "imageFilename",
+                                                                                "type": "filename",
+                                                                                "label": "Image Filename",
+                                                                                "semantic": "file:name",
+                                                                                "extension": [
+                                                                                    "jpg",
+                                                                                    "jpeg",
+                                                                                    "png",
+                                                                                    "webp",
+                                                                                    "gif"
+                                                                                ]
+                                                                            },
+                                                                            {
+                                                                                "name": "imageData",
+                                                                                "type": "buffer",
+                                                                                "label": "Image Data",
+                                                                                "semantic": "file:data"
+                                                                            }
+                                                                        ],
+                                                                        "type": "collection",
+                                                                        "label": "Image"
+                                                                    }
+                                                                ]
+                                                            }
+                                                        ],
+                                                        "mappable": false
+                                                    },
+                                                    {
+                                                        "help": "Recommended value: `Auto`",
+                                                        "name": "imageDetail",
+                                                        "type": "select",
+                                                        "label": "Image Detail",
+                                                        "options": [
+                                                            {
+                                                                "label": "Auto",
+                                                                "value": "auto",
+                                                                "default": true
+                                                            },
+                                                            {
+                                                                "label": "High",
+                                                                "value": "high"
+                                                            },
+                                                            {
+                                                                "label": "Low",
+                                                                "value": "low"
+                                                            }
+                                                        ]
+                                                    }
+                                                ]
+                                            },
+                                            {
+                                                "label": "Assistant",
+                                                "value": "assistant",
+                                                "nested": [
+                                                    {
+                                                        "help": "Text content of the message on behalf of the selected __Role__.",
+                                                        "name": "content",
+                                                        "type": "text",
+                                                        "label": "Text Content"
+                                                    },
+                                                    {
+                                                        "mode": "edit",
+                                                        "name": "tool_calls",
+                                                        "spec": {
+                                                            "spec": [
+                                                                {
+                                                                    "name": "type",
+                                                                    "type": "hidden",
+                                                                    "default": "function"
+                                                                },
+                                                                {
+                                                                    "help": "Map this directly from the output of a previous **Create a Completion** module. Look for `Choices[]: Message.Tool Calls[]: ID`.",
+                                                                    "name": "id",
+                                                                    "type": "text",
+                                                                    "label": "Tool call ID"
+                                                                },
+                                                                {
+                                                                    "name": "function",
+                                                                    "spec": [
+                                                                        {
+                                                                            "help": "The name of the function previously called.",
+                                                                            "name": "name",
+                                                                            "type": "text",
+                                                                            "label": "Name",
+                                                                            "required": true
+                                                                        },
+                                                                        {
+                                                                            "help": "The arguments previously output by the AI.",
+                                                                            "name": "arguments",
+                                                                            "type": "text",
+                                                                            "label": "Arguments",
+                                                                            "required": true
+                                                                        }
+                                                                    ],
+                                                                    "type": "collection",
+                                                                    "label": "Function"
+                                                                }
+                                                            ],
+                                                            "type": "collection",
+                                                            "label": "Tool Call"
+                                                        },
+                                                        "type": "array",
+                                                        "label": "Tool Calls",
+                                                        "labels": {
+                                                            "add": "Add tool call"
+                                                        },
+                                                        "mappable": {
+                                                            "help": "You can map the entire `Choices[]: Message.Tool Calls` array from a previous Create a Completion module here."
+                                                        }
+                                                    }
+                                                ]
+                                            },
+                                            {
+                                                "label": "Developer / System",
+                                                "value": "system",
+                                                "nested": [
+                                                    {
+                                                        "help": "Text content of the message on behalf of the selected __Role__.",
+                                                        "name": "content",
+                                                        "type": "text",
+                                                        "label": "Text Content"
+                                                    }
+                                                ]
+                                            },
+                                            {
+                                                "label": "Tool",
+                                                "value": "tool",
+                                                "nested": [
+                                                    {
+                                                        "help": "The return of the function. This role should only be used when you have processed a previous function call and want to send the output of the function execution back to the AI.",
+                                                        "name": "content",
+                                                        "type": "text",
+                                                        "label": "Text Content",
+                                                        "required": true
+                                                    },
+                                                    {
+                                                        "help": "Map this directly from the output of a previous **Create a Completion** module. Look for `Choices[]: Message.Tool Calls[]: ID`.",
+                                                        "name": "tool_call_id",
+                                                        "type": "text",
+                                                        "label": "Tool Call ID.",
+                                                        "required": true
+                                                    }
+                                                ]
+                                            }
+                                        ]
+                                    },
+                                    "required": true
+                                }
+                            ],
+                            "type": "collection",
+                            "label": "Message"
+                        },
+                        "type": "array",
+                        "label": "Messages",
+                        "required": true
+                    },
+                    {
+                        "name": "response_format",
+                        "type": "select",
+                        "label": "Response Format",
+                        "validate": {
+                            "enum": [
+                                "text",
+                                "json_object"
+                            ]
+                        }
+                    },
+                    {
+                        "name": "reasoning_effort",
+                        "type": "select",
+                        "label": "Reasoning Effort",
+                        "validate": {
+                            "enum": [
+                                "low",
+                                "medium",
+                                "high"
+                            ]
+                        }
+                    }
+                ],
+                "interface": [
+                    {
+                        "name": "result",
+                        "type": "any",
+                        "label": "Result"
+                    },
+                    {
+                        "name": "id",
+                        "type": "text",
+                        "label": "ID"
+                    },
+                    {
+                        "name": "object",
+                        "type": "text",
+                        "label": "Object"
+                    },
+                    {
+                        "name": "created",
+                        "type": "date",
+                        "label": "Created"
+                    },
+                    {
+                        "name": "model",
+                        "type": "text",
+                        "label": "Model"
+                    },
+                    {
+                        "name": "choices",
+                        "spec": [
+                            {
+                                "name": "text",
+                                "type": "text",
+                                "label": "Text"
+                            },
+                            {
+                                "name": "index",
+                                "type": "number",
+                                "label": "Index"
+                            },
+                            {
+                                "name": "logprobs",
+                                "type": "text",
+                                "label": "Log Probs"
+                            },
+                            {
+                                "name": "finish_reason",
+                                "type": "text",
+                                "label": "Finish Reason"
+                            },
+                            {
+                                "name": "message",
+                                "spec": [
+                                    {
+                                        "name": "role",
+                                        "type": "text",
+                                        "label": "Role"
+                                    },
+                                    {
+                                        "name": "content",
+                                        "type": "text",
+                                        "label": "Content"
+                                    },
+                                    {
+                                        "name": "tool_calls",
+                                        "spec": [
+                                            {
+                                                "name": "id",
+                                                "type": "text",
+                                                "label": "ID"
+                                            },
+                                            {
+                                                "name": "type",
+                                                "type": "text",
+                                                "label": "Type"
+                                            },
+                                            {
+                                                "name": "function",
+                                                "spec": [
+                                                    {
+                                                        "name": "name",
+                                                        "type": "text",
+                                                        "label": "Name"
+                                                    },
+                                                    {
+                                                        "name": "arguments",
+                                                        "type": "text",
+                                                        "label": "Arguments"
+                                                    }
+                                                ],
+                                                "type": "collection",
+                                                "label": "Function"
+                                            }
+                                        ],
+                                        "type": "array",
+                                        "label": "Tool Calls"
+                                    },
+                                    {
+                                        "name": "refusal",
+                                        "type": "text",
+                                        "label": "Refusal"
+                                    },
+                                    {
+                                        "name": "annotations",
+                                        "spec": [
+                                            {
+                                                "name": "type",
+                                                "type": "text",
+                                                "label": "Type"
+                                            },
+                                            {
+                                                "name": "url_citation",
+                                                "spec": [
+                                                    {
+                                                        "name": "end_index",
+                                                        "type": "number",
+                                                        "label": "End Index"
+                                                    },
+                                                    {
+                                                        "name": "start_index",
+                                                        "type": "number",
+                                                        "label": "Start Index"
+                                                    },
+                                                    {
+                                                        "name": "title",
+                                                        "type": "text",
+                                                        "label": "Title"
+                                                    },
+                                                    {
+                                                        "name": "url",
+                                                        "type": "text",
+                                                        "label": "URL"
+                                                    }
+                                                ],
+                                                "type": "collection",
+                                                "label": "URL Citation"
+                                            }
+                                        ],
+                                        "type": "array",
+                                        "label": "Annotations"
+                                    }
+                                ],
+                                "type": "collection",
+                                "label": "Message"
+                            }
+                        ],
+                        "type": "array",
+                        "label": "Choices"
+                    },
+                    {
+                        "name": "usage",
+                        "spec": [
+                            {
+                                "name": "prompt_tokens",
+                                "type": "number",
+                                "label": "Prompt Tokens"
+                            },
+                            {
+                                "name": "completion_tokens",
+                                "type": "text",
+                                "label": "Completion Tokens"
+                            },
+                            {
+                                "name": "total_tokens",
+                                "type": "number",
+                                "label": "Total Tokens"
+                            },
+                            {
+                                "name": "prompt_tokens_details",
+                                "spec": [
+                                    {
+                                        "name": "cached_tokens",
+                                        "type": "uinteger",
+                                        "label": "Cached Tokens"
+                                    },
+                                    {
+                                        "name": "text_tokens",
+                                        "type": "uinteger",
+                                        "label": "Text Tokens"
+                                    },
+                                    {
+                                        "name": "image_tokens",
+                                        "type": "uinteger",
+                                        "label": "Image Tokens"
+                                    },
+                                    {
+                                        "name": "audio_tokens",
+                                        "type": "uinteger",
+                                        "label": "Audio Tokens"
+                                    }
+                                ],
+                                "type": "collection",
+                                "label": "Prompt Tokens Details"
+                            },
+                            {
+                                "name": "completion_tokens_details",
+                                "spec": [
+                                    {
+                                        "name": "reasoning_tokens",
+                                        "type": "uinteger",
+                                        "label": "Reasoning Tokens"
+                                    },
+                                    {
+                                        "name": "text_tokens",
+                                        "type": "uinteger",
+                                        "label": "Text Tokens"
+                                    },
+                                    {
+                                        "name": "audio_tokens",
+                                        "type": "uinteger",
+                                        "label": "Audio Tokens"
+                                    },
+                                    {
+                                        "name": "accepted_prediction_tokens",
+                                        "type": "uinteger",
+                                        "label": "Accepted Prediction Tokens"
+                                    },
+                                    {
+                                        "name": "rejected_prediction_tokens",
+                                        "type": "uinteger",
+                                        "label": "Rejected Prediction Tokens"
+                                    }
+                                ],
+                                "type": "collection",
+                                "label": "Completion Tokens Details"
+                            }
+                        ],
+                        "type": "collection",
+                        "label": "Usage"
+                    },
+                    {
+                        "name": "service_tier",
+                        "type": "text",
+                        "label": "Service Tier"
+                    },
+                    {
+                        "name": "system_fingerprint",
+                        "type": "text",
+                        "label": "System Fingerprint"
+                    }
+                ]
+            },
+            "onerror": [
+                {
+                    "id": 23,
+                    "module": "google-email:ActionModifyLabelsApi",
+                    "version": 2,
+                    "parameters": {
+                        "account": 39164
+                    },
+                    "mapper": {
+                        "messageId": "{{3.messageId}}",
+                        "addLabelIds": [
+                            "Label_8526050185735174548"
+                        ],
+                        "removeLabelIds": []
+                    },
+                    "metadata": {
+                        "designer": {
+                            "x": 282,
+                            "y": 1244
+                        },
+                        "restore": {
+                            "expect": {
+                                "addLabelIds": {
+                                    "mode": "chose",
+                                    "label": [
+                                        "exceptions"
+                                    ]
+                                },
+                                "removeLabelIds": {
+                                    "mode": "chose"
+                                }
+                            },
+                            "parameters": {
+                                "account": {
+                                    "data": {
+                                        "scoped": "true",
+                                        "connection": "google-restricted"
+                                    },
+                                    "label": "HCL PO gmail (hclpurchaseorders@metrixdigital.com)"
+                                }
+                            }
+                        },
+                        "parameters": [
+                            {
+                                "name": "account",
+                                "type": "account:google-restricted",
+                                "label": "Connection",
+                                "required": true
+                            }
+                        ],
+                        "expect": [
+                            {
+                                "name": "messageId",
+                                "type": "text",
+                                "label": "Gmail Message ID",
+                                "required": true
+                            },
+                            {
+                                "name": "addLabelIds",
+                                "type": "select",
+                                "label": "Labels to add",
+                                "multiple": true
+                            },
+                            {
+                                "name": "removeLabelIds",
+                                "type": "select",
+                                "label": "Labels to remove",
+                                "multiple": true
+                            }
+                        ]
+                    }
+                }
+            ]
+        },
+        {
+            "id": 12,
+            "module": "json:ParseJSON",
+            "version": 1,
+            "parameters": {
+                "type": ""
+            },
+            "mapper": {
+                "json": "{{29.result}}"
+            },
+            "metadata": {
+                "designer": {
+                    "x": 671,
+                    "y": 906
+                },
+                "restore": {
+                    "parameters": {
+                        "type": {
+                            "label": "Choose a data structure"
+                        }
+                    }
+                },
+                "parameters": [
+                    {
+                        "name": "type",
+                        "type": "udt",
+                        "label": "Data structure"
+                    }
+                ],
+                "expect": [
+                    {
+                        "name": "json",
+                        "type": "text",
+                        "label": "JSON string",
+                        "required": true
+                    }
+                ]
+            },
+            "onerror": [
+                {
+                    "id": 38,
+                    "module": "airtable:ActionCreateRecord",
+                    "version": 3,
+                    "parameters": {
+                        "__IMTCONN__": 27640
+                    },
+                    "filter": {
+                        "name": "Catch DataError",
+                        "conditions": [
+                            [
+                                {
+                                    "a": "{{12.error.type}}",
+                                    "b": "DataError",
+                                    "o": "text:equal"
+                                }
+                            ]
+                        ]
+                    },
+                    "mapper": {
+                        "base": "appVshbmGU3xwCQ10",
+                        "table": "tblgezEtwEJL4UWwJ",
+                        "record": {
+                            "fld1v74pVeEWyNNXo": "{{3.from.address}}",
+                            "fldRKVrRucRnm4dwn": "{{3.html}}",
+                            "fldVBrgFMrKZcKbZW": false,
+                            "fldiVuWztoGena0Bj": "Processing Error"
+                        },
+                        "typecast": false,
+                        "useColumnId": false
+                    },
+                    "metadata": {
+                        "designer": {
+                            "x": 699,
+                            "y": 1374
+                        },
+                        "restore": {
+                            "expect": {
+                                "base": {
+                                    "label": "Purchase Order Admin Portal"
+                                },
+                                "table": {
+                                    "label": "Error Logs",
+                                    "nested": [
+                                        {
+                                            "name": "record",
+                                            "spec": [
+                                                {
+                                                    "name": "fldaPzjp6NcuTwIhz",
+                                                    "time": true,
+                                                    "type": "date",
+                                                    "label": "Timestamp"
+                                                },
+                                                {
+                                                    "name": "fldxPi1xPj9MYZpLO",
+                                                    "type": "text",
+                                                    "label": "Message"
+                                                },
+                                                {
+                                                    "mode": "edit",
+                                                    "name": "fldiVuWztoGena0Bj",
+                                                    "type": "select",
+                                                    "label": "Type",
+                                                    "dynamic": true,
+                                                    "options": [
+                                                        {
+                                                            "label": "Validation Error",
+                                                            "value": "Validation Error"
+                                                        },
+                                                        {
+                                                            "label": "Processing Error",
+                                                            "value": "Processing Error"
+                                                        },
+                                                        {
+                                                            "label": "System Error",
+                                                            "value": "System Error"
+                                                        },
+                                                        {
+                                                            "label": "not a purchase order",
+                                                            "value": "not a purchase order"
+                                                        },
+                                                        {
+                                                            "label": "not a pdf",
+                                                            "value": "not a pdf"
+                                                        },
+                                                        {
+                                                            "label": "PO is in netsuite",
+                                                            "value": "PO is in netsuite"
+                                                        },
+                                                        {
+                                                            "label": "duplicate PO ",
+                                                            "value": "duplicate PO "
+                                                        },
+                                                        {
+                                                            "label": "vector store upload failed ",
+                                                            "value": "vector store upload failed "
+                                                        },
+                                                        {
+                                                            "label": "resolved error",
+                                                            "value": "resolved error"
+                                                        },
+                                                        {
+                                                            "label": "processing error 2",
+                                                            "value": "processing error 2"
+                                                        },
+                                                        {
+                                                            "label": "processing error 3",
+                                                            "value": "processing error 3"
+                                                        },
+                                                        {
+                                                            "label": "Low PO probability intent",
+                                                            "value": "Low PO probability intent"
+                                                        },
+                                                        {
+                                                            "label": "Word document",
+                                                            "value": "Word document"
+                                                        }
+                                                    ],
+                                                    "validate": false
+                                                },
+                                                {
+                                                    "name": "fldGnmUaObm5GZ3Ox",
+                                                    "spec": [
+                                                        {
+                                                            "help": "Airtable will download the file at the given url and keep its own copy of it.",
+                                                            "name": "url",
+                                                            "type": "text",
+                                                            "label": "File URL"
+                                                        },
+                                                        {
+                                                            "help": "If empty, Airtable will generate the name automatically.",
+                                                            "name": "filename",
+                                                            "type": "filename",
+                                                            "label": "File name"
+                                                        }
+                                                    ],
+                                                    "type": "array",
+                                                    "label": "PO",
+                                                    "editable": true
+                                                },
+                                                {
+                                                    "name": "fldVBrgFMrKZcKbZW",
+                                                    "type": "boolean",
+                                                    "label": "Resolved"
+                                                },
+                                                {
+                                                    "name": "fldrq9bcJCRXE6bpS",
+                                                    "type": "text",
+                                                    "label": "Related PO"
+                                                },
+                                                {
+                                                    "name": "fld1v74pVeEWyNNXo",
+                                                    "type": "text",
+                                                    "label": "sender's email"
+                                                },
+                                                {
+                                                    "name": "fldRKVrRucRnm4dwn",
+                                                    "type": "text",
+                                                    "label": "Email Content",
+                                                    "multiline": true
+                                                }
+                                            ],
+                                            "type": "collection",
+                                            "label": "Record"
+                                        }
+                                    ]
+                                },
+                                "record": {
+                                    "nested": {
+                                        "fldGnmUaObm5GZ3Ox": {
+                                            "mode": "chose"
+                                        },
+                                        "fldVBrgFMrKZcKbZW": {
+                                            "mode": "chose"
+                                        },
+                                        "fldiVuWztoGena0Bj": {
+                                            "mode": "chose",
+                                            "label": "Processing Error"
+                                        }
+                                    }
+                                },
+                                "typecast": {
+                                    "mode": "chose"
+                                },
+                                "useColumnId": {
+                                    "mode": "chose"
+                                }
+                            },
+                            "parameters": {
+                                "__IMTCONN__": {
+                                    "data": {
+                                        "scoped": "true",
+                                        "connection": "airtable3"
+                                    },
+                                    "label": "PO Airtable OAuth connection (User ID: usr8tSEl0S158U4Dz)"
+                                }
+                            }
+                        },
+                        "parameters": [
+                            {
+                                "name": "__IMTCONN__",
+                                "type": "account:airtable3,airtable2",
+                                "label": "Connection",
+                                "required": true
+                            }
+                        ],
+                        "expect": [
+                            {
+                                "name": "base",
+                                "type": "select",
+                                "label": "Base",
+                                "required": true
+                            },
+                            {
+                                "name": "typecast",
+                                "type": "boolean",
+                                "label": "Smart links",
+                                "required": true
+                            },
+                            {
+                                "name": "useColumnId",
+                                "type": "boolean",
+                                "label": "Use Column ID",
+                                "required": true
+                            },
+                            {
+                                "name": "base",
+                                "type": "select",
+                                "label": "Base",
+                                "required": true
+                            },
+                            {
+                                "name": "typecast",
+                                "type": "boolean",
+                                "label": "Smart links",
+                                "required": true
+                            },
+                            {
+                                "name": "useColumnId",
+                                "type": "boolean",
+                                "label": "Use Column ID",
+                                "required": true
+                            },
+                            {
+                                "name": "table",
+                                "type": "select",
+                                "label": "Table",
+                                "required": true
+                            },
+                            {
+                                "name": "record",
+                                "spec": [
+                                    {
+                                        "name": "fldaPzjp6NcuTwIhz",
+                                        "time": true,
+                                        "type": "date",
+                                        "label": "Timestamp"
+                                    },
+                                    {
+                                        "name": "fldxPi1xPj9MYZpLO",
+                                        "type": "text",
+                                        "label": "Message"
+                                    },
+                                    {
+                                        "mode": "edit",
+                                        "name": "fldiVuWztoGena0Bj",
+                                        "type": "select",
+                                        "label": "Type"
+                                    },
+                                    {
+                                        "name": "fldGnmUaObm5GZ3Ox",
+                                        "spec": [
+                                            {
+                                                "name": "url",
+                                                "type": "text",
+                                                "label": "File URL"
+                                            },
+                                            {
+                                                "name": "filename",
+                                                "type": "filename",
+                                                "label": "File name"
+                                            }
+                                        ],
+                                        "type": "array",
+                                        "label": "PO"
+                                    },
+                                    {
+                                        "name": "fldVBrgFMrKZcKbZW",
+                                        "type": "boolean",
+                                        "label": "Resolved"
+                                    },
+                                    {
+                                        "name": "fldrq9bcJCRXE6bpS",
+                                        "type": "text",
+                                        "label": "Related PO"
+                                    },
+                                    {
+                                        "name": "fld1v74pVeEWyNNXo",
+                                        "type": "text",
+                                        "label": "sender's email"
+                                    },
+                                    {
+                                        "name": "fldRKVrRucRnm4dwn",
+                                        "type": "text",
+                                        "label": "Email Content"
+                                    }
+                                ],
+                                "type": "collection",
+                                "label": "Record"
+                            }
+                        ],
+                        "interface": [
+                            {
+                                "name": "id",
+                                "type": "text",
+                                "label": "ID"
+                            },
+                            {
+                                "name": "createdTime",
+                                "type": "date",
+                                "label": "Created Time"
+                            },
+                            {
+                                "name": "Error ID",
+                                "type": "number",
+                                "label": "Error ID"
+                            },
+                            {
+                                "name": "Timestamp",
+                                "time": true,
+                                "type": "date",
+                                "label": "Timestamp"
+                            },
+                            {
+                                "name": "Message",
+                                "type": "text",
+                                "label": "Message"
+                            },
+                            {
+                                "name": "Type",
+                                "type": "text",
+                                "label": "Type"
+                            },
+                            {
+                                "name": "PO",
+                                "spec": [
+                                    {
+                                        "name": "id",
+                                        "type": "text",
+                                        "label": "ID"
+                                    },
+                                    {
+                                        "name": "width",
+                                        "type": "uinteger",
+                                        "label": "Width"
+                                    },
+                                    {
+                                        "name": "height",
+                                        "type": "uinteger",
+                                        "label": "Height"
+                                    },
+                                    {
+                                        "name": "url",
+                                        "type": "url",
+                                        "label": "URL"
+                                    },
+                                    {
+                                        "name": "filename",
+                                        "type": "filename",
+                                        "label": "File name"
+                                    },
+                                    {
+                                        "name": "size",
+                                        "type": "uinteger",
+                                        "label": "Size"
+                                    },
+                                    {
+                                        "name": "type",
+                                        "type": "text",
+                                        "label": "MIME type"
+                                    },
+                                    {
+                                        "name": "thumbnails",
+                                        "spec": [
+                                            {
+                                                "name": "small",
+                                                "spec": [
+                                                    {
+                                                        "name": "url",
+                                                        "type": "url",
+                                                        "label": "URL"
+                                                    },
+                                                    {
+                                                        "name": "width",
+                                                        "type": "uinteger",
+                                                        "label": "Width"
+                                                    },
+                                                    {
+                                                        "name": "height",
+                                                        "type": "uinteger",
+                                                        "label": "Height"
+                                                    }
+                                                ],
+                                                "type": "collection",
+                                                "label": "Small"
+                                            },
+                                            {
+                                                "name": "large",
+                                                "spec": [
+                                                    {
+                                                        "name": "url",
+                                                        "type": "url",
+                                                        "label": "URL"
+                                                    },
+                                                    {
+                                                        "name": "width",
+                                                        "type": "uinteger",
+                                                        "label": "Width"
+                                                    },
+                                                    {
+                                                        "name": "height",
+                                                        "type": "uinteger",
+                                                        "label": "Height"
+                                                    }
+                                                ],
+                                                "type": "collection",
+                                                "label": "Large"
+                                            },
+                                            {
+                                                "name": "full",
+                                                "spec": [
+                                                    {
+                                                        "name": "url",
+                                                        "type": "url",
+                                                        "label": "URL"
+                                                    },
+                                                    {
+                                                        "name": "width",
+                                                        "type": "uinteger",
+                                                        "label": "Width"
+                                                    },
+                                                    {
+                                                        "name": "height",
+                                                        "type": "uinteger",
+                                                        "label": "Height"
+                                                    }
+                                                ],
+                                                "type": "collection",
+                                                "label": "Full"
+                                            }
+                                        ],
+                                        "type": "collection",
+                                        "label": "Thumbnails"
+                                    }
+                                ],
+                                "type": "array",
+                                "label": "PO"
+                            },
+                            {
+                                "name": "Resolved",
+                                "type": "boolean",
+                                "label": "Resolved"
+                            },
+                            {
+                                "name": "Related PO",
+                                "type": "text",
+                                "label": "Related PO"
+                            },
+                            {
+                                "name": "sender's email",
+                                "type": "text",
+                                "label": "sender's email"
+                            },
+                            {
+                                "name": "Email Content",
+                                "type": "text",
+                                "label": "Email Content",
+                                "multiline": true
+                            }
+                        ]
+                    }
+                },
+                {
+                    "id": 27,
+                    "module": "builtin:Ignore",
+                    "version": 1,
+                    "metadata": {
+                        "designer": {
+                            "x": 1027,
+                            "y": 1376
+                        }
+                    }
+                }
+            ]
+        },
+        {
+            "id": 7,
+            "module": "builtin:BasicRouter",
+            "version": 1,
+            "mapper": null,
+            "metadata": {
+                "designer": {
+                    "x": 1200,
+                    "y": 900
+                }
+            },
+            "routes": [
+                {
+                    "flow": [
+                        {
+                            "id": 6,
+                            "module": "google-email:ActionModifyLabelsApi",
+                            "version": 2,
+                            "parameters": {
+                                "account": 39164
+                            },
+                            "filter": {
+                                "name": "purchase order",
+                                "conditions": [
+                                    [
+                                        {
+                                            "a": "{{12.response}}",
+                                            "b": "purchase order",
+                                            "o": "text:equal:ci"
+                                        }
+                                    ]
+                                ]
+                            },
+                            "mapper": {
+                                "messageId": "{{3.messageId}}",
+                                "addLabelIds": [
+                                    "Label_4775794820023514561",
+                                    "Label_2106992974851658979"
+                                ],
+                                "removeLabelIds": []
+                            },
+                            "metadata": {
+                                "designer": {
+                                    "x": 1500,
+                                    "y": 0
+                                },
+                                "restore": {
+                                    "expect": {
+                                        "addLabelIds": {
+                                            "mode": "chose",
+                                            "label": [
+                                                "purchase order",
+                                                "unprocessed"
+                                            ]
+                                        },
+                                        "removeLabelIds": {
+                                            "mode": "chose"
+                                        }
+                                    },
+                                    "parameters": {
+                                        "account": {
+                                            "data": {
+                                                "scoped": "true",
+                                                "connection": "google-restricted"
+                                            },
+                                            "label": "HCL PO gmail (hclpurchaseorders@metrixdigital.com)"
+                                        }
+                                    }
+                                },
+                                "parameters": [
+                                    {
+                                        "name": "account",
+                                        "type": "account:google-restricted",
+                                        "label": "Connection",
+                                        "required": true
+                                    }
+                                ],
+                                "expect": [
+                                    {
+                                        "name": "messageId",
+                                        "type": "text",
+                                        "label": "Gmail Message ID",
+                                        "required": true
+                                    },
+                                    {
+                                        "name": "addLabelIds",
+                                        "type": "select",
+                                        "label": "Labels to add",
+                                        "multiple": true
+                                    },
+                                    {
+                                        "name": "removeLabelIds",
+                                        "type": "select",
+                                        "label": "Labels to remove",
+                                        "multiple": true
+                                    }
+                                ]
+                            }
+                        }
+                    ]
+                },
+                {
+                    "flow": [
+                        {
+                            "id": 8,
+                            "module": "google-email:ActionModifyLabelsApi",
+                            "version": 2,
+                            "parameters": {
+                                "account": 39164
+                            },
+                            "filter": {
+                                "name": "sample request",
+                                "conditions": [
+                                    [
+                                        {
+                                            "a": "{{12.response}}",
+                                            "b": "sample request",
+                                            "o": "text:equal:ci"
+                                        }
+                                    ]
+                                ]
+                            },
+                            "mapper": {
+                                "messageId": "{{3.messageId}}",
+                                "addLabelIds": [
+                                    "Label_4775794820023514561",
+                                    "Label_7093761340200489058",
+                                    "Label_2106992974851658979"
+                                ],
+                                "removeLabelIds": []
+                            },
+                            "metadata": {
+                                "designer": {
+                                    "x": 1567,
+                                    "y": 411
+                                },
+                                "restore": {
+                                    "expect": {
+                                        "addLabelIds": {
+                                            "mode": "chose",
+                                            "label": [
+                                                "purchase order",
+                                                "sample request",
+                                                "unprocessed"
+                                            ]
+                                        },
+                                        "removeLabelIds": {
+                                            "mode": "chose"
+                                        }
+                                    },
+                                    "parameters": {
+                                        "account": {
+                                            "data": {
+                                                "scoped": "true",
+                                                "connection": "google-restricted"
+                                            },
+                                            "label": "HCL PO gmail (hclpurchaseorders@metrixdigital.com)"
+                                        }
+                                    }
+                                },
+                                "parameters": [
+                                    {
+                                        "name": "account",
+                                        "type": "account:google-restricted",
+                                        "label": "Connection",
+                                        "required": true
+                                    }
+                                ],
+                                "expect": [
+                                    {
+                                        "name": "messageId",
+                                        "type": "text",
+                                        "label": "Gmail Message ID",
+                                        "required": true
+                                    },
+                                    {
+                                        "name": "addLabelIds",
+                                        "type": "select",
+                                        "label": "Labels to add",
+                                        "multiple": true
+                                    },
+                                    {
+                                        "name": "removeLabelIds",
+                                        "type": "select",
+                                        "label": "Labels to remove",
+                                        "multiple": true
+                                    }
+                                ]
+                            }
+                        }
+                    ]
+                },
+                {
+                    "flow": [
+                        {
+                            "id": 9,
+                            "module": "google-email:ActionModifyLabelsApi",
+                            "version": 2,
+                            "parameters": {
+                                "account": 39164
+                            },
+                            "filter": {
+                                "name": "rush order",
+                                "conditions": [
+                                    [
+                                        {
+                                            "a": "{{12.response}}",
+                                            "b": "rush order",
+                                            "o": "text:equal:ci"
+                                        }
+                                    ]
+                                ]
+                            },
+                            "mapper": {
+                                "messageId": "{{3.messageId}}",
+                                "addLabelIds": [
+                                    "Label_4775794820023514561",
+                                    "Label_2579138673783235114",
+                                    "Label_2106992974851658979"
+                                ],
+                                "removeLabelIds": []
+                            },
+                            "metadata": {
+                                "designer": {
+                                    "x": 1627,
+                                    "y": 719
+                                },
+                                "restore": {
+                                    "expect": {
+                                        "addLabelIds": {
+                                            "mode": "chose",
+                                            "label": [
+                                                "purchase order",
+                                                "rush order",
+                                                "unprocessed"
+                                            ]
+                                        },
+                                        "removeLabelIds": {
+                                            "mode": "chose"
+                                        }
+                                    },
+                                    "parameters": {
+                                        "account": {
+                                            "data": {
+                                                "scoped": "true",
+                                                "connection": "google-restricted"
+                                            },
+                                            "label": "HCL PO gmail (hclpurchaseorders@metrixdigital.com)"
+                                        }
+                                    }
+                                },
+                                "parameters": [
+                                    {
+                                        "name": "account",
+                                        "type": "account:google-restricted",
+                                        "label": "Connection",
+                                        "required": true
+                                    }
+                                ],
+                                "expect": [
+                                    {
+                                        "name": "messageId",
+                                        "type": "text",
+                                        "label": "Gmail Message ID",
+                                        "required": true
+                                    },
+                                    {
+                                        "name": "addLabelIds",
+                                        "type": "select",
+                                        "label": "Labels to add",
+                                        "multiple": true
+                                    },
+                                    {
+                                        "name": "removeLabelIds",
+                                        "type": "select",
+                                        "label": "Labels to remove",
+                                        "multiple": true
+                                    }
+                                ]
+                            }
+                        }
+                    ]
+                },
+                {
+                    "flow": [
+                        {
+                            "id": 10,
+                            "module": "google-email:ActionModifyLabelsApi",
+                            "version": 2,
+                            "parameters": {
+                                "account": 39164
+                            },
+                            "filter": {
+                                "name": "follow up",
+                                "conditions": [
+                                    [
+                                        {
+                                            "a": "{{12.response}}",
+                                            "b": "follow up",
+                                            "o": "text:equal:ci"
+                                        }
+                                    ]
+                                ]
+                            },
+                            "mapper": {
+                                "messageId": "{{3.messageId}}",
+                                "addLabelIds": [
+                                    "Label_5375795577073039636"
+                                ],
+                                "removeLabelIds": []
+                            },
+                            "metadata": {
+                                "designer": {
+                                    "x": 1500,
+                                    "y": 1050
+                                },
+                                "restore": {
+                                    "expect": {
+                                        "addLabelIds": {
+                                            "mode": "chose",
+                                            "label": [
+                                                "follow up"
+                                            ]
+                                        },
+                                        "removeLabelIds": {
+                                            "mode": "chose"
+                                        }
+                                    },
+                                    "parameters": {
+                                        "account": {
+                                            "data": {
+                                                "scoped": "true",
+                                                "connection": "google-restricted"
+                                            },
+                                            "label": "HCL PO gmail (hclpurchaseorders@metrixdigital.com)"
+                                        }
+                                    }
+                                },
+                                "parameters": [
+                                    {
+                                        "name": "account",
+                                        "type": "account:google-restricted",
+                                        "label": "Connection",
+                                        "required": true
+                                    }
+                                ],
+                                "expect": [
+                                    {
+                                        "name": "messageId",
+                                        "type": "text",
+                                        "label": "Gmail Message ID",
+                                        "required": true
+                                    },
+                                    {
+                                        "name": "addLabelIds",
+                                        "type": "select",
+                                        "label": "Labels to add",
+                                        "multiple": true
+                                    },
+                                    {
+                                        "name": "removeLabelIds",
+                                        "type": "select",
+                                        "label": "Labels to remove",
+                                        "multiple": true
+                                    }
+                                ]
+                            }
+                        }
+                    ]
+                },
+                {
+                    "flow": [
+                        {
+                            "id": 11,
+                            "module": "google-email:ActionModifyLabelsApi",
+                            "version": 2,
+                            "parameters": {
+                                "account": 39164
+                            },
+                            "filter": {
+                                "name": "",
+                                "conditions": [
+                                    [
+                                        {
+                                            "a": "{{12.response}}",
+                                            "b": "none of these",
+                                            "o": "text:equal:ci"
+                                        }
+                                    ]
+                                ]
+                            },
+                            "mapper": {
+                                "messageId": "{{3.messageId}}",
+                                "addLabelIds": [
+                                    "Label_2571103010320265794"
+                                ],
+                                "removeLabelIds": []
+                            },
+                            "metadata": {
+                                "designer": {
+                                    "x": 1500,
+                                    "y": 1650
+                                },
+                                "restore": {
+                                    "expect": {
+                                        "addLabelIds": {
+                                            "mode": "chose",
+                                            "label": [
+                                                "none of these"
+                                            ]
+                                        },
+                                        "removeLabelIds": {
+                                            "mode": "chose"
+                                        }
+                                    },
+                                    "parameters": {
+                                        "account": {
+                                            "data": {
+                                                "scoped": "true",
+                                                "connection": "google-restricted"
+                                            },
+                                            "label": "HCL PO gmail (hclpurchaseorders@metrixdigital.com)"
+                                        }
+                                    }
+                                },
+                                "parameters": [
+                                    {
+                                        "name": "account",
+                                        "type": "account:google-restricted",
+                                        "label": "Connection",
+                                        "required": true
+                                    }
+                                ],
+                                "expect": [
+                                    {
+                                        "name": "messageId",
+                                        "type": "text",
+                                        "label": "Gmail Message ID",
+                                        "required": true
+                                    },
+                                    {
+                                        "name": "addLabelIds",
+                                        "type": "select",
+                                        "label": "Labels to add",
+                                        "multiple": true
+                                    },
+                                    {
+                                        "name": "removeLabelIds",
+                                        "type": "select",
+                                        "label": "Labels to remove",
+                                        "multiple": true
+                                    }
+                                ]
+                            }
+                        }
+                    ]
+                }
+            ]
+        }
+    ],
+    "metadata": {
+        "instant": false,
+        "version": 1,
+        "scenario": {
+            "roundtrips": 1,
+            "maxErrors": 3,
+            "autoCommit": true,
+            "autoCommitTriggerLast": true,
+            "sequential": false,
+            "slots": null,
+            "confidential": false,
+            "dataloss": false,
+            "dlq": false,
+            "freshVariables": false
+        },
+        "designer": {
+            "orphans": []
+        },
+        "zone": "us1.make.celonis.com",
+        "notes": []
+    }
+}
