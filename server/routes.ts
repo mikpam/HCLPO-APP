@@ -143,6 +143,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
       await storage.updateEmailQueueItem(queueItem.id, updateData);
 
       let purchaseOrder = null;
+      let attachmentPaths = [];
+
+      // Store PDF attachments if any
+      if (messageToProcess.attachments.length > 0) {
+        attachmentPaths = await gmailService.storeEmailAttachments(
+          messageToProcess.id,
+          messageToProcess.attachments
+        );
+      }
 
       // Create purchase order if email passed both steps
       if (processingResult.preprocessing.shouldProceed && processingResult.classification && 
@@ -155,7 +164,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           sender: messageToProcess.sender,
           subject: messageToProcess.subject,
           route: processingResult.classification.recommended_route,
-          confidence: processingResult.classification.analysis_flags.confidence_score,
+          confidence: processingResult.classification.analysis_flags?.confidence_score || 0,
           status: processingResult.classification.recommended_route === 'TEXT_PO' ? 'ready_for_extraction' : 'pending_review',
           originalJson: processingResult.classification
         });
@@ -185,7 +194,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
           purchaseOrder: purchaseOrder ? {
             poNumber: purchaseOrder.poNumber,
             status: purchaseOrder.status
-          } : null
+          } : null,
+          attachments: attachmentPaths
         }
       });
     } catch (error) {
@@ -222,6 +232,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
             status: 'processing'
           });
 
+          // Store PDF attachments for this email
+          let storedAttachments = [];
+          if (message.attachments.length > 0) {
+            storedAttachments = await gmailService.storeEmailAttachments(
+              message.id,
+              message.attachments
+            );
+          }
+
           // Process email using two-step approach (pre-processing + detailed classification)
           const processingResult = await aiService.processEmail({
             sender: message.sender,
@@ -254,7 +273,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
               sender: message.sender,
               subject: message.subject,
               route: processingResult.classification.recommended_route,
-              confidence: processingResult.classification.analysis_flags.confidence_score,
+              confidence: processingResult.classification.analysis_flags?.confidence_score || 0,
               status: processingResult.classification.recommended_route === 'TEXT_PO' ? 'ready_for_extraction' : 'pending_review',
               originalJson: processingResult.classification
             });
@@ -313,6 +332,72 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.status(500).json({ 
         message: error instanceof Error ? error.message : 'Manual processing failed' 
       });
+    }
+  });
+
+  // Object Storage Routes
+  
+  // Serve public assets
+  app.get("/public-objects/:filePath(*)", async (req, res) => {
+    const filePath = req.params.filePath;
+    const { ObjectStorageService } = await import('./objectStorage');
+    const objectStorageService = new ObjectStorageService();
+    
+    try {
+      const file = await objectStorageService.searchPublicObject(filePath);
+      if (!file) {
+        return res.status(404).json({ error: "File not found" });
+      }
+      objectStorageService.downloadObject(file, res);
+    } catch (error) {
+      console.error("Error searching for public object:", error);
+      return res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
+  // Serve private objects (PDFs, attachments)
+  app.get("/objects/:objectPath(*)", async (req, res) => {
+    const { ObjectStorageService, ObjectNotFoundError } = await import('./objectStorage');
+    const objectStorageService = new ObjectStorageService();
+    
+    try {
+      const objectFile = await objectStorageService.getObjectEntityFile(req.path);
+      objectStorageService.downloadObject(objectFile, res);
+    } catch (error) {
+      console.error("Error accessing object:", error);
+      if (error instanceof ObjectNotFoundError) {
+        return res.sendStatus(404);
+      }
+      return res.sendStatus(500);
+    }
+  });
+
+  // Get upload URL for PDFs
+  app.post("/api/objects/pdf-upload", async (req, res) => {
+    const { filename } = req.body;
+    const { ObjectStorageService } = await import('./objectStorage');
+    const objectStorageService = new ObjectStorageService();
+    
+    try {
+      const uploadURL = await objectStorageService.getPdfUploadURL(filename || 'document.pdf');
+      res.json({ uploadURL });
+    } catch (error) {
+      console.error("Error getting PDF upload URL:", error);
+      res.status(500).json({ error: "Failed to get upload URL" });
+    }
+  });
+
+  // Get general upload URL
+  app.post("/api/objects/upload", async (req, res) => {
+    const { ObjectStorageService } = await import('./objectStorage');
+    const objectStorageService = new ObjectStorageService();
+    
+    try {
+      const uploadURL = await objectStorageService.getObjectEntityUploadURL();
+      res.json({ uploadURL });
+    } catch (error) {
+      console.error("Error getting upload URL:", error);
+      res.status(500).json({ error: "Failed to get upload URL" });
     }
   });
 

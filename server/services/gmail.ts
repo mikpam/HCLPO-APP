@@ -157,16 +157,37 @@ export class GmailService {
     return body;
   }
 
+  async downloadAttachment(messageId: string, attachmentId: string): Promise<Buffer> {
+    try {
+      const attachment = await this.gmail.users.messages.attachments.get({
+        userId: 'me',
+        messageId,
+        id: attachmentId
+      });
+
+      if (!attachment.data.data) {
+        throw new Error('No attachment data found');
+      }
+
+      return Buffer.from(attachment.data.data, 'base64');
+    } catch (error) {
+      console.error('Error downloading attachment:', error);
+      throw new Error(`Failed to download attachment: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }
+
   private async extractAttachments(payload: gmail_v1.Schema$MessagePart): Promise<Array<{
     filename: string;
     contentType: string;
     size: number;
+    attachmentId?: string;
     data?: Buffer;
   }>> {
     const attachments: Array<{
       filename: string;
       contentType: string;
       size: number;
+      attachmentId?: string;
       data?: Buffer;
     }> = [];
 
@@ -177,6 +198,7 @@ export class GmailService {
             filename: part.filename,
             contentType: part.mimeType || 'application/octet-stream',
             size: part.body.size || 0,
+            attachmentId: part.body.attachmentId,
           });
         }
         
@@ -222,6 +244,46 @@ export class GmailService {
       console.error('Error marking message as processed:', error);
       throw new Error(`Failed to update message labels: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
+  }
+
+  async storeEmailAttachments(messageId: string, attachments: Array<{
+    filename: string;
+    contentType: string;
+    size: number;
+    attachmentId?: string;
+  }>): Promise<Array<{ filename: string; storagePath: string }>> {
+    const storedAttachments = [];
+    
+    for (const attachment of attachments) {
+      // Only process PDF attachments for now
+      if (attachment.contentType === 'application/pdf' && attachment.attachmentId) {
+        try {
+          // Download the attachment
+          const attachmentData = await this.downloadAttachment(messageId, attachment.attachmentId);
+          
+          // Store in object storage
+          const { ObjectStorageService } = await import('../objectStorage');
+          const objectStorageService = new ObjectStorageService();
+          
+          const storagePath = await objectStorageService.storePdfAttachment(
+            messageId,
+            attachment.filename,
+            attachmentData
+          );
+          
+          storedAttachments.push({
+            filename: attachment.filename,
+            storagePath
+          });
+
+          console.log(`Stored PDF attachment: ${attachment.filename} at ${storagePath}`);
+        } catch (error) {
+          console.error(`Error storing attachment ${attachment.filename}:`, error);
+        }
+      }
+    }
+    
+    return storedAttachments;
   }
 }
 
