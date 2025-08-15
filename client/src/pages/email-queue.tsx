@@ -5,25 +5,12 @@ import { Button } from "@/components/ui/button";
 export default function EmailQueuePage() {
   const { data: emailQueue, isLoading } = useQuery<EmailQueue[]>({
     queryKey: ["/api/email-queue"],
-    refetchInterval: 30000
+    refetchInterval: false // Disabled automatic refresh for manual tracing
   });
 
   const handleProcessEmails = async () => {
-    try {
-      const response = await fetch('/api/emails/process', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' }
-      });
-      
-      if (!response.ok) {
-        throw new Error('Failed to process emails');
-      }
-      
-      // Refetch data
-      window.location.reload();
-    } catch (error) {
-      console.error('Error processing emails:', error);
-    }
+    alert('Batch processing disabled. Use the single email processing button on the dashboard instead.');
+    // Disabled for manual tracing - use single email processing instead
   };
 
   const getStatusBadge = (status: string) => {
@@ -50,9 +37,9 @@ export default function EmailQueuePage() {
             <h1 className="text-2xl font-semibold text-slate-800">Email Queue</h1>
             <p className="text-secondary mt-1">Monitor and process incoming purchase order emails</p>
           </div>
-          <Button onClick={handleProcessEmails}>
+          <Button onClick={handleProcessEmails} disabled>
             <i className="fas fa-sync mr-2"></i>
-            Process New Emails
+            Batch Processing Disabled
           </Button>
         </div>
       </header>

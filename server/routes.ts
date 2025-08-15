@@ -108,7 +108,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
       }
 
-      console.log(`Processing single email: ${messageToProcess.subject}`);
+      console.log(`\n🔄 MANUAL PROCESSING: Processing single email`);
+      console.log(`📧 EMAIL: "${messageToProcess.subject}"`);
+      console.log(`   └─ From: ${messageToProcess.sender}`);
+      console.log(`   └─ Attachments: ${messageToProcess.attachments.length}`);
 
       // Create email queue item
       const queueItem = await storage.createEmailQueueItem({
@@ -122,12 +125,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
 
       // Process email using two-step approach
+      console.log(`🤖 AI PROCESSING: Starting two-step analysis...`);
       const processingResult = await aiService.processEmail({
         sender: messageToProcess.sender,
         subject: messageToProcess.subject,
         body: messageToProcess.body,
         attachments: messageToProcess.attachments
       });
+      console.log(`   └─ Pre-processing: ${processingResult.preprocessing.response} (Continue: ${processingResult.preprocessing.shouldProceed})`);
+      if (processingResult.classification) {
+        console.log(`   └─ Detailed route: ${processingResult.classification.recommended_route} (${Math.round((processingResult.classification.analysis_flags.confidence_score || 0) * 100)}%)`);
+      }
 
       // Update queue item with results
       const updateData: any = {
@@ -159,8 +167,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
           processingResult.classification.recommended_route !== 'REVIEW') {
         
         // Process PDF attachments with Gemini FIRST if this is an attachment route
-        console.log(`Classification route: ${processingResult.classification.recommended_route}`);
-        console.log(`Has attachments: ${attachmentPaths.length > 0}`);
+        console.log(`\n📁 ATTACHMENT PROCESSING:`);
+        console.log(`   └─ Route: ${processingResult.classification.recommended_route}`);
+        console.log(`   └─ Has attachments: ${attachmentPaths.length > 0}`);
         
         if ((processingResult.classification.recommended_route === 'ATTACHMENT_PO' || 
              processingResult.classification.recommended_route === 'ATTACHMENT_SAMPLE') &&
@@ -168,32 +177,40 @@ export async function registerRoutes(app: Express): Promise<Server> {
           
           // Find PDF attachments and process them
           const pdfAttachments = attachmentPaths.filter(att => att.buffer);
-          console.log(`Found ${pdfAttachments.length} PDF attachments with buffers`);
+          console.log(`   └─ Found ${pdfAttachments.length} PDF attachments with buffers`);
           if (pdfAttachments.length > 0) {
             try {
-              console.log(`Processing ${pdfAttachments.length} PDF attachments with Gemini`);
+              console.log(`\n🧠 GEMINI: Processing PDF with AI extraction...`);
               // Process the first PDF attachment
               const firstPdf = pdfAttachments[0];
+              console.log(`   └─ File: ${firstPdf.filename} (${firstPdf.buffer?.length} bytes)`);
               extractionResult = await aiService.extractPODataFromPDF(firstPdf.buffer!, firstPdf.filename);
-              console.log(`Successfully extracted PO data from PDF: ${firstPdf.filename}`);
-              console.log(`Extracted PO Number: ${extractionResult?.purchaseOrder?.purchaseOrderNumber || 'not found'}`);
+              console.log(`   ✅ SUCCESS: Extracted PO data from PDF`);
+              console.log(`   └─ Client PO Number: ${extractionResult?.purchaseOrder?.purchaseOrderNumber || 'NOT FOUND'}`);
+              if (extractionResult?.purchaseOrder?.customer?.company) {
+                console.log(`   └─ Customer: ${extractionResult.purchaseOrder.customer.company}`);
+              }
+              if (extractionResult?.lineItems?.length) {
+                console.log(`   └─ Line Items: ${extractionResult.lineItems.length}`);
+              }
             } catch (error) {
-              console.error('Failed to extract PO data from PDF:', error);
+              console.error(`   ❌ FAILED: PDF extraction error:`, error);
               // Continue without extraction result
             }
           }
         } else {
-          console.log(`Skipping PDF processing. Route: ${processingResult.classification.recommended_route}, Attachments: ${attachmentPaths.length}`);
+          console.log(`   └─ Skipping PDF processing (not attachment route or no attachments)`);
         }
         
         // Use extracted PO number if available, otherwise generate synthetic one
+        console.log(`\n🆔 PO NUMBER ASSIGNMENT:`);
         let poNumber;
         if (extractionResult?.purchaseOrder?.purchaseOrderNumber) {
           poNumber = extractionResult.purchaseOrder.purchaseOrderNumber;
-          console.log(`Using client PO number: ${poNumber}`);
+          console.log(`   ✅ Using client PO number: ${poNumber}`);
         } else {
           poNumber = `PO-${new Date().getFullYear()}-${String(Date.now()).slice(-6)}`;
-          console.log(`Generated synthetic PO number: ${poNumber}`);
+          console.log(`   ⚠️  Generated synthetic PO number: ${poNumber}`);
         }
         
         purchaseOrder = await storage.createPurchaseOrder({

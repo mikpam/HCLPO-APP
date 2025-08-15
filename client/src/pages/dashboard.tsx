@@ -16,7 +16,7 @@ export default function Dashboard() {
   
   const { data: metrics, isLoading: metricsLoading } = useQuery<DashboardMetrics>({
     queryKey: ["/api/dashboard/metrics"],
-    refetchInterval: 30000 // Refresh every 30 seconds
+    refetchInterval: false // Disabled automatic refresh for manual email processing
   });
 
   const processSingleEmail = useMutation({
