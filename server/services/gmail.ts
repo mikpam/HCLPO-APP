@@ -23,7 +23,9 @@ export class GmailService {
     const auth = new JWT({
       email: process.env.GMAIL_SERVICE_EMAIL,
       key: process.env.GMAIL_PRIVATE_KEY?.replace(/\\n/g, '\n'),
-      scopes: ['https://www.googleapis.com/auth/gmail.readonly']
+      scopes: ['https://www.googleapis.com/auth/gmail.readonly'],
+      // Impersonate the target Gmail account
+      subject: 'hclpurchaseorders@metrixdigital.com'
     });
 
     this.gmail = google.gmail({ version: 'v1', auth });
