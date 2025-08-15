@@ -293,9 +293,45 @@ export class GmailService {
   }>): Promise<Array<{ filename: string; storagePath: string; buffer?: Buffer }>> {
     const storedAttachments = [];
     
+    console.log(`📎 ATTACHMENT ANALYSIS: Found ${attachments.length} total attachments`);
+    
     for (const attachment of attachments) {
-      // Only process PDF attachments for now
-      if (attachment.contentType === 'application/pdf' && attachment.attachmentId) {
+      console.log(`   └─ ${attachment.filename}: ${attachment.contentType} (${attachment.size} bytes) ${attachment.attachmentId ? '[Has ID]' : '[No ID]'}`);
+      
+      // Process all document types that Gemini can handle for PO extraction
+      const isProcessableDocument = (
+        // PDF documents
+        attachment.contentType === 'application/pdf' || 
+        attachment.filename.toLowerCase().endsWith('.pdf') ||
+        
+        // Microsoft Word documents
+        attachment.contentType === 'application/msword' ||
+        attachment.contentType === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' ||
+        attachment.filename.toLowerCase().endsWith('.doc') ||
+        attachment.filename.toLowerCase().endsWith('.docx') ||
+        
+        // Images (common for scanned POs)
+        attachment.contentType?.startsWith('image/') ||
+        attachment.filename.toLowerCase().match(/\.(jpg|jpeg|png|gif|bmp|tiff|webp)$/i) ||
+        
+        // Spreadsheet formats
+        attachment.contentType === 'text/csv' ||
+        attachment.contentType === 'application/vnd.ms-excel' ||
+        attachment.contentType === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' ||
+        attachment.filename.toLowerCase().endsWith('.csv') ||
+        attachment.filename.toLowerCase().endsWith('.xls') ||
+        attachment.filename.toLowerCase().endsWith('.xlsx') ||
+        
+        // Text files
+        attachment.contentType === 'text/plain' ||
+        attachment.filename.toLowerCase().endsWith('.txt') ||
+        
+        // RTF and other document formats
+        attachment.contentType === 'application/rtf' ||
+        attachment.filename.toLowerCase().endsWith('.rtf')
+      );
+      
+      if (isProcessableDocument && attachment.attachmentId) {
         try {
           // Download the attachment
           const attachmentData = await this.downloadAttachment(messageId, attachment.attachmentId);
@@ -316,10 +352,14 @@ export class GmailService {
             buffer: attachmentData
           });
 
-          console.log(`Stored PDF attachment: ${attachment.filename} at ${storagePath}`);
+          console.log(`      ✅ Stored attachment: ${attachment.filename} at ${storagePath}`);
         } catch (error) {
-          console.error(`Error storing attachment ${attachment.filename}:`, error);
+          console.error(`      ❌ Error storing attachment ${attachment.filename}:`, error);
         }
+      } else if (!attachment.attachmentId) {
+        console.log(`      ⚠️  Skipping ${attachment.filename}: No attachment ID`);
+      } else {
+        console.log(`      ⚠️  Skipping ${attachment.filename}: Not a processable document type`);
       }
     }
     

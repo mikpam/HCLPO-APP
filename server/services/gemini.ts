@@ -80,6 +80,131 @@ export class GeminiService {
     };
   }
 
+  private getMimeTypeFromFilename(filename: string): string {
+    const extension = filename.toLowerCase().split('.').pop();
+    
+    const mimeTypes: { [key: string]: string } = {
+      // PDF documents
+      'pdf': 'application/pdf',
+      
+      // Images (common for scanned POs)
+      'jpg': 'image/jpeg',
+      'jpeg': 'image/jpeg',
+      'png': 'image/png',
+      'gif': 'image/gif',
+      'bmp': 'image/bmp',
+      'tiff': 'image/tiff',
+      'webp': 'image/webp',
+      
+      // Microsoft Office documents
+      'doc': 'application/msword',
+      'docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      'xls': 'application/vnd.ms-excel',
+      'xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      
+      // Text and CSV
+      'txt': 'text/plain',
+      'csv': 'text/csv',
+      'rtf': 'application/rtf'
+    };
+    
+    return mimeTypes[extension || ''] || 'application/octet-stream';
+  }
+
+  async filterDocumentType(documentBuffer: Buffer, filename: string): Promise<{ document_type: "purchase order" | "not a purchase order" }> {
+    try {
+      console.log(`🔍 AI DOCUMENT FILTER: Analyzing ${filename} to determine if it's a purchase order`);
+
+      // Convert document buffer to base64 and get MIME type
+      const base64Data = documentBuffer.toString('base64');
+      const mimeType = this.getMimeTypeFromFilename(filename);
+      console.log(`   └─ Detected MIME type: ${mimeType}`);
+
+      const prompt = `Analyze the provided document to determine its primary function: Is it a purchase order (including sample orders/requests) or something else?
+
+**Primary Function Test:**
+
+1. **Exclusion Check (Perform First):** Does the document's primary purpose appear to be one of the following?
+   * **Artwork/Proof/Design:** Contains visual mockups, layouts, design specifications, color palettes, approval boxes, or keywords like "Proof," "Artwork," "Layout," "Design," "Mockup," "Revision," "Approve," "Approval Required," "Sample Proof." Even if quantities/prices are present for context, if the main goal is design review/approval, it's NOT a purchase order.
+   * **Quotation/Proposal:** Presents prices/terms for *potential* future work, often using terms like "Quote," "Proposal," "Estimate," "Offer," "Valid Until."
+   * **Invoice/Bill:** Requests payment for goods/services *already provided* or shipped, using terms like "Invoice," "Bill," "Due Date," "Amount Due."
+   * **Packing List/Slip:** Details items included in a shipment, often lacking prices, using terms like "Packing List," "Delivery Note."
+   * **Receipt/Statement:** Confirms payment received or summarizes account activity.
+   * **Shipping Notice/ASN:** Provides information about a shipment in transit.
+   * **Internal Memos/Emails/Attachments:** Discussions *about* an order, attachments to emails *containing* proofs, etc., are not the order itself.
+
+   *If the document clearly fits any category above, classify it immediately as "not a purchase order" and stop.*
+
+2. **Purchase Order Confirmation (Only if Exclusion Check Passed):** If the document is NOT primarily one of the excluded types, check if it contains **at least THREE (3)** distinct elements from the list below, clearly indicating a transactional intent to order or request goods/services:
+   * **Explicit Order Intent:** Clear title like "Purchase Order," "PO," "Sample Order," "Order Confirmation," "Request for Sample," or equivalent explicit text stating an order is being placed/requested. (A PO Number alone counts if contextually clear it's for an order).
+   * **Supplier/Vendor Information:** Identifiable Seller (company name, address, contact).
+   * **Buyer Information:** Identifiable Buyer (company name, address, contact).
+   * **Itemized Product Details:** Specific descriptions, SKUs, model numbers identifying *what* is being ordered. (Generic descriptions on a proof don't count).
+   * **Quantities/Units:** Specific number of units requested *for the order transaction*. (Quantities shown on a design example don't count).
+   * **Pricing Information:** Unit price, total price, or subtotal clearly associated with the *order transaction*. (Reference prices on a proof don't count).
+   * **Order/Required Delivery Date:** An explicit date when items are requested or must be delivered (cannot be a general project timeline or event date).
+   * **Payment Terms:** Specific terms like Net 30, Due on Receipt, Credit Card, etc., related to *this order*.
+
+**Decision Rules:**
+
+* The Exclusion Check takes priority. If it matches an excluded type (especially Art/Proof), it's "not a purchase order."
+* If the Exclusion Check does not apply, **at least THREE (3)** distinct PO elements *must* be present and clearly related to an order transaction.
+* Sample Orders and Requests for Samples *are* considered "purchase orders" if they meet the criteria.
+* If uncertain, or if fewer than three PO elements are found after passing the exclusion check, default to "not a purchase order." Be strict.
+
+**Response Format:**
+
+Output *only* the following JSON object, with no other text, comments, or explanations:
+
+{
+  "document_type": "purchase order" or "not a purchase order"
+}`;
+
+      const contents = [
+        {
+          inlineData: {
+            data: base64Data,
+            mimeType: mimeType,
+          },
+        },
+        prompt,
+      ];
+
+      const response = await ai.models.generateContent({
+        model: "gemini-2.5-flash",
+        contents: contents,
+      });
+
+      const rawResponse = response.text || "";
+      
+      if (!rawResponse) {
+        console.log(`   ⚠️  Empty response from Gemini, defaulting to 'not a purchase order'`);
+        return { document_type: "not a purchase order" };
+      }
+
+      // Clean and parse JSON response
+      let jsonStr = rawResponse.trim();
+      
+      // Remove markdown code blocks if present
+      if (jsonStr.startsWith('```json')) {
+        jsonStr = jsonStr.replace(/^```json\s*/, '').replace(/\s*```$/, '');
+      } else if (jsonStr.startsWith('```')) {
+        jsonStr = jsonStr.replace(/^```\s*/, '').replace(/\s*```$/, '');
+      }
+
+      const filterResult = JSON.parse(jsonStr);
+      
+      console.log(`   └─ Document Classification: ${filterResult.document_type}`);
+      
+      return filterResult;
+      
+    } catch (error) {
+      console.error(`   ❌ AI Document Filter failed for ${filename}:`, error);
+      console.log(`   └─ Defaulting to 'not a purchase order' due to error`);
+      return { document_type: "not a purchase order" };
+    }
+  }
+
   async extractPODataFromText(subject: string, body: string, fromAddress: string): Promise<any> {
     try {
       console.log(`Processing email text with Gemini for TEXT_PO extraction`);
@@ -204,12 +329,14 @@ export class GeminiService {
     }
   }
 
-  async extractPODataFromPDF(pdfBuffer: Buffer, filename: string): Promise<any> {
+  async extractPODataFromPDF(documentBuffer: Buffer, filename: string): Promise<any> {
     try {
-      console.log(`Processing PDF with Gemini: ${filename} (${pdfBuffer.length} bytes)`);
+      console.log(`Processing document with Gemini: ${filename} (${documentBuffer.length} bytes)`);
 
-      // Convert PDF buffer to base64 for inline data
-      const base64Data = pdfBuffer.toString('base64');
+      // Convert document buffer to base64 and get MIME type
+      const base64Data = documentBuffer.toString('base64');
+      const mimeType = this.getMimeTypeFromFilename(filename);
+      console.log(`   └─ Using MIME type: ${mimeType}`);
 
       const prompt = `Analyze the PDF file and create the most accurate data according to this schema, outputting only a valid JSON object:
 
@@ -318,7 +445,7 @@ Processing Rules:
               {
                 inlineData: {
                   data: base64Data,
-                  mimeType: "application/pdf"
+                  mimeType: mimeType
                 }
               }
             ]

@@ -180,24 +180,65 @@ export async function registerRoutes(app: Express): Promise<Server> {
           // Find PDF attachments and process them
           const pdfAttachments = attachmentPaths.filter(att => att.buffer);
           console.log(`   └─ Found ${pdfAttachments.length} PDF attachments with buffers`);
+          
           if (pdfAttachments.length > 0) {
-            try {
-              console.log(`\n🧠 GEMINI: Processing PDF with AI extraction...`);
-              // Process the first PDF attachment
-              const firstPdf = pdfAttachments[0];
-              console.log(`   └─ File: ${firstPdf.filename} (${firstPdf.buffer?.length} bytes)`);
-              extractionResult = await aiService.extractPODataFromPDF(firstPdf.buffer!, firstPdf.filename);
-              console.log(`   ✅ SUCCESS: Extracted PO data from PDF`);
-              console.log(`   └─ Client PO Number: ${extractionResult?.purchaseOrder?.purchaseOrderNumber || 'NOT FOUND'}`);
-              if (extractionResult?.purchaseOrder?.customer?.company) {
-                console.log(`   └─ Customer: ${extractionResult.purchaseOrder.customer.company}`);
+            console.log(`\n🔍 AI DOCUMENT FILTERING: Pre-screening attachments before Gemini processing...`);
+            
+            // Import GeminiService for document filtering
+            const { GeminiService } = await import('./services/gemini');
+            const geminiService = new GeminiService();
+            
+            let processedPO = false;
+            
+            // Filter and process each PDF attachment
+            for (let i = 0; i < pdfAttachments.length && !processedPO; i++) {
+              const pdfAttachment = pdfAttachments[i];
+              console.log(`   └─ Screening: ${pdfAttachment.filename} (${pdfAttachment.buffer?.length} bytes)`);
+              
+              try {
+                // Step 1: AI Document Filter - determine if this is actually a purchase order
+                const filterResult = await geminiService.filterDocumentType(pdfAttachment.buffer!, pdfAttachment.filename);
+                
+                if (filterResult.document_type === "purchase order") {
+                  console.log(`      ✅ PASSED: Document identified as purchase order`);
+                  
+                  // Step 2: Process with Gemini extraction (only for documents that passed filter)
+                  try {
+                    console.log(`\n🧠 GEMINI EXTRACTION: Processing validated PO document...`);
+                    console.log(`   └─ File: ${pdfAttachment.filename}`);
+                    
+                    extractionResult = await aiService.extractPODataFromPDF(pdfAttachment.buffer!, pdfAttachment.filename);
+                    
+                    console.log(`   ✅ SUCCESS: Extracted PO data from PDF`);
+                    console.log(`   └─ Client PO Number: ${extractionResult?.purchaseOrder?.purchaseOrderNumber || 'NOT FOUND'}`);
+                    if (extractionResult?.purchaseOrder?.customer?.company) {
+                      console.log(`   └─ Customer: ${extractionResult.purchaseOrder.customer.company}`);
+                    }
+                    if (extractionResult?.lineItems?.length) {
+                      console.log(`   └─ Line Items: ${extractionResult.lineItems.length}`);
+                    }
+                    
+                    processedPO = true; // Stop processing additional attachments once we find a valid PO
+                    
+                  } catch (error) {
+                    console.error(`   ❌ GEMINI EXTRACTION FAILED for ${pdfAttachment.filename}:`, error);
+                    // Continue to next attachment if this one failed extraction
+                  }
+                  
+                } else {
+                  console.log(`      ❌ FILTERED OUT: Document classified as '${filterResult.document_type}'`);
+                  console.log(`      └─ Skipping Gemini extraction (not a purchase order)`);
+                }
+                
+              } catch (error) {
+                console.error(`   ❌ DOCUMENT FILTER FAILED for ${pdfAttachment.filename}:`, error);
+                console.log(`      └─ Skipping this document due to filter error`);
               }
-              if (extractionResult?.lineItems?.length) {
-                console.log(`   └─ Line Items: ${extractionResult.lineItems.length}`);
-              }
-            } catch (error) {
-              console.error(`   ❌ FAILED: PDF extraction error:`, error);
-              // Continue without extraction result
+            }
+            
+            if (!processedPO && pdfAttachments.length > 0) {
+              console.log(`\n⚠️  NO PURCHASE ORDERS FOUND: All ${pdfAttachments.length} attachments were filtered out`);
+              console.log(`   └─ Attachments appear to be artwork, proofs, invoices, or other non-PO documents`);
             }
           }
         } else if (processingResult.classification.recommended_route === 'TEXT_PO') {
@@ -233,8 +274,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
         console.log(`\n🆔 PO NUMBER ASSIGNMENT:`);
         let poNumber;
         if (extractionResult?.purchaseOrder?.purchaseOrderNumber) {
+          // Check if this PO number already exists and append suffix if needed
           poNumber = extractionResult.purchaseOrder.purchaseOrderNumber;
-          console.log(`   ✅ Using client PO number: ${poNumber}`);
+          let originalPoNumber = poNumber;
+          let suffix = 1;
+          
+          while (await storage.getPurchaseOrderByNumber(poNumber)) {
+            poNumber = `${originalPoNumber}-${suffix}`;
+            suffix++;
+          }
+          
+          if (suffix > 1) {
+            console.log(`   ⚠️  PO number ${originalPoNumber} already exists, using: ${poNumber}`);
+          } else {
+            console.log(`   ✅ Using client PO number: ${poNumber}`);
+          }
         } else {
           poNumber = `PO-${new Date().getFullYear()}-${String(Date.now()).slice(-6)}`;
           console.log(`   ⚠️  Generated synthetic PO number: ${poNumber}`);

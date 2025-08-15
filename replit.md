@@ -38,13 +38,16 @@ Preferred communication style: Simple, everyday language.
 - **Filtering Logic**: Follow Up and "None of these" emails are filtered out before detailed analysis
 - **Classification Routes**: TEXT_PO, TEXT_SAMPLE, ATTACHMENT_PO, ATTACHMENT_SAMPLE, REVIEW (5-route classification system)
 - **Advanced Gate Logic**: Artwork detection, body text sufficiency analysis, sample vs full order distinction, confidence scoring
+- **AI Document Filtering Layer**: Pre-screens all attachments before Gemini processing to filter out artwork, proofs, invoices, and non-PO documents
+- **Multi-Format Document Support**: Enhanced processing for all Gemini-compatible formats (PDFs, images, Word docs, CSVs, Excel, text files)
+- **Enhanced MIME Type Detection**: Automatic format recognition and proper MIME type assignment for optimal Gemini processing
 - **Dual Gemini Extraction Routes**: 
-  - ATTACHMENT_PO: PDF processing with file upload API and OCR extraction
+  - ATTACHMENT_PO: Multi-format document processing with AI filtering → Gemini extraction for validated PO documents only
   - TEXT_PO: Email text processing with structured schema extraction from subject + body + sender
-- **Processing Flow**: Gmail ingestion → Pre-processing classification → Detailed analysis (if qualified) → Gemini extraction (PDF or text) → real client PO extraction → NetSuite import
+- **Processing Flow**: Gmail ingestion → Pre-processing classification → Detailed analysis (if qualified) → AI document filtering → Gemini extraction (filtered documents or text) → real client PO extraction → NetSuite import
 - **Database Storage**: Preprocessing, classification, and extracted data (with real client PO numbers) stored in Neon PostgreSQL
 - **Manual Processing Mode**: Development uses single-email processing with detailed console tracing for debugging
-- **Successful Implementation**: Both ATTACHMENT_PO and TEXT_PO routes successfully extracting real client PO numbers and storing structured data in database with UI display (August 15, 2025)
+- **Successful Implementation**: Both ATTACHMENT_PO and TEXT_PO routes successfully extracting real client PO numbers with enhanced AI filtering system (August 15, 2025)
 
 ### Authentication & Authorization
 - **Strategy**: Session-based authentication with role-based access control
