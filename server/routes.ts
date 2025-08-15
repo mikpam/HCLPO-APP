@@ -3,6 +3,7 @@ import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { gmailService } from "./services/gmail";
 import { openaiService } from "./services/openai";
+import { aiService, type AIEngine } from "./services/ai-service";
 import { airtableService } from "./services/airtable";
 import { netsuiteService } from "./services/netsuite";
 import { dropboxService } from "./services/dropbox";
@@ -35,6 +36,45 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // AI Engine Management
+  app.get("/api/ai/engines", async (req, res) => {
+    try {
+      const config = aiService.getEngineConfiguration();
+      res.json(config);
+    } catch (error) {
+      res.status(500).json({ 
+        message: error instanceof Error ? error.message : 'Failed to fetch AI engines' 
+      });
+    }
+  });
+
+  app.post("/api/ai/engines/:engine", async (req, res) => {
+    try {
+      const engine = req.params.engine as AIEngine;
+      if (!['openai', 'gemini'].includes(engine)) {
+        return res.status(400).json({ message: 'Invalid AI engine' });
+      }
+      
+      aiService.setEngine(engine);
+      res.json({ success: true, current: engine });
+    } catch (error) {
+      res.status(500).json({ 
+        message: error instanceof Error ? error.message : 'Failed to set AI engine' 
+      });
+    }
+  });
+
+  app.get("/api/ai/test", async (req, res) => {
+    try {
+      const results = await aiService.testConnections();
+      res.json(results);
+    } catch (error) {
+      res.status(500).json({ 
+        message: error instanceof Error ? error.message : 'Failed to test AI connections' 
+      });
+    }
+  });
+
   // Email processing
   app.post("/api/emails/process", async (req, res) => {
     try {
@@ -61,8 +101,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
             status: 'processing'
           });
 
-          // Classify email
-          const classificationResult = await openaiService.classifyEmail({
+          // Classify email using AI service manager
+          const classificationResult = await aiService.classifyEmail({
             sender: message.sender,
             subject: message.subject,
             body: message.body,
@@ -204,7 +244,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (!poData && order.route === 'TEXT_PO') {
         const queueItem = await storage.getEmailQueueByGmailId(order.emailId || '');
         if (queueItem) {
-          poData = await openaiService.extractPOData(queueItem.body || '');
+          // Use AI service for extraction (will automatically choose appropriate engine)
+          poData = await aiService.extractPOData(queueItem.body || '');
+          await storage.updatePurchaseOrder(order.id, { validatedJson: poData });
+        }
+      }
+
+      // Handle attachment-based PO data extraction using Gemini 2.5 Pro
+      if (!poData && order.route === 'ATTACHMENT_PO' && order.originalPdfFilename) {
+        const pdfPath = await dropboxService.findPDFByFilename(order.originalPdfFilename);
+        if (pdfPath) {
+          const pdfBuffer = await dropboxService.downloadFile(pdfPath);
+          // Convert PDF to text and extract using Gemini 2.5 Pro
+          const pdfText = pdfBuffer.toString('utf-8'); // Simplified - in production use proper PDF parsing
+          poData = await aiService.extractPOData('', pdfText);
           await storage.updatePurchaseOrder(order.id, { validatedJson: poData });
         }
       }

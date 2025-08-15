@@ -197,6 +197,26 @@ export class OpenAIService {
       throw new Error(`Data extraction failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   }
+
+  async testConnection(): Promise<{ success: boolean; error?: string }> {
+    try {
+      const response = await openai.chat.completions.create({
+        model: "gpt-4o",
+        messages: [{ role: "user", content: "Respond with 'OK' to test the connection." }],
+        max_tokens: 10,
+      });
+
+      if (response.choices[0]?.message?.content?.includes('OK')) {
+        return { success: true };
+      }
+      return { success: false, error: 'Unexpected response' };
+    } catch (error) {
+      return { 
+        success: false, 
+        error: error instanceof Error ? error.message : 'Connection test failed' 
+      };
+    }
+  }
 }
 
 export const openaiService = new OpenAIService();

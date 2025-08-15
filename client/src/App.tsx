@@ -10,6 +10,7 @@ import PurchaseOrdersPage from "@/pages/purchase-orders";
 import ErrorLogsPage from "@/pages/error-logs";
 import SystemStatusPage from "@/pages/system-status";
 import AnalyticsPage from "@/pages/analytics";
+import AISettingsPage from "@/pages/ai-settings";
 import Sidebar from "@/components/layout/sidebar";
 
 function Router() {
@@ -24,6 +25,7 @@ function Router() {
           <Route path="/error-logs" component={ErrorLogsPage} />
           <Route path="/system-status" component={SystemStatusPage} />
           <Route path="/analytics" component={AnalyticsPage} />
+          <Route path="/ai-settings" component={AISettingsPage} />
           <Route component={NotFound} />
         </Switch>
       </main>

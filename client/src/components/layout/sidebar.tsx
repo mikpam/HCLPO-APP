@@ -8,6 +8,7 @@ const navigationItems = [
   { path: "/error-logs", label: "Error Logs", icon: "fas fa-exclamation-triangle" },
   { path: "/system-status", label: "System Status", icon: "fas fa-cogs" },
   { path: "/analytics", label: "Analytics", icon: "fas fa-chart-bar" },
+  { path: "/ai-settings", label: "AI Settings", icon: "fas fa-brain" },
 ];
 
 export default function Sidebar() {

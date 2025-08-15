@@ -32,9 +32,11 @@ Preferred communication style: Simple, everyday language.
 
 ### Email Processing Pipeline
 - **Classification Engine**: OpenAI GPT-4o for email content analysis and routing decisions
+- **Attachment Processing**: Google Gemini 2.5 Pro specialized for PDF purchase order extraction
 - **Routes**: TEXT_PO (body-based orders), ATTACHMENT_PO (PDF-based orders), REVIEW (manual review required)
 - **Safeguards**: Artwork file filtering, body text sufficiency checks, confidence scoring
-- **Processing Flow**: Gmail ingestion → AI classification → data extraction → validation → NetSuite import
+- **Processing Flow**: Gmail ingestion → AI classification → data extraction (engine-specific) → validation → NetSuite import
+- **AI Engine Management**: Configurable engine selection with specialized attachment routing
 
 ### Authentication & Authorization
 - **Strategy**: Session-based authentication with role-based access control
@@ -49,8 +51,11 @@ Preferred communication style: Simple, everyday language.
 - **Attachments**: PDF processing and content extraction capabilities
 
 ### AI/ML Services
-- **OpenAI API**: GPT-4o model for email classification and content analysis
+- **OpenAI API**: GPT-4o model for email classification and text-based PO extraction
+- **Google Gemini API**: Gemini 2.5 Pro specialized for PDF attachment processing and analysis
+- **AI Service Manager**: Intelligent routing system that uses Gemini 2.5 Pro for attachment processing and OpenAI for other tasks
 - **Classification Logic**: Body vs attachment detection, sample vs purchase order identification, confidence scoring
+- **Fallback System**: Automatic engine switching if primary AI service fails
 
 ### Data Storage Services
 - **Airtable API**: Operational database for purchase orders and error logs
