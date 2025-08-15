@@ -96,9 +96,9 @@ export default function PurchaseOrdersPage() {
           aValue = a.status;
           bValue = b.status;
           break;
-        case 'confidence':
-          aValue = a.confidence || 0;
-          bValue = b.confidence || 0;
+        case 'customerNumber':
+          aValue = (a.extractedData as any)?.purchaseOrder?.customer?.customerNumber || '';
+          bValue = (b.extractedData as any)?.purchaseOrder?.customer?.customerNumber || '';
           break;
         default:
           aValue = a.createdAt;
@@ -333,17 +333,9 @@ export default function PurchaseOrdersPage() {
                 </TableHead>
                 <TableHead className="w-[120px]">Route</TableHead>
                 <TableHead className="w-[100px]">Line Items</TableHead>
-                <TableHead className="w-[120px]">
-                  <Button 
-                    variant="ghost" 
-                    size="sm" 
-                    onClick={() => handleSort('confidence')}
-                    className="h-8 p-0 font-medium text-left"
-                  >
-                    Confidence
-                    <ArrowUpDown className="ml-2 h-3 w-3" />
-                  </Button>
-                </TableHead>
+                <TableHead className="w-[120px]">Customer Number</TableHead>
+                <TableHead className="w-[120px]">Validated JSON</TableHead>
+                <TableHead className="w-[100px]">PO KEY</TableHead>
                 <TableHead className="w-[100px]">Actions</TableHead>
               </TableRow>
             </TableHeader>
@@ -420,20 +412,24 @@ export default function PurchaseOrdersPage() {
                     </TableCell>
                     <TableCell>
                       <div className="text-center">
-                        {order.confidence ? (
-                          <Badge 
-                            variant="outline" 
-                            className={`text-xs ${
-                              order.confidence >= 0.8 ? 'bg-green-50 text-green-700 border-green-200' :
-                              order.confidence >= 0.6 ? 'bg-amber-50 text-amber-700 border-amber-200' :
-                              'bg-red-50 text-red-700 border-red-200'
-                            }`}
-                          >
-                            {Math.round(order.confidence * 100)}%
-                          </Badge>
-                        ) : (
-                          <span className="text-gray-400 text-sm">N/A</span>
-                        )}
+                        <span className="text-sm text-gray-600">
+                          {(order.extractedData as any)?.purchaseOrder?.customer?.customerNumber || 'N/A'}
+                        </span>
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <div className="text-center">
+                        <Badge variant="outline" className="text-xs bg-blue-50 text-blue-700 border-blue-200">
+                          {order.extractedData ? 'Valid' : 'Pending'}
+                        </Badge>
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <div className="text-center">
+                        <span className="text-sm text-gray-600 font-mono">
+                          {/* PO KEY to be populated later */}
+                          --
+                        </span>
                       </div>
                     </TableCell>
                     <TableCell>
