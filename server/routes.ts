@@ -101,23 +101,30 @@ export async function registerRoutes(app: Express): Promise<Server> {
             status: 'processing'
           });
 
-          // Classify email using AI service manager
-          const classificationResult = await aiService.classifyEmail({
+          // Process email using two-step approach (pre-processing + detailed classification)
+          const processingResult = await aiService.processEmail({
             sender: message.sender,
             subject: message.subject,
             body: message.body,
             attachments: message.attachments
           });
 
-          // Update queue item with classification
-          await storage.updateEmailQueueItem(queueItem.id, {
-            classificationResult,
-            status: 'processed',
+          // Update queue item with both preprocessing and classification results
+          const updateData: any = {
+            preprocessingResult: processingResult.preprocessing,
+            status: processingResult.preprocessing.shouldProceed ? 'processed' : 'filtered',
             processedAt: new Date()
-          });
+          };
 
-          // Create purchase order if classified appropriately
-          if (classificationResult.recommended_route !== 'REVIEW') {
+          if (processingResult.classification) {
+            updateData.classificationResult = processingResult.classification;
+          }
+
+          await storage.updateEmailQueueItem(queueItem.id, updateData);
+
+          // Only create purchase order if email passed preprocessing and detailed classification
+          if (processingResult.preprocessing.shouldProceed && processingResult.classification && 
+              processingResult.classification.recommended_route !== 'REVIEW') {
             const poNumber = `PO-${new Date().getFullYear()}-${String(Date.now()).slice(-6)}`;
             
             const purchaseOrder = await storage.createPurchaseOrder({
@@ -125,17 +132,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
               emailId: message.id,
               sender: message.sender,
               subject: message.subject,
-              route: classificationResult.recommended_route,
-              confidence: classificationResult.analysis_flags.confidence,
-              status: classificationResult.recommended_route === 'TEXT_PO' ? 'ready_for_extraction' : 'pending_review',
-              originalJson: classificationResult
+              route: processingResult.classification.recommended_route,
+              confidence: processingResult.classification.analysis_flags.confidence_score,
+              status: processingResult.classification.recommended_route === 'TEXT_PO' ? 'ready_for_extraction' : 'pending_review',
+              originalJson: processingResult.classification
             });
 
             processedEmails.push({
               email: message,
-              classification: classificationResult,
+              preprocessing: processingResult.preprocessing,
+              classification: processingResult.classification,
               purchaseOrder
             });
+          } else if (!processingResult.preprocessing.shouldProceed) {
+            console.log(`Email filtered out: ${processingResult.preprocessing.response} (${processingResult.preprocessing.score})`);
           }
 
           // Mark as processed in Gmail

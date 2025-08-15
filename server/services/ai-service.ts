@@ -32,29 +32,65 @@ class AIServiceManager {
     return engine === 'openai' ? openaiService : geminiService;
   }
 
-  async classifyEmail(input: EmailClassificationInput): Promise<ClassificationResult & { engine: AIEngine }> {
-    // Always use OpenAI for email classification - Gemini reserved for PDF extraction only
+  async processEmail(input: EmailClassificationInput): Promise<{
+    preprocessing: { response: string; score: string; shouldProceed: boolean };
+    classification?: ClassificationResult & { engine: AIEngine };
+  }> {
+    // Step 1: Pre-processing - Simple intent classification
+    const preprocessing = await openaiService.preProcessEmail(input);
+    
+    // Step 2: Only proceed with detailed classification for Purchase Order, Sample Request, Rush Order
+    if (!preprocessing.shouldProceed) {
+      console.log(`Email classified as "${preprocessing.response}" - skipping detailed analysis`);
+      return { preprocessing };
+    }
+    
+    // Step 2: Detailed classification for qualified emails
     try {
-      const result = await openaiService.classifyEmail(input);
-      return { ...result, engine: 'openai' };
-    } catch (error) {
-      console.error('OpenAI classification failed:', error);
-      
-      // Basic fallback classification without using Gemini (reserved for PDF extraction)
+      const classification = await openaiService.classifyEmail(input);
       return {
-        analysis_flags: {
-          has_attachments: input.attachments.length > 0,
-          attachments_all_artwork_files: false,
-          po_details_in_body_sufficient: false,
-          is_sample_request_in_body: false,
-          overall_po_nature_probability: "low",
-          confidence_score: 0.1
-        },
-        recommended_route: input.attachments.length > 0 ? 'ATTACHMENT_PO' : 'REVIEW',
-        suggested_tags: ['OpenAI Service Unavailable'],
-        engine: 'openai'
+        preprocessing,
+        classification: { ...classification, engine: 'openai' as AIEngine }
+      };
+    } catch (error) {
+      console.error('OpenAI detailed classification failed:', error);
+      
+      // Fallback classification
+      return {
+        preprocessing,
+        classification: {
+          analysis_flags: {
+            has_attachments: input.attachments.length > 0,
+            attachments_all_artwork_files: false,
+            po_details_in_body_sufficient: false,
+            is_sample_request_in_body: false,
+            overall_po_nature_probability: "low",
+            confidence_score: 0.1
+          },
+          recommended_route: input.attachments.length > 0 ? 'ATTACHMENT_PO' : 'REVIEW',
+          suggested_tags: ['OpenAI Service Unavailable'],
+          engine: 'openai' as AIEngine
+        }
       };
     }
+  }
+
+  // Kept for backward compatibility
+  async classifyEmail(input: EmailClassificationInput): Promise<ClassificationResult & { engine: AIEngine }> {
+    const result = await this.processEmail(input);
+    return result.classification || {
+      analysis_flags: {
+        has_attachments: input.attachments.length > 0,
+        attachments_all_artwork_files: false,
+        po_details_in_body_sufficient: false,
+        is_sample_request_in_body: false,
+        overall_po_nature_probability: "low",
+        confidence_score: 0.1
+      },
+      recommended_route: 'REVIEW',
+      suggested_tags: [`Filtered out: ${result.preprocessing.response}`],
+      engine: 'openai' as AIEngine
+    };
   }
 
   async extractPOData(body: string, attachmentText?: string): Promise<any & { engine: AIEngine }> {

@@ -85,6 +85,66 @@ export class OpenAIService {
     return poPattern.test(filename) || poMimeTypes.test(contentType);
   }
 
+  async preProcessEmail(input: EmailClassificationInput): Promise<{
+    response: string;
+    score: string;
+    shouldProceed: boolean;
+  }> {
+    try {
+      // Build attachment filenames string
+      const attachmentFilenames = input.attachments?.map(a => a.filename).join(', ') || '';
+
+      const response = await openai.chat.completions.create({
+        model: "gpt-4o", // the newest OpenAI model is "gpt-4o" which was released May 13, 2024. do not change this unless explicitly requested by the user
+        messages: [
+          {
+            role: "user",
+            content: `Analyze the email with subject ${input.subject} and body text ${input.body} and attachments file name: ${attachmentFilenames} . Determine its intent based on the following detailed options:
+
+Purchase Order: The email includes a new order for product items (typically 10 or more) with details such as billing, delivery, or payment information. If the email is part of a follow-up but clearly includes new purchase order details, classify it as a Purchase Order.
+Sample Request: The email requests product samples, typically for quantities less than 10 items for evaluation purposes.
+Rush Order: The email communicates urgency, indicating that the order should be processed and delivered as quickly as possible.
+Follow Up: The email is a continuation of previous communication regarding an order or inquiry and does not introduce new order details. If the email references a previous purchase order without including new purchase order details, classify it as a Follow Up.
+None of these: The email does not match any of the above categories.
+
+Provide your answer as a JSON object with two keys:
+
+"response": containing one of the options exactly as listed above.
+"score": containing a simulated confidence score (derived from log probabilities) expressed as a percentage (with 100% being the highest).
+
+**Crucially, your ENTIRE output MUST be a valid JSON object. Nothing else. No surrounding text, no explanations, no backticks, no markdown, no "json" label. Just the JSON. For example:**
+
+{
+  "response": "Purchase Order",
+  "score": "87%"
+}`
+          }
+        ],
+        response_format: { type: "json_object" },
+        temperature: 1,
+      });
+
+      const rawJson = response.choices[0].message.content;
+      if (rawJson) {
+        const result = JSON.parse(rawJson);
+        
+        // Only proceed with detailed classification for Purchase Order, Sample Request, and Rush Order
+        const shouldProceed = ['Purchase Order', 'Sample Request', 'Rush Order'].includes(result.response);
+        
+        return {
+          response: result.response,
+          score: result.score,
+          shouldProceed
+        };
+      } else {
+        throw new Error("Empty response from OpenAI");
+      }
+    } catch (error) {
+      console.error('OpenAI pre-processing error:', error);
+      throw new Error(`Email pre-processing failed: ${error}`);
+    }
+  }
+
   async classifyEmail(input: EmailClassificationInput): Promise<ClassificationResult> {
     try {
       // Build attachment info strings

@@ -32,12 +32,14 @@ Preferred communication style: Simple, everyday language.
 - **Connection**: Node.js pg driver with connection pooling and SSL support
 
 ### Email Processing Pipeline
-- **Classification Engine**: OpenAI GPT-4o exclusively handles all email gate logic and routing decisions
-- **Attachment Processing**: Google Gemini 2.5 Pro reserved specifically for PDF purchase order extraction and parsing
-- **Routes**: TEXT_PO, TEXT_SAMPLE, ATTACHMENT_PO, ATTACHMENT_SAMPLE, REVIEW (5-route classification system)
+- **Two-Step Processing Architecture**: Mirrors existing Make.com workflow structure for easier migration
+- **Step 1 - Pre-processing**: OpenAI GPT-4o performs simple intent classification (Purchase Order, Sample Request, Rush Order, Follow Up, None)
+- **Step 2 - Detailed Analysis**: Advanced 5-route classification only for qualifying emails (Purchase Order, Sample Request, Rush Order)
+- **Filtering Logic**: Follow Up and "None of these" emails are filtered out before detailed analysis
+- **Classification Routes**: TEXT_PO, TEXT_SAMPLE, ATTACHMENT_PO, ATTACHMENT_SAMPLE, REVIEW (5-route classification system)
 - **Advanced Gate Logic**: Artwork detection, body text sufficiency analysis, sample vs full order distinction, confidence scoring
-- **Processing Flow**: Gmail ingestion → OpenAI classification → Gemini PDF extraction (if attachment route) → validation → NetSuite import
-- **Specialized Architecture**: Clear separation of responsibilities between AI engines for optimal performance
+- **Processing Flow**: Gmail ingestion → Pre-processing classification → Detailed analysis (if qualified) → Gemini PDF extraction (if attachment route) → validation → NetSuite import
+- **Database Storage**: Both preprocessing and detailed classification results stored in Neon PostgreSQL
 
 ### Authentication & Authorization
 - **Strategy**: Session-based authentication with role-based access control
@@ -52,10 +54,12 @@ Preferred communication style: Simple, everyday language.
 - **Attachments**: PDF processing and content extraction capabilities
 
 ### AI/ML Services
-- **OpenAI API**: GPT-4o model exclusively for email gate logic and classification with sophisticated 5-route decision system
-- **Google Gemini API**: Gemini 2.5 Pro reserved for PDF attachment extraction with comprehensive purchase order parsing
+- **OpenAI API**: GPT-4o model for both pre-processing intent classification AND detailed 5-route email gate logic
+- **Pre-processing Prompt**: Exact replica of Make.com workflow classification (Purchase Order, Sample Request, Rush Order, Follow Up, None)
+- **Detailed Classification**: Advanced gate logic with artwork detection, body text analysis, attachment routing decisions
+- **Google Gemini API**: Gemini 2.5 Pro reserved exclusively for PDF attachment extraction with comprehensive purchase order parsing
 - **Specialized Prompt Engineering**: Advanced OCR error correction, vendor/customer/ship-to identification, SKU processing with color mapping
-- **Classification Logic**: Body vs attachment detection, sample vs purchase order identification, artwork filtering, confidence scoring
+- **Two-Step Workflow**: Pre-processing filters emails → Detailed analysis for qualified emails → PDF extraction for attachments
 - **Clear Separation**: OpenAI handles all email analysis, Gemini handles all PDF extraction - no fallback between engines for different tasks
 
 ### Data Storage Services
