@@ -66,6 +66,22 @@ export const emailQueue = pgTable("email_queue", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
+// Customer master table for efficient lookups
+export const customers = pgTable("customers", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  customerNumber: text("customer_number").notNull().unique(), // C12345
+  companyName: text("company_name").notNull(),
+  alternateNames: text("alternate_names").array(), // For fuzzy matching
+  email: text("email"),
+  phone: text("phone"),
+  address: jsonb("address"),
+  netsuiteId: text("netsuite_id"),
+  isActive: boolean("is_active").default(true),
+  searchVector: text("search_vector"), // For full-text search
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
 export const systemHealth = pgTable("system_health", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   service: text("service").notNull().unique(),
@@ -104,6 +120,10 @@ export const insertSystemHealthSchema = createInsertSchema(systemHealth).omit({
 // Types
 export type User = typeof users.$inferSelect;
 export type InsertUser = z.infer<typeof insertUserSchema>;
+
+export type Customer = typeof customers.$inferSelect;
+export const insertCustomerSchema = createInsertSchema(customers);
+export type InsertCustomer = z.infer<typeof insertCustomerSchema>;
 
 export type PurchaseOrder = typeof purchaseOrders.$inferSelect;
 export type InsertPurchaseOrder = z.infer<typeof insertPurchaseOrderSchema>;

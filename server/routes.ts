@@ -1,6 +1,7 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
+import { registerCustomerRoutes } from "./routes/customers";
 import { gmailService } from "./services/gmail";
 import { openaiService } from "./services/openai";
 import { aiService, type AIEngine } from "./services/ai-service";
@@ -11,6 +12,8 @@ import { insertPurchaseOrderSchema, insertErrorLogSchema, classificationResultSc
 import { z } from "zod";
 
 export async function registerRoutes(app: Express): Promise<Server> {
+  // Register customer routes
+  registerCustomerRoutes(app);
   
   // Initialize Gmail labels on startup
   try {
