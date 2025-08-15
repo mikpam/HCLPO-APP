@@ -1,0 +1,184 @@
+Analyze the file and create the most accurate data according to this schema, outputting only a valid JSON object:
+
+Generated json
+
+{
+  "purchaseOrder": {
+    "purchaseOrderNumber": "string",
+    "orderDate": "date",
+    "inHandsDate": "date",
+    "requiredShipDate": "date",
+    "customer": {
+      "customerNumber": "string",
+      "company": "string",
+      "firstName": "string",
+      "lastName": "string",
+      "email": "string",
+      "address1": "string",
+      "address2": "string",
+      "city": "string",
+      "state": "string",
+      "country": "string",
+      "zipCode": "string",
+      "phone": "string"
+    },
+    "ppaiNumber": "string",
+    "asiNumber": "string",
+    "salesPersonName": "string",
+    "salesPersonEmail": "string",
+    "vendor": {
+      "name": "string",
+      "address1": "string",
+      "address2": "string",
+      "city": "string",
+      "state": "string",
+      "country": "string",
+      "zipCode": "string",
+      "phone": "string",
+      "email": "string"
+    },
+    "shipTo": {
+      "name": "string",
+      "company": "string",
+      "address1": "string",
+      "address2": "string",
+      "city": "string",
+      "state": "string",
+      "country": "string",
+      "zipCode": "string"
+    },
+    "shippingMethod": "string",
+    "shippingCarrier": "string"
+  },
+  "lineItems": [
+    {
+      "sku": "string",
+      "itemColor": "string",
+      "imprintColor": "string",
+      "description": "string",
+      "quantity": "number",
+      "unitPrice": "number",
+      "totalPrice": "number",
+      "finalSKU": "string"
+    }
+  ],
+  "subtotals": {
+    "merchandiseSubtotal": "number",
+    "additionalChargesSubtotal": "number",
+    "grandTotal": "number"
+  },
+  "specialInstructions": "string",
+  "additionalNotes": ["string"]
+}
+
+
+Color Code Mapping for finalSKU:
+
+Generated json
+{
+  "00": "White", "00M": "Matte White", "00S": "Shiny White", "01": "Blue", "01M": "Matte Blue", "01S": "Shiny Blue", "01T": "Transparent Blue", "02": "Red", "02S": "Solid Red", "02T": "Transparent Red", "03": "Green", "03M": "Matte Green", "04": "Orange", "04M": "Matte Orange", "05": "Purple", "06": "Black", "06M": "Matte Black", "07": "Gray", "07M": "Matte Gray", "08": "Yellow", "09": "Silver", "-10": "Navy Blue", "10M": "Matte Navy Blue", "11": "Light Blue", "12": "Pink", "12M": "Matte Pink", "12S": "Solid Pink", "13": "Dark Green", "14": "Reflex Blue", "15": "Dark Blue", "16": "Charcoal Black", "17": "Khaki", "18": "Brown", "19": "Tan", "20": "Cyan Blue", "21": "Hot Pink", "22": "Burgundy", "23": "Rose Gold", "24": "Beige", "28": "Gold", "30": "Tri Color", "37": "Teal", "40": "Fuchsia", "50": "Bamboo", "63": "Sage", "65": "Lavender", "68": "Gold", "BKS": "Black Swirl", "BS": "Blue Swirl", "CL": "Clear", "CM": "Camo", "CP": "Copper", "GS": "Green Swirl", "OS": "Orange Swirl", "PS": "Purple Swirl", "RB": "Rainbow", "RDS": "Red Swirl", "RS": "Rainbow Swirl"
+}
+IGNORE_WHEN_COPYING_START
+content_copy
+download
+Use code with caution.
+Json
+IGNORE_WHEN_COPYING_END
+
+Processing and Validation Rules:
+
+1. OCR Error Handling:
+
+a. Common Character Confusions: Correct for "1" vs "l" vs "i" | "0" vs "O" | "8" vs "B" | "5" vs "S" | "2" vs "Z" | "/" vs "1" | "." vs ",".
+
+b. Price Validation: Unit prices typically range from $0.01 to $1000.00. Verify if price × quantity ≈ total. Verify decimal placement (e.g., $100 vs $10.00).
+
+c. Number Formatting: Remove currency symbols for numeric fields. Use a period for the decimal separator. No commas in numbers.
+
+2. Critical Role Identification: A Step-by-Step Guide
+
+a. Step 1: ALWAYS Identify the Vendor First.
+
+The Vendor is ALWAYS "High Caliber Line" or one of its aliases ("CALIBRE INTERNATIONAL LLC", "HCL", "High Caliber").
+
+Locate this entity under a "Vendor" or similar field. This entity's details MUST be placed in the purchaseOrder.vendor object.
+
+b. Step 2: Identify the Customer (The Document Issuer).
+
+Primary Source of Truth: The Customer's identity MUST be inferred from the main company logo and the associated name/address in the header or top section of the purchase order. This entity is the creator or sender of the document (e.g., HALO, Staples, Geiger).
+
+CRUCIAL EXCLUSION RULE: The Customer's name and details MUST NOT be sourced from the "Ship To" or "Deliver To" section of the document.
+
+Constraint Check: The Customer is NEVER "High Caliber Line" or its aliases. The Customer's details MUST be placed in the purchaseOrder.customer object.
+
+c. Step 3: Identify the Ship-To (The Recipient).
+
+Only after identifying the Vendor and Customer, identify the final recipient.
+
+The Ship-To is the final destination address where goods will be delivered, explicitly labeled under a "Ship To," "Deliver To," or similar section.
+
+The Ship-To's details MUST be placed in the purchaseOrder.shipTo object.
+
+Final Verification: Do not confuse the "Ship To" party with the "Customer" identified in Step 2.
+
+3. Contact Information:
+
+a. Email Priority: Search for the Customer email in this order: 1) The main contact email in the document's header. 2) An address specified under "Send invoices/proofs/billing to". 3) A sales representative's email. Use an empty string if none are found.
+
+b. Phone Number Validation: Must be 10 digits (excluding any formatting characters).
+
+4. Address Processing:
+
+a. State Names: Convert all US state abbreviations to their full names (e.g., "CA" → "California").
+
+b. ZIP Code Validation: Cross-check the state with the ZIP code's first digits where possible.
+
+c. Default Country: If a country is not explicitly listed in an address, default it to "United States".
+
+5. SKU Processing:
+
+IMPORTANT:
+
+a. Setup Charge Check: If the line item description contains "setup charge", "SETUP", "setup", "SU", "set charge", or "Setup Fee", the sku and finalSKU must be "SET UP".
+
+b. Extra Charges:
+
+If the description contains “extra color”, set sku and finalSKU to "EC".
+
+If the description contains “extra location”, set sku and finalSKU to "EL".
+
+c. Color Processing: For standard items, extract the base SKU and map the item's color using the provided color codes. Combine them as "SKUCODE-COLORCODE". Default to "OE-MISC-CHARGE" if no match can be found.
+
+d. Clean-up: Remove any trailing dashes and spaces from the final SKU and convert it to uppercase.
+
+6. Date Handling:
+
+a. Format Standardization: Convert all dates to MM/DD/YYYY format.
+
+b. Logic Check: Ensure the date sequence is logical: Order Date ≤ Ship Date ≤ In-Hands Date. Flag any impossible dates (e.g., Ship Date before Order Date) in the additionalNotes.
+
+7. Price and Quantity Validation:
+
+a. Quantity Rules: Quantity must be a positive whole number.
+
+b. Price Calculations:
+
+Verify that lineItem.totalPrice is approximately equal to quantity × unitPrice.
+
+Verify that subtotals.merchandiseSubtotal is the sum of all lineItem.totalPrice values.
+
+Verify that subtotals.grandTotal is the sum of merchandiseSubtotal and additionalChargesSubtotal.
+
+Flag any calculation discrepancies greater than $0.01 in the additionalNotes field.
+
+8. Required Fields and Defaults:
+
+a. Text Fields: Use an empty string "" for any missing text fields.
+
+b. Numeric Fields: Use null for missing numeric fields.
+
+c. Order Date: If the orderDate is missing or unreadable, use today's date.
+
+d. Missing Data: Flag any missing but essential fields (like grand total or a customer name) in additionalNotes.
+
+Process and return only a valid JSON object with the most accurate combined data. DO NOT add the text "json" and ''' at the beginning and the end of the result. Replace all null values with a blank string "". DO NOT use dummy data.

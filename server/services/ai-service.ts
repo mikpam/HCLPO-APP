@@ -33,34 +33,27 @@ class AIServiceManager {
   }
 
   async classifyEmail(input: EmailClassificationInput): Promise<ClassificationResult & { engine: AIEngine }> {
+    // Always use OpenAI for email classification - Gemini reserved for PDF extraction only
     try {
-      const service = this.getService(this.classificationEngine);
-      const result = await service.classifyEmail(input);
-      return { ...result, engine: this.classificationEngine };
+      const result = await openaiService.classifyEmail(input);
+      return { ...result, engine: 'openai' };
     } catch (error) {
-      console.error(`${this.classificationEngine} classification failed, trying fallback:`, error);
+      console.error('OpenAI classification failed:', error);
       
-      try {
-        const fallbackService = this.getService(this.fallbackEngine);
-        const result = await fallbackService.classifyEmail(input);
-        return { ...result, engine: this.fallbackEngine };
-      } catch (fallbackError) {
-        console.error(`Both AI engines failed for classification:`, fallbackError);
-        
-        // Ultimate fallback
-        return {
-          analysis_flags: {
-            attachments_present: input.attachments.length > 0,
-            body_sufficiency: false,
-            sample_flag: false,
-            confidence: 0.1,
-            artwork_only: false
-          },
-          recommended_route: input.attachments.length > 0 ? 'ATTACHMENT_PO' : 'REVIEW',
-          tags: ['fallback'],
-          engine: this.classificationEngine
-        };
-      }
+      // Basic fallback classification without using Gemini (reserved for PDF extraction)
+      return {
+        analysis_flags: {
+          has_attachments: input.attachments.length > 0,
+          attachments_all_artwork_files: false,
+          po_details_in_body_sufficient: false,
+          is_sample_request_in_body: false,
+          overall_po_nature_probability: "low",
+          confidence_score: 0.1
+        },
+        recommended_route: input.attachments.length > 0 ? 'ATTACHMENT_PO' : 'REVIEW',
+        suggested_tags: ['OpenAI Service Unavailable'],
+        engine: 'openai'
+      };
     }
   }
 

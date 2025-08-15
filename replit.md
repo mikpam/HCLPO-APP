@@ -31,12 +31,12 @@ Preferred communication style: Simple, everyday language.
 - **Schema Features**: UUID primary keys, JSONB columns for flexible data storage, timestamp tracking, status enums
 
 ### Email Processing Pipeline
-- **Classification Engine**: OpenAI GPT-4o for email content analysis and routing decisions
-- **Attachment Processing**: Google Gemini 2.5 Pro specialized for PDF purchase order extraction
-- **Routes**: TEXT_PO (body-based orders), ATTACHMENT_PO (PDF-based orders), REVIEW (manual review required)
-- **Safeguards**: Artwork file filtering, body text sufficiency checks, confidence scoring
-- **Processing Flow**: Gmail ingestion → AI classification → data extraction (engine-specific) → validation → NetSuite import
-- **AI Engine Management**: Configurable engine selection with specialized attachment routing
+- **Classification Engine**: OpenAI GPT-4o exclusively handles all email gate logic and routing decisions
+- **Attachment Processing**: Google Gemini 2.5 Pro reserved specifically for PDF purchase order extraction and parsing
+- **Routes**: TEXT_PO, TEXT_SAMPLE, ATTACHMENT_PO, ATTACHMENT_SAMPLE, REVIEW (5-route classification system)
+- **Advanced Gate Logic**: Artwork detection, body text sufficiency analysis, sample vs full order distinction, confidence scoring
+- **Processing Flow**: Gmail ingestion → OpenAI classification → Gemini PDF extraction (if attachment route) → validation → NetSuite import
+- **Specialized Architecture**: Clear separation of responsibilities between AI engines for optimal performance
 
 ### Authentication & Authorization
 - **Strategy**: Session-based authentication with role-based access control
@@ -51,11 +51,11 @@ Preferred communication style: Simple, everyday language.
 - **Attachments**: PDF processing and content extraction capabilities
 
 ### AI/ML Services
-- **OpenAI API**: GPT-4o model for email classification and text-based PO extraction
-- **Google Gemini API**: Gemini 2.5 Pro specialized for PDF attachment processing and analysis
-- **AI Service Manager**: Intelligent routing system that uses Gemini 2.5 Pro for attachment processing and OpenAI for other tasks
-- **Classification Logic**: Body vs attachment detection, sample vs purchase order identification, confidence scoring
-- **Fallback System**: Automatic engine switching if primary AI service fails
+- **OpenAI API**: GPT-4o model exclusively for email gate logic and classification with sophisticated 5-route decision system
+- **Google Gemini API**: Gemini 2.5 Pro reserved for PDF attachment extraction with comprehensive purchase order parsing
+- **Specialized Prompt Engineering**: Advanced OCR error correction, vendor/customer/ship-to identification, SKU processing with color mapping
+- **Classification Logic**: Body vs attachment detection, sample vs purchase order identification, artwork filtering, confidence scoring
+- **Clear Separation**: OpenAI handles all email analysis, Gemini handles all PDF extraction - no fallback between engines for different tasks
 
 ### Data Storage Services
 - **Airtable API**: Operational database for purchase orders and error logs

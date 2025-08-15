@@ -60,124 +60,126 @@ export class GeminiService {
     return hasQuantities && hasPricing && hasItems;
   }
 
+  // This method is kept for interface compatibility but not used for email classification
   async classifyEmail(input: EmailClassificationInput): Promise<ClassificationResult> {
-    try {
-      // Pre-filter artwork files
-      const nonArtworkAttachments = input.attachments.filter(att => 
-        !this.isArtworkFile(att.filename, att.contentType)
-      );
-
-      const artworkOnly = input.attachments.length > 0 && nonArtworkAttachments.length === 0;
-      const attachmentsPresent = input.attachments.length > 0;
-      const bodySufficiency = this.checkBodySufficiency(input.body);
-
-      const systemPrompt = `You are an expert email classifier for purchase orders. Analyze the email and classify:
-
-ROUTES:
-- TEXT_PO: Purchase order info is in email body (sufficient data)
-- ATTACHMENT_PO: Purchase order is in PDF attachment 
-- REVIEW: Requires manual review (samples, unclear, missing info)
-
-Return JSON with analysis flags:
-{
-  "analysis_flags": {
-    "attachments_present": boolean,
-    "body_sufficiency": boolean, 
-    "sample_flag": boolean,
-    "confidence": 0.0-1.0,
-    "artwork_only": boolean
-  },
-  "recommended_route": "TEXT_PO|ATTACHMENT_PO|REVIEW",
-  "tags": ["tag1", "tag2"]
-}`;
-
-      const prompt = `Subject: ${input.subject}
-Sender: ${input.sender}
-Body: ${input.body}
-Attachments: ${input.attachments.map(a => a.filename).join(', ')}
-
-Classify this email:`;
-
-      const response = await this.ai.models.generateContent({
-        model: "gemini-2.5-pro",
-        config: {
-          systemInstruction: systemPrompt,
-          responseMimeType: "application/json",
-          responseSchema: {
-            type: "object",
-            properties: {
-              analysis_flags: {
-                type: "object",
-                properties: {
-                  attachments_present: { type: "boolean" },
-                  body_sufficiency: { type: "boolean" },
-                  sample_flag: { type: "boolean" },
-                  confidence: { type: "number" },
-                  artwork_only: { type: "boolean" }
-                }
-              },
-              recommended_route: { type: "string", enum: ["TEXT_PO", "ATTACHMENT_PO", "REVIEW"] },
-              tags: { type: "array", items: { type: "string" } }
-            }
-          }
-        },
-        contents: prompt,
-      });
-
-      const rawJson = response.text;
-      if (rawJson) {
-        const result: ClassificationResult = JSON.parse(rawJson);
-        
-        // Override with our computed values
-        result.analysis_flags.attachments_present = attachmentsPresent;
-        result.analysis_flags.body_sufficiency = bodySufficiency;
-        result.analysis_flags.artwork_only = artworkOnly;
-        
-        return result;
-      } else {
-        throw new Error("Empty response from Gemini");
-      }
-    } catch (error) {
-      console.error('Gemini classification error:', error);
-      // Fallback classification
-      return {
-        analysis_flags: {
-          attachments_present: input.attachments.length > 0,
-          body_sufficiency: this.checkBodySufficiency(input.body),
-          sample_flag: false,
-          confidence: 0.1,
-          artwork_only: false
-        },
-        recommended_route: input.attachments.length > 0 ? 'ATTACHMENT_PO' : 'REVIEW',
-        tags: ['fallback']
-      };
-    }
+    // Fallback classification - Gemini is not used for email gate logic per user request
+    return {
+      analysis_flags: {
+        has_attachments: input.attachments.length > 0,
+        attachments_all_artwork_files: false,
+        po_details_in_body_sufficient: false,
+        is_sample_request_in_body: false,
+        overall_po_nature_probability: "low",
+        confidence_score: 0.1
+      },
+      recommended_route: 'REVIEW',
+      suggested_tags: ['Gemini Not Used For Classification']
+    };
   }
 
   async extractPOData(body: string, attachmentText?: string): Promise<any> {
     try {
       const sourceText = attachmentText || body;
       
-      const prompt = `
-        Extract purchase order data from the following text and structure it as JSON:
+      const prompt = `Analyze the file and create the most accurate data according to this schema, outputting only a valid JSON object:
 
-        ${sourceText}
+${sourceText}
 
-        Extract the following information:
-        - PO number
-        - Customer information (name, email, address)
-        - Line items (description, quantity, price, SKU if available)
-        - Shipping information
-        - Totals
-        - Dates
+JSON Schema:
+{
+  "purchaseOrder": {
+    "purchaseOrderNumber": "string",
+    "orderDate": "date",
+    "inHandsDate": "date", 
+    "requiredShipDate": "date",
+    "customer": {
+      "customerNumber": "string",
+      "company": "string",
+      "firstName": "string",
+      "lastName": "string",
+      "email": "string",
+      "address1": "string",
+      "address2": "string",
+      "city": "string",
+      "state": "string",
+      "country": "string",
+      "zipCode": "string",
+      "phone": "string"
+    },
+    "ppaiNumber": "string",
+    "asiNumber": "string",
+    "salesPersonName": "string",
+    "salesPersonEmail": "string",
+    "vendor": {
+      "name": "string",
+      "address1": "string",
+      "address2": "string",
+      "city": "string",
+      "state": "string", 
+      "country": "string",
+      "zipCode": "string",
+      "phone": "string",
+      "email": "string"
+    },
+    "shipTo": {
+      "name": "string",
+      "company": "string",
+      "address1": "string",
+      "address2": "string",
+      "city": "string",
+      "state": "string",
+      "country": "string",
+      "zipCode": "string"
+    },
+    "shippingMethod": "string",
+    "shippingCarrier": "string"
+  },
+  "lineItems": [
+    {
+      "sku": "string",
+      "itemColor": "string",
+      "imprintColor": "string",
+      "description": "string",
+      "quantity": "number",
+      "unitPrice": "number", 
+      "totalPrice": "number",
+      "finalSKU": "string"
+    }
+  ],
+  "subtotals": {
+    "merchandiseSubtotal": "number",
+    "additionalChargesSubtotal": "number",
+    "grandTotal": "number"
+  },
+  "specialInstructions": "string",
+  "additionalNotes": ["string"]
+}
 
-        Respond with structured JSON containing this information.
-      `;
+Color Code Mapping for finalSKU:
+{"00": "White", "00M": "Matte White", "00S": "Shiny White", "01": "Blue", "01M": "Matte Blue", "01S": "Shiny Blue", "01T": "Transparent Blue", "02": "Red", "02S": "Solid Red", "02T": "Transparent Red", "03": "Green", "03M": "Matte Green", "04": "Orange", "04M": "Matte Orange", "05": "Purple", "06": "Black", "06M": "Matte Black", "07": "Gray", "07M": "Matte Gray", "08": "Yellow", "09": "Silver", "10": "Navy Blue", "10M": "Matte Navy Blue", "11": "Light Blue", "12": "Pink"}
+
+Processing Rules:
+1. OCR Error Handling: Correct "1"vs"l"vs"i", "0"vs"O", "8"vs"B", "5"vs"S", "2"vs"Z", "/"vs"1", "."vs",".
+2. Critical Role Identification:
+   a) ALWAYS identify Vendor first: "High Caliber Line" or aliases ("CALIBRE INTERNATIONAL LLC", "HCL", "High Caliber")
+   b) Customer: Main company from header/logo (NEVER from Ship To section, NEVER "High Caliber Line")
+   c) Ship-To: Final delivery destination from "Ship To"/"Deliver To" section
+3. Contact: Email priority: header contact → billing contact → sales rep email → empty string
+4. Address: Convert state abbreviations to full names, default country to "United States"
+5. SKU Processing:
+   a) Setup charges: description contains "setup charge"/"SETUP"/"setup"/"SU"/"set charge"/"Setup Fee" → sku="SET UP"
+   b) Extra color: description contains "extra color" → sku="EC" 
+   c) Extra location: description contains "extra location" → sku="EL"
+   d) Standard items: combine base SKU with color code as "SKUCODE-COLORCODE", default "OE-MISC-CHARGE"
+6. Dates: MM/DD/YYYY format, ensure logical sequence
+7. Price Validation: Verify calculations, flag discrepancies >$0.01 in additionalNotes
+8. Required Fields: Use "" for missing text, null for missing numbers
+9. Replace all null values with "". DO NOT use dummy data.`;
 
       const response = await this.ai.models.generateContent({
         model: "gemini-2.5-pro",
         config: {
-          systemInstruction: "You are a data extraction expert. Extract purchase order information and return structured JSON.",
+          systemInstruction: "You are a specialized purchase order extraction expert. Extract data following the exact schema and processing rules. Return only valid JSON without markdown formatting.",
           responseMimeType: "application/json"
         },
         contents: prompt,
@@ -185,14 +187,33 @@ Classify this email:`;
 
       const rawJson = response.text;
       if (rawJson) {
-        return JSON.parse(rawJson);
+        const result = JSON.parse(rawJson);
+        // Replace any null values with empty strings as per user requirements
+        return this.replaceNullsWithEmptyStrings(result);
       } else {
         throw new Error("Empty response from Gemini");
       }
     } catch (error) {
-      console.error('Gemini extraction error:', error);
-      throw new Error(`Data extraction failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      console.error('Gemini PO extraction error:', error);
+      throw new Error(`PO data extraction failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
+  }
+
+  private replaceNullsWithEmptyStrings(obj: any): any {
+    if (obj === null) {
+      return "";
+    }
+    if (Array.isArray(obj)) {
+      return obj.map(item => this.replaceNullsWithEmptyStrings(item));
+    }
+    if (typeof obj === 'object' && obj !== null) {
+      const result: any = {};
+      for (const [key, value] of Object.entries(obj)) {
+        result[key] = this.replaceNullsWithEmptyStrings(value);
+      }
+      return result;
+    }
+    return obj;
   }
 
 
