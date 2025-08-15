@@ -17,23 +17,24 @@ export interface EmailClassificationInput {
 }
 
 export interface ClassificationFlags {
-  attachments_present: boolean;
-  body_sufficiency: boolean;
-  sample_flag: boolean;
-  confidence: number;
-  artwork_only: boolean;
+  has_attachments: boolean;
+  attachments_all_artwork_files: boolean;
+  po_details_in_body_sufficient: boolean;
+  is_sample_request_in_body: boolean;
+  overall_po_nature_probability: "high" | "medium" | "low";
+  confidence_score: number;
 }
 
 export interface ClassificationResult {
   analysis_flags: ClassificationFlags;
-  recommended_route: "TEXT_PO" | "ATTACHMENT_PO" | "REVIEW";
-  tags: string[];
+  recommended_route: "TEXT_PO" | "TEXT_SAMPLE" | "ATTACHMENT_PO" | "ATTACHMENT_SAMPLE" | "REVIEW";
+  suggested_tags: string[];
 }
 
 export class OpenAIService {
   private isArtworkFile(filename: string, contentType: string): boolean {
     const artworkExtensions = ['.ai', '.eps', '.svg', '.png', '.jpg', '.jpeg', '.tif', '.gif'];
-    const artworkMimeTypes = ['application/postscript', 'image/', 'application/illustrator'];
+    const artworkMimeTypes = ['image/', 'application/illustrator', 'application/postscript', 'application/eps'];
     
     const hasArtworkExtension = artworkExtensions.some(ext => 
       filename.toLowerCase().endsWith(ext)
@@ -46,8 +47,8 @@ export class OpenAIService {
     return hasArtworkExtension || hasArtworkMimeType;
   }
 
-  private checkBodySufficiency(body: string): boolean {
-    // Check for item descriptions, quantities, and pricing
+  private checkPODetailsInBody(body: string): boolean {
+    // Check for item descriptions AND explicit quantities AND total/price figures
     const hasQuantities = /\b\d+\s*(pcs?|pieces?|units?|qty|quantity)\b/i.test(body);
     const hasPricing = /\$\d+|\d+\.\d{2}|total|price|cost/i.test(body);
     const hasItems = /item|product|description|part|sku/i.test(body);
@@ -63,6 +64,25 @@ export class OpenAIService {
       const num = parseInt(match.match(/\d+/)?.[0] || '0');
       return total + num;
     }, 0);
+  }
+
+  private assessPONature(subject: string, body: string): "high" | "medium" | "low" {
+    const poKeywords = /purchase.?order|po\s|order|quote|rfq|requisition/i;
+    const sampleKeywords = /sample|proof|test|trial/i;
+    
+    if (poKeywords.test(subject) || poKeywords.test(body)) {
+      return "high";
+    } else if (sampleKeywords.test(subject) || sampleKeywords.test(body)) {
+      return "medium";
+    }
+    return "low";
+  }
+
+  private isAttachmentPO(filename: string, contentType: string): boolean {
+    const poPattern = /^(po|order).*\.(pdf|docx?|xlsx?)$/i;
+    const poMimeTypes = /application\/(pdf|msword|vnd\.openxmlformats-officedocument.*)/;
+    
+    return poPattern.test(filename) || poMimeTypes.test(contentType);
   }
 
   async classifyEmail(input: EmailClassificationInput): Promise<ClassificationResult> {
