@@ -20,17 +20,18 @@ export interface EmailClassificationInput {
 }
 
 export interface ClassificationFlags {
-  attachments_present: boolean;
-  body_sufficiency: boolean;
-  sample_flag: boolean;
-  confidence: number;
-  artwork_only: boolean;
+  has_attachments: boolean;
+  attachments_all_artwork_files: boolean;
+  po_details_in_body_sufficient: boolean;
+  is_sample_request_in_body: boolean;
+  overall_po_nature_probability: "high" | "medium" | "low";
+  confidence_score: number;
 }
 
 export interface ClassificationResult {
   analysis_flags: ClassificationFlags;
-  recommended_route: "TEXT_PO" | "ATTACHMENT_PO" | "REVIEW";
-  tags: string[];
+  recommended_route: "TEXT_PO" | "TEXT_SAMPLE" | "ATTACHMENT_PO" | "ATTACHMENT_SAMPLE" | "REVIEW";
+  suggested_tags: string[];
 }
 
 export class GeminiService {

@@ -87,58 +87,77 @@ export class OpenAIService {
 
   async classifyEmail(input: EmailClassificationInput): Promise<ClassificationResult> {
     try {
-      // Pre-filter artwork files
-      const nonArtworkAttachments = input.attachments.filter(att => 
-        !this.isArtworkFile(att.filename, att.contentType)
-      );
-
-      const artworkOnly = input.attachments.length > 0 && nonArtworkAttachments.length === 0;
-      const attachmentsPresent = nonArtworkAttachments.length > 0;
-      const bodySufficiency = this.checkBodySufficiency(input.body);
-      const totalQuantity = this.extractTotalQuantity(input.body);
-      
-      const prompt = `
-        Analyze this email to determine if it contains a purchase order and classify the routing:
-
-        From: ${input.sender}
-        Subject: ${input.subject}
-        Body: ${input.body}
-        Attachments: ${input.attachments.map(a => `${a.filename} (${a.contentType})`).join(', ')}
-
-        Classification Rules:
-        1. TEXT_PO: If PO details are sufficiently present in email body (items, quantities, pricing)
-        2. ATTACHMENT_PO: If PO is primarily in attachments (non-artwork files)
-        3. REVIEW: If uncertain, low confidence, or potential sample order
-
-        Additional Context:
-        - Artwork files (.ai/.eps/.svg/.png/.jpg/.jpeg/.tif/.gif) should be ignored for PO classification
-        - Small quantities (<5 total items) may indicate sample orders
-        - Body sufficiency requires item descriptions + quantities + pricing information
-
-        Respond with JSON in this exact format:
-        {
-          "analysis_flags": {
-            "attachments_present": boolean,
-            "body_sufficiency": boolean,
-            "sample_flag": boolean,
-            "confidence": number (0-1),
-            "artwork_only": boolean
-          },
-          "recommended_route": "TEXT_PO" | "ATTACHMENT_PO" | "REVIEW",
-          "tags": ["tag1", "tag2"]
-        }
-      `;
+      // Build attachment info strings
+      const attachmentFilenames = input.attachments?.map(a => a.filename).join(', ') || '';
+      const attachmentContentTypes = input.attachments?.map(a => a.contentType).join(', ') || '';
 
       const response = await openai.chat.completions.create({
-        model: "gpt-4o",
+        model: "gpt-4o", // the newest OpenAI model is "gpt-4o" which was released May 13, 2024. do not change this unless explicitly requested by the user
         messages: [
           {
             role: "system",
-            content: "You are an expert email classifier for purchase order processing. Analyze emails and provide structured classification results."
+            content: `You are an **Email Analysis Assistant**. Inspect the email fields and return a single, valid JSON object deciding:
+
+1. Whether the order data should come from **body text** or **attachments**  
+2. Whether it is a **regular PO** or a **sample request**
+
+### TASKS
+1. **Attachment Presence** – Detect any attachment.  
+2. **Artwork‑Only Attachments** – If attachments exist, decide if **all** are artwork / proof files  
+   (filename ends in \`.ai|.eps|.svg|.png|.jpg|.jpeg|.tif|.gif\` **or** contentType matches \`image/.*\` or \`application/(illustrator|postscript|eps)\`).
+3. **PO Details in Body** – Decide if the body alone supplies enough structured info to act as a purchase order  
+   (item descriptions **and** explicit quantities **and** total / price figures).
+4. **Sample Request in Body** – If Task 3 is true, check whether the **sum of all explicit quantities mentioned** is **< 5**.
+5. **Overall PO Nature** – Assess how likely the email's main intent is a new, transactable PO (including sample requests).
+6. **Recommended Route**  
+   * **"TEXT_PO"** – use if \`po_details_in_body_sufficient\` is \`true\` **and not** \`is_sample_request_in_body\`  
+     **and** (attachments are absent **or** artwork‑only **or** don't look like a PO).  
+   * **"TEXT_SAMPLE"** – use if \`is_sample_request_in_body\` is \`true\` **and** \`po_details_in_body_sufficient\` is \`true\`.  
+   * **"ATTACHMENT_PO"** – use if \`has_attachments\` is \`true\` **and not** \`attachments_all_artwork_files\`  
+     **and** attachments look like a PO **and** \`is_sample_request_in_body\` is \`false\`.  
+   * **"ATTACHMENT_SAMPLE"** – use if \`has_attachments\` is \`true\` **and not** \`attachments_all_artwork_files\`  
+     **and** attachments look like a PO **and** \`is_sample_request_in_body\` is \`true\`.  
+   * **"REVIEW"** – use for all other cases (ambiguous or low PO intent).
+
+### JSON SCHEMA (STRICT)
+{
+  "analysis_flags": {
+    "has_attachments": boolean,
+    "attachments_all_artwork_files": boolean,
+    "po_details_in_body_sufficient": boolean,
+    "is_sample_request_in_body": boolean,
+    "overall_po_nature_probability": "high" | "medium" | "low",
+    "confidence_score": number        // float 0‑1
+  },
+  "recommended_route": "TEXT_PO" | "TEXT_SAMPLE" | "ATTACHMENT_PO" | "ATTACHMENT_SAMPLE" | "REVIEW",
+  "suggested_tags": [string]           // only from the Allowed Tag List
+}
+
+### ALLOWED TAG LIST & CONDITIONS
+* **"Purchase Order Related"** – include if "overall_po_nature_probability" is "high" or "medium".
+* **"PO in Body"** – include if "po_details_in_body_sufficient" is true.
+* **"Sample Request in Body"** – include if both "is_sample_request_in_body" and "po_details_in_body_sufficient" are true.
+* **"Attachment Likely PO"** – include if "has_attachments" is true **and not** "attachments_all_artwork_files"  
+  **and** any filename matches \`(?i)^(po|order).*\\.(pdf|docx?|xlsx?)$\` **or** contentType matches \`application/(pdf|msword|vnd\\.openxmlformats-officedocument.*)\`.
+* **"Artwork Attachment"** – include if "attachments_all_artwork_files" is true.
+* **"Needs Attachment Review"** – include if "recommended_route" is "REVIEW".
+* **"Low PO Intent"** – include if "overall_po_nature_probability" is "low".
+
+OUTPUT RULES
+* Return **only** the JSON object—no commentary, markdown, or extra text.  
+* **If you cannot comply exactly**, output the single word \`INVALID\`.`
           },
           {
-            role: "user",
-            content: prompt
+            role: "user", 
+            content: `INPUT FIELDS
+* Subject: "${input.subject}"
+* Body Text: "${input.body}"
+* Sender Name: "${input.sender}"
+* Sender Email: "${input.sender}"
+* Attachment Filenames: "${attachmentFilenames}"
+* Attachment Content Types: "${attachmentContentTypes}"
+
+BEGIN JSON OUTPUT NOW:`
           }
         ],
         response_format: { type: "json_object" },
@@ -147,30 +166,22 @@ export class OpenAIService {
 
       const result = JSON.parse(response.choices[0].message.content || '{}');
       
-      // Apply business rules overrides
-      if (artworkOnly) {
-        result.analysis_flags.artwork_only = true;
-        result.recommended_route = "REVIEW";
-        result.analysis_flags.confidence = Math.min(result.analysis_flags.confidence, 0.3);
-      }
-
-      if (totalQuantity > 0 && totalQuantity < 5) {
-        result.analysis_flags.sample_flag = true;
-        if (result.recommended_route === "TEXT_PO") {
-          result.recommended_route = "REVIEW";
-        }
-      }
-
-      // Override flags with our pre-computed values
-      result.analysis_flags.attachments_present = attachmentsPresent;
-      result.analysis_flags.body_sufficiency = bodySufficiency;
-      result.analysis_flags.artwork_only = artworkOnly;
-
-      return result;
-
+      // Validate and return the exact response structure
+      return {
+        analysis_flags: {
+          has_attachments: result.analysis_flags?.has_attachments || false,
+          attachments_all_artwork_files: result.analysis_flags?.attachments_all_artwork_files || false,
+          po_details_in_body_sufficient: result.analysis_flags?.po_details_in_body_sufficient || false,
+          is_sample_request_in_body: result.analysis_flags?.is_sample_request_in_body || false,
+          overall_po_nature_probability: result.analysis_flags?.overall_po_nature_probability || "low",
+          confidence_score: result.analysis_flags?.confidence_score || 0.5
+        },
+        recommended_route: result.recommended_route || 'REVIEW',
+        suggested_tags: result.suggested_tags || []
+      };
     } catch (error) {
       console.error('OpenAI classification error:', error);
-      throw new Error(`Classification failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      throw new Error(`Email classification failed: ${error}`);
     }
   }
 
