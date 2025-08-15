@@ -519,6 +519,51 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Clear all files from object storage
+  app.delete("/api/files/clear-all", async (req, res) => {
+    try {
+      const { ObjectStorageService } = await import('./objectStorage');
+      const objectStorageService = new ObjectStorageService();
+      
+      // Get the bucket from private object directory
+      const privateDir = objectStorageService.getPrivateObjectDir();
+      const bucketName = privateDir.split('/')[1]; // Extract bucket name from path like "/bucket-name/.private"
+      
+      // Import object storage client
+      const { objectStorageClient } = await import('./objectStorage');
+      const bucket = objectStorageClient.bucket(bucketName);
+      
+      // List all files with the private prefix
+      const [files] = await bucket.getFiles({ prefix: '.private/' });
+      
+      console.log(`Found ${files.length} files to delete from object storage`);
+      
+      // Delete all files
+      let deletedCount = 0;
+      for (const file of files) {
+        try {
+          await file.delete();
+          deletedCount++;
+          console.log(`Deleted: ${file.name}`);
+        } catch (error) {
+          console.error(`Failed to delete file ${file.name}:`, error);
+        }
+      }
+      
+      res.json({ 
+        success: true, 
+        message: `Successfully deleted ${deletedCount} out of ${files.length} files from object storage`,
+        deletedCount,
+        totalCount: files.length
+      });
+    } catch (error) {
+      console.error('Error clearing object storage:', error);
+      res.status(500).json({ 
+        message: error instanceof Error ? error.message : 'Failed to clear object storage' 
+      });
+    }
+  });
+
   // Purchase Orders
   app.get("/api/purchase-orders", async (req, res) => {
     try {
