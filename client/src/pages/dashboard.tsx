@@ -1,17 +1,45 @@
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { DashboardMetrics } from "@/types";
 import MetricsCards from "@/components/dashboard/metrics-cards";
 import RecentProcessing from "@/components/dashboard/recent-processing";
 import SystemHealth from "@/components/dashboard/system-health";
 import ManualProcessModal from "@/components/modals/manual-process-modal";
 import { useState, useEffect } from "react";
+import { apiRequest } from "@/lib/queryClient";
+import { useToast } from "@/hooks/use-toast";
 
 export default function Dashboard() {
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [lastProcessResult, setLastProcessResult] = useState<any>(null);
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
   
   const { data: metrics, isLoading: metricsLoading } = useQuery<DashboardMetrics>({
     queryKey: ["/api/dashboard/metrics"],
     refetchInterval: 30000 // Refresh every 30 seconds
+  });
+
+  const processSingleEmail = useMutation({
+    mutationFn: () => apiRequest("/api/emails/process-single", { method: "POST" }),
+    onSuccess: (result) => {
+      setLastProcessResult(result);
+      toast({
+        title: "Email Processed",
+        description: result.message,
+        duration: 5000,
+      });
+      
+      // Refresh dashboard metrics and email queue
+      queryClient.invalidateQueries({ queryKey: ["/api/dashboard/metrics"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/email-queue"] });
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Processing Failed",
+        description: error.message || "Failed to process email",
+        variant: "destructive",
+      });
+    },
   });
 
   // Handle modal opening from global events (for backward compatibility with existing buttons)
@@ -65,6 +93,18 @@ export default function Dashboard() {
             <p className="text-secondary mt-1">Monitor and manage purchase order processing</p>
           </div>
           <div className="flex items-center space-x-4">
+            {/* Development Controls */}
+            <div className="flex items-center space-x-2 px-3 py-1 bg-amber-50 border border-amber-200 rounded-lg">
+              <span className="text-xs text-amber-700 font-medium">DEV</span>
+              <button
+                onClick={() => processSingleEmail.mutate()}
+                disabled={processSingleEmail.isPending}
+                className="px-3 py-1 bg-amber-600 text-white text-xs rounded hover:bg-amber-700 transition-colors disabled:opacity-50"
+              >
+                {processSingleEmail.isPending ? "Processing..." : "Process 1 Email"}
+              </button>
+            </div>
+            
             <div className="flex items-center space-x-2 text-sm text-secondary">
               <i className="fas fa-sync-alt w-4"></i>
               <span>Last sync: 2 minutes ago</span>
@@ -86,6 +126,92 @@ export default function Dashboard() {
           metrics={metrics || { emailsProcessedToday: 0, posProcessed: 0, pendingReview: 0, processingErrors: 0 }}
           isLoading={metricsLoading}
         />
+
+        {/* Development Processing Result Display */}
+        {lastProcessResult && (
+          <div className="mb-8 bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-200 rounded-xl p-6">
+            <h3 className="text-lg font-semibold text-amber-800 mb-4">
+              <i className="fas fa-code text-amber-600 mr-2"></i>
+              Development Processing Result
+            </h3>
+            
+            {lastProcessResult.details ? (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div>
+                  <h4 className="font-medium text-gray-800 mb-2">Email Details</h4>
+                  <div className="space-y-2 text-sm">
+                    <div><strong>From:</strong> {lastProcessResult.details.sender}</div>
+                    <div><strong>Subject:</strong> {lastProcessResult.details.subject}</div>
+                    <div><strong>Email ID:</strong> <code className="text-xs bg-gray-100 px-1 rounded">{lastProcessResult.details.emailId}</code></div>
+                  </div>
+                </div>
+                
+                <div>
+                  <h4 className="font-medium text-gray-800 mb-2">Processing Steps</h4>
+                  <div className="space-y-3">
+                    <div className="bg-white rounded p-3 border">
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="text-sm font-medium text-blue-800">Step 1: Pre-processing</span>
+                        <span className="text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded">
+                          {lastProcessResult.details.preprocessing.confidence}% confidence
+                        </span>
+                      </div>
+                      <div className="text-sm text-gray-600">
+                        Classification: <strong>{lastProcessResult.details.preprocessing.classification}</strong>
+                      </div>
+                      <div className="text-xs text-gray-500 mt-1">
+                        Should proceed: {lastProcessResult.details.preprocessing.shouldProceed ? '✅ Yes' : '❌ No'}
+                      </div>
+                    </div>
+                    
+                    {lastProcessResult.details.classification && (
+                      <div className="bg-white rounded p-3 border">
+                        <div className="flex items-center justify-between mb-1">
+                          <span className="text-sm font-medium text-green-800">Step 2: Detailed Analysis</span>
+                          <span className="text-xs bg-green-100 text-green-800 px-2 py-1 rounded">
+                            {lastProcessResult.details.classification.confidence}% confidence
+                          </span>
+                        </div>
+                        <div className="text-sm text-gray-600">
+                          Route: <strong>{lastProcessResult.details.classification.route}</strong>
+                        </div>
+                        <div className="text-xs text-gray-500 mt-1">
+                          Has attachments: {lastProcessResult.details.classification.hasAttachments ? '📎 Yes' : '📄 Text only'} • 
+                          Requires review: {lastProcessResult.details.classification.requiresReview ? '👀 Yes' : '✅ Auto-process'}
+                        </div>
+                      </div>
+                    )}
+                    
+                    {lastProcessResult.details.purchaseOrder && (
+                      <div className="bg-white rounded p-3 border">
+                        <div className="flex items-center justify-between mb-1">
+                          <span className="text-sm font-medium text-purple-800">Purchase Order Created</span>
+                          <span className="text-xs bg-purple-100 text-purple-800 px-2 py-1 rounded">
+                            {lastProcessResult.details.purchaseOrder.status}
+                          </span>
+                        </div>
+                        <div className="text-sm text-gray-600">
+                          PO Number: <strong>{lastProcessResult.details.purchaseOrder.poNumber}</strong>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className="text-gray-600">
+                {lastProcessResult.message}
+              </div>
+            )}
+            
+            <button 
+              onClick={() => setLastProcessResult(null)}
+              className="mt-4 text-xs text-amber-700 hover:text-amber-800 underline"
+            >
+              Dismiss Result
+            </button>
+          </div>
+        )}
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           {/* Recent Email Processing */}

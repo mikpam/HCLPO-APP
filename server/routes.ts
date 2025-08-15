@@ -75,6 +75,127 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Process single email for development
+  app.post("/api/emails/process-single", async (req, res) => {
+    try {
+      // Fetch emails from Gmail
+      const messages = await gmailService.getMessages();
+      console.log(`Found ${messages.length} messages in inbox`);
+
+      if (messages.length === 0) {
+        return res.json({ 
+          message: "No messages found to process",
+          processed: 0,
+          details: null
+        });
+      }
+
+      // Find first unprocessed message
+      let messageToProcess = null;
+      for (const message of messages) {
+        const existingQueue = await storage.getEmailQueueByGmailId(message.id);
+        if (!existingQueue) {
+          messageToProcess = message;
+          break;
+        }
+      }
+
+      if (!messageToProcess) {
+        return res.json({ 
+          message: "All messages have been processed already",
+          processed: 0,
+          details: null
+        });
+      }
+
+      console.log(`Processing single email: ${messageToProcess.subject}`);
+
+      // Create email queue item
+      const queueItem = await storage.createEmailQueueItem({
+        gmailId: messageToProcess.id,
+        sender: messageToProcess.sender,
+        subject: messageToProcess.subject,
+        body: messageToProcess.body,
+        attachments: messageToProcess.attachments,
+        labels: messageToProcess.labels,
+        status: 'processing'
+      });
+
+      // Process email using two-step approach
+      const processingResult = await aiService.processEmail({
+        sender: messageToProcess.sender,
+        subject: messageToProcess.subject,
+        body: messageToProcess.body,
+        attachments: messageToProcess.attachments
+      });
+
+      // Update queue item with results
+      const updateData: any = {
+        preprocessingResult: processingResult.preprocessing,
+        status: processingResult.preprocessing.shouldProceed ? 'processed' : 'filtered',
+        processedAt: new Date()
+      };
+
+      if (processingResult.classification) {
+        updateData.classificationResult = processingResult.classification;
+      }
+
+      await storage.updateEmailQueueItem(queueItem.id, updateData);
+
+      let purchaseOrder = null;
+
+      // Create purchase order if email passed both steps
+      if (processingResult.preprocessing.shouldProceed && processingResult.classification && 
+          processingResult.classification.recommended_route !== 'REVIEW') {
+        const poNumber = `PO-${new Date().getFullYear()}-${String(Date.now()).slice(-6)}`;
+        
+        purchaseOrder = await storage.createPurchaseOrder({
+          poNumber,
+          emailId: messageToProcess.id,
+          sender: messageToProcess.sender,
+          subject: messageToProcess.subject,
+          route: processingResult.classification.recommended_route,
+          confidence: processingResult.classification.analysis_flags.confidence_score,
+          status: processingResult.classification.recommended_route === 'TEXT_PO' ? 'ready_for_extraction' : 'pending_review',
+          originalJson: processingResult.classification
+        });
+      }
+
+      // Mark as processed in Gmail
+      await gmailService.markAsProcessed(messageToProcess.id);
+
+      res.json({ 
+        message: `Successfully processed: ${messageToProcess.subject}`,
+        processed: 1,
+        details: {
+          emailId: messageToProcess.id,
+          sender: messageToProcess.sender,
+          subject: messageToProcess.subject,
+          preprocessing: {
+            classification: processingResult.preprocessing.response,
+            confidence: Math.round(processingResult.preprocessing.score * 100),
+            shouldProceed: processingResult.preprocessing.shouldProceed
+          },
+          classification: processingResult.classification ? {
+            route: processingResult.classification.recommended_route,
+            confidence: Math.round((processingResult.classification.analysis_flags.confidence_score || 0) * 100),
+            hasAttachments: processingResult.classification.analysis_flags.has_attachments,
+            requiresReview: processingResult.classification.recommended_route === 'REVIEW'
+          } : null,
+          purchaseOrder: purchaseOrder ? {
+            poNumber: purchaseOrder.poNumber,
+            status: purchaseOrder.status
+          } : null
+        }
+      });
+    } catch (error) {
+      console.error('Error processing single email:', error);
+      res.status(500).json({ 
+        message: error instanceof Error ? error.message : 'Failed to process single email' 
+      });
+    }
+  });
+
   // Email processing
   app.post("/api/emails/process", async (req, res) => {
     try {
