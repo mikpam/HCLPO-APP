@@ -47,7 +47,8 @@ Preferred communication style: Simple, everyday language.
 - **Processing Flow**: Gmail ingestion → Pre-processing classification → Detailed analysis (if qualified) → AI document filtering → Gemini extraction (filtered documents or text) → real client PO extraction → NetSuite import
 - **Database Storage**: Preprocessing, classification, and extracted data (with real client PO numbers) stored in Neon PostgreSQL
 - **Manual Processing Mode**: Development uses single-email processing with detailed console tracing for debugging
-- **Successful Implementation**: Both ATTACHMENT_PO and TEXT_PO routes successfully extracting real client PO numbers with enhanced AI filtering system (August 15, 2025)
+- **Enhanced Gmail Labeling**: Preprocessing classifications now automatically apply Gmail labels for auditing (ai-purchase-order, ai-sample-request, ai-rush-order, ai-follow-up, ai-none-of-these)
+- **Successful Implementation**: Both ATTACHMENT_PO and TEXT_PO routes successfully extracting real client PO numbers with enhanced AI filtering system and complete email queue tracking including filtered emails (August 15, 2025)
 
 ### Authentication & Authorization
 - **Strategy**: Session-based authentication with role-based access control

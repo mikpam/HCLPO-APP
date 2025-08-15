@@ -12,6 +12,27 @@ import { z } from "zod";
 
 export async function registerRoutes(app: Express): Promise<Server> {
   
+  // Initialize Gmail labels on startup
+  try {
+    console.log('Initializing Gmail labels...');
+    await gmailService.ensureLabelsExist();
+    console.log('Gmail labels initialized successfully');
+  } catch (error) {
+    console.error('Failed to initialize Gmail labels:', error);
+  }
+  
+  // Test endpoint for Gmail labels
+  app.post("/api/test/gmail-labels", async (req, res) => {
+    try {
+      await gmailService.ensureLabelsExist();
+      res.json({ message: "Gmail labels created/verified successfully" });
+    } catch (error) {
+      res.status(500).json({ 
+        message: error instanceof Error ? error.message : 'Failed to manage Gmail labels' 
+      });
+    }
+  });
+  
   // Dashboard metrics
   app.get("/api/dashboard/metrics", async (req, res) => {
     try {
