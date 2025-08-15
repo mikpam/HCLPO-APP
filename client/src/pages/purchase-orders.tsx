@@ -29,11 +29,13 @@ export default function PurchaseOrdersPage() {
     if (!purchaseOrders) return [];
     
     let filtered = purchaseOrders.filter(order => {
+      const customerInfo = getCustomerInfo(order);
       const matchesSearch = !searchTerm || 
         order.poNumber.toLowerCase().includes(searchTerm.toLowerCase()) ||
         order.sender?.toLowerCase().includes(searchTerm.toLowerCase()) ||
         order.subject?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        (order.extractedData as any)?.customer?.customerName?.toLowerCase().includes(searchTerm.toLowerCase());
+        customerInfo.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        customerInfo.email.toLowerCase().includes(searchTerm.toLowerCase());
       
       const matchesStatus = statusFilter === "all" || order.status === statusFilter;
       const matchesRoute = routeFilter === "all" || order.route === routeFilter;
@@ -51,8 +53,8 @@ export default function PurchaseOrdersPage() {
           bValue = b.poNumber;
           break;
         case 'customer':
-          aValue = (a.extractedData as any)?.customer?.customerName || '';
-          bValue = (b.extractedData as any)?.customer?.customerName || '';
+          aValue = getCustomerInfo(a).name;
+          bValue = getCustomerInfo(b).name;
           break;
         case 'orderDate':
           aValue = (a.extractedData as any)?.purchaseOrder?.orderDate || '';
@@ -131,10 +133,32 @@ export default function PurchaseOrdersPage() {
 
   const getCustomerInfo = (order: PurchaseOrder) => {
     const extractedData = order.extractedData as any;
+    
+    // Try multiple possible locations for customer data in Gemini JSON
+    const customer = extractedData?.purchaseOrder?.customer || extractedData?.customer || {};
+    const shipTo = extractedData?.purchaseOrder?.shipTo || {};
+    
+    // Customer name: try company first, then firstName/lastName, then shipTo company
+    const customerName = customer.company || 
+                        (customer.firstName && customer.lastName ? `${customer.firstName} ${customer.lastName}` : '') ||
+                        customer.customerName ||
+                        shipTo.company ||
+                        (shipTo.firstName && shipTo.lastName ? `${shipTo.firstName} ${shipTo.lastName}` : '') ||
+                        'Unknown Customer';
+    
+    // Email: try customer email first, then fallback to sender
+    const email = customer.email || order.sender || 'No email';
+    
+    // Address: try customer address first, then shipTo address
+    const address = customer.address1 || shipTo.address1 || 'No address';
+    const city = customer.city || shipTo.city || '';
+    const state = customer.state || shipTo.state || '';
+    const fullAddress = address + (city && state ? `, ${city}, ${state}` : city ? `, ${city}` : state ? `, ${state}` : '');
+    
     return {
-      name: extractedData?.customer?.customerName || 'Unknown Customer',
-      email: extractedData?.customer?.email || order.sender || 'No email',
-      address: extractedData?.customer?.address1 || 'No address'
+      name: customerName,
+      email: email,
+      address: fullAddress || 'No address'
     };
   };
 
