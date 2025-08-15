@@ -29,7 +29,7 @@ export class GmailService {
     this.gmail = google.gmail({ version: 'v1', auth });
   }
 
-  async getMessages(query: string = 'label:purchase-order label:unprocessed'): Promise<GmailMessage[]> {
+  async getMessages(query: string = 'in:inbox'): Promise<GmailMessage[]> {
     try {
       const listResponse = await this.gmail.users.messages.list({
         userId: 'me',
