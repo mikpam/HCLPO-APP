@@ -361,6 +361,31 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Gmail connection test
+  app.get("/api/gmail/test", async (req, res) => {
+    try {
+      // Test Gmail connection by fetching a single message
+      const messages = await gmailService.getMessages('label:inbox');
+      res.json({ 
+        success: true, 
+        connection: 'working',
+        message: `Successfully connected to Gmail. Found ${messages.length} messages in inbox.`,
+        sampleMessages: messages.slice(0, 3).map(m => ({
+          id: m.id,
+          sender: m.sender,
+          subject: m.subject,
+          date: m.internalDate
+        }))
+      });
+    } catch (error) {
+      res.status(500).json({ 
+        success: false,
+        connection: 'failed',
+        message: error instanceof Error ? error.message : 'Gmail connection failed' 
+      });
+    }
+  });
+
   // Email queue
   app.get("/api/email-queue", async (req, res) => {
     try {
