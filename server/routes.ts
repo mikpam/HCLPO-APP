@@ -137,7 +137,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         console.log(`   └─ Detailed route: ${processingResult.classification.recommended_route} (${Math.round((processingResult.classification.analysis_flags.confidence_score || 0) * 100)}%)`);
       }
 
-      // Update queue item with results
+      // Update queue item with results for ALL emails (processed AND filtered)
       const updateData: any = {
         preprocessingResult: processingResult.preprocessing,
         status: processingResult.preprocessing.shouldProceed ? 'processed' : 'filtered',
@@ -148,6 +148,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
         updateData.classificationResult = processingResult.classification;
         updateData.route = processingResult.classification.recommended_route;
         updateData.confidence = processingResult.classification.analysis_flags?.confidence_score || 0;
+      } else {
+        // For filtered emails (Follow Up, None of these), capture preprocessing reason
+        updateData.route = 'FILTERED';
+        updateData.classificationResult = {
+          analysis_flags: {
+            filtered_reason: processingResult.preprocessing.response,
+            confidence_score: processingResult.preprocessing.score || 0
+          }
+        };
       }
 
       await storage.updateEmailQueueItem(queueItem.id, updateData);
@@ -392,7 +401,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             attachments: message.attachments
           });
 
-          // Update queue item with both preprocessing and classification results
+          // Update queue item with both preprocessing and classification results (ALL emails tracked)
           const updateData: any = {
             preprocessingResult: processingResult.preprocessing,
             status: processingResult.preprocessing.shouldProceed ? 'processed' : 'filtered',
@@ -403,6 +412,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
             updateData.classificationResult = processingResult.classification;
             updateData.route = processingResult.classification.recommended_route;
             updateData.confidence = processingResult.classification.analysis_flags?.confidence_score || 0;
+          } else {
+            // For filtered emails (Follow Up, None of these), capture preprocessing reason
+            updateData.route = 'FILTERED';
+            updateData.classificationResult = {
+              analysis_flags: {
+                filtered_reason: processingResult.preprocessing.response,
+                confidence_score: processingResult.preprocessing.score || 0
+              }
+            };
           }
 
           await storage.updateEmailQueueItem(queueItem.id, updateData);
@@ -431,6 +449,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
             });
           } else if (!processingResult.preprocessing.shouldProceed) {
             console.log(`Email filtered out: ${processingResult.preprocessing.response} (${processingResult.preprocessing.score})`);
+            
+            // Add filtered emails to processed list for tracking
+            processedEmails.push({
+              email: message,
+              preprocessing: processingResult.preprocessing,
+              classification: null,
+              purchaseOrder: null,
+              filtered: true
+            });
           }
 
           // Mark as processed in Gmail with preprocessing result

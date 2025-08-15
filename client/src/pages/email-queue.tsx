@@ -16,16 +16,46 @@ export default function EmailQueuePage() {
   const getStatusBadge = (status: string) => {
     switch (status) {
       case 'processed':
-        return 'bg-green-100 text-success';
+        return 'bg-green-100 text-green-800';
       case 'processing':
-        return 'bg-blue-100 text-primary';
+        return 'bg-blue-100 text-blue-800';
       case 'pending':
-        return 'bg-amber-100 text-warning';
+        return 'bg-amber-100 text-amber-800';
+      case 'filtered':
+        return 'bg-orange-100 text-orange-800';
       case 'error':
-        return 'bg-red-100 text-error';
+        return 'bg-red-100 text-red-800';
       default:
         return 'bg-gray-100 text-gray-600';
     }
+  };
+
+  const getClassificationDisplay = (email: EmailQueue) => {
+    if (email.route === 'FILTERED' && email.classificationResult) {
+      const result = email.classificationResult as any;
+      const reason = result.analysis_flags?.filtered_reason || 'Unknown';
+      return (
+        <div className="space-y-1">
+          <span className="inline-flex items-center px-2 py-1 text-xs font-medium bg-orange-100 text-orange-800 rounded-full">
+            FILTERED
+          </span>
+          <div className="text-xs text-gray-500">Reason: {reason}</div>
+        </div>
+      );
+    } else if (email.route) {
+      const confidence = email.confidence ? Math.round(email.confidence * 100) : 0;
+      return (
+        <div className="space-y-1">
+          <span className="inline-flex items-center px-2 py-1 text-xs font-medium bg-blue-100 text-blue-800 rounded-full">
+            {email.route}
+          </span>
+          {confidence > 0 && (
+            <div className="text-xs text-gray-500">Confidence: {confidence}%</div>
+          )}
+        </div>
+      );
+    }
+    return <span className="text-gray-400">-</span>;
   };
 
   return (
@@ -35,7 +65,7 @@ export default function EmailQueuePage() {
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-2xl font-semibold text-slate-800">Email Queue</h1>
-            <p className="text-secondary mt-1">Monitor and process incoming purchase order emails</p>
+            <p className="text-secondary mt-1">Monitor and process incoming purchase order emails (including filtered emails)</p>
           </div>
           <Button onClick={handleProcessEmails} disabled>
             <i className="fas fa-sync mr-2"></i>
@@ -88,10 +118,7 @@ export default function EmailQueuePage() {
                         </span>
                       </td>
                       <td className="px-6 py-4 text-sm text-slate-800">
-                        {email.classificationResult ? 
-                          (email.classificationResult as any).recommended_route : 
-                          'Pending'
-                        }
+                        {getClassificationDisplay(email)}
                       </td>
                       <td className="px-6 py-4 text-sm text-slate-800">
                         {email.attachments ? (email.attachments as any[]).length : 0}
