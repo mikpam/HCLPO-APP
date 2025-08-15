@@ -24,6 +24,38 @@ export default function PurchaseOrdersPage() {
     refetchInterval: 30000
   });
 
+  // Customer info extraction function
+  const getCustomerInfo = (order: PurchaseOrder) => {
+    const extractedData = order.extractedData as any;
+    
+    // Try multiple possible locations for customer data in Gemini JSON
+    const customer = extractedData?.purchaseOrder?.customer || extractedData?.customer || {};
+    const shipTo = extractedData?.purchaseOrder?.shipTo || {};
+    
+    // Customer name: try company first, then firstName/lastName, then shipTo company
+    const customerName = customer.company || 
+                        (customer.firstName && customer.lastName ? `${customer.firstName} ${customer.lastName}` : '') ||
+                        customer.customerName ||
+                        shipTo.company ||
+                        (shipTo.firstName && shipTo.lastName ? `${shipTo.firstName} ${shipTo.lastName}` : '') ||
+                        'Unknown Customer';
+    
+    // Email: try customer email first, then fallback to sender
+    const email = customer.email || order.sender || 'No email';
+    
+    // Address: try customer address first, then shipTo address
+    const address = customer.address1 || shipTo.address1 || 'No address';
+    const city = customer.city || shipTo.city || '';
+    const state = customer.state || shipTo.state || '';
+    const fullAddress = address + (city && state ? `, ${city}, ${state}` : city ? `, ${city}` : state ? `, ${state}` : '');
+    
+    return {
+      name: customerName,
+      email: email,
+      address: fullAddress || 'No address'
+    };
+  };
+
   // Filtering and sorting logic
   const filteredAndSortedOrders = useMemo(() => {
     if (!purchaseOrders) return [];
@@ -129,37 +161,6 @@ export default function PurchaseOrdersPage() {
       day: 'numeric',
       year: 'numeric'
     });
-  };
-
-  const getCustomerInfo = (order: PurchaseOrder) => {
-    const extractedData = order.extractedData as any;
-    
-    // Try multiple possible locations for customer data in Gemini JSON
-    const customer = extractedData?.purchaseOrder?.customer || extractedData?.customer || {};
-    const shipTo = extractedData?.purchaseOrder?.shipTo || {};
-    
-    // Customer name: try company first, then firstName/lastName, then shipTo company
-    const customerName = customer.company || 
-                        (customer.firstName && customer.lastName ? `${customer.firstName} ${customer.lastName}` : '') ||
-                        customer.customerName ||
-                        shipTo.company ||
-                        (shipTo.firstName && shipTo.lastName ? `${shipTo.firstName} ${shipTo.lastName}` : '') ||
-                        'Unknown Customer';
-    
-    // Email: try customer email first, then fallback to sender
-    const email = customer.email || order.sender || 'No email';
-    
-    // Address: try customer address first, then shipTo address
-    const address = customer.address1 || shipTo.address1 || 'No address';
-    const city = customer.city || shipTo.city || '';
-    const state = customer.state || shipTo.state || '';
-    const fullAddress = address + (city && state ? `, ${city}, ${state}` : city ? `, ${city}` : state ? `, ${state}` : '');
-    
-    return {
-      name: customerName,
-      email: email,
-      address: fullAddress || 'No address'
-    };
   };
 
   const getLineItemsCount = (order: PurchaseOrder) => {
