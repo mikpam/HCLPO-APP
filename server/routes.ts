@@ -146,6 +146,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       if (processingResult.classification) {
         updateData.classificationResult = processingResult.classification;
+        updateData.route = processingResult.classification.recommended_route;
+        updateData.confidence = processingResult.classification.analysis_flags?.confidence_score || 0;
       }
 
       await storage.updateEmailQueueItem(queueItem.id, updateData);
@@ -345,6 +347,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
           if (processingResult.classification) {
             updateData.classificationResult = processingResult.classification;
+            updateData.route = processingResult.classification.recommended_route;
+            updateData.confidence = processingResult.classification.analysis_flags?.confidence_score || 0;
           }
 
           await storage.updateEmailQueueItem(queueItem.id, updateData);

@@ -59,6 +59,8 @@ export const emailQueue = pgTable("email_queue", {
   status: text("status").notNull().default("pending"), // pending, processing, processed, error, filtered
   preprocessingResult: jsonb("preprocessing_result"), // Step 1: Simple intent classification
   classificationResult: jsonb("classification_result"), // Step 2: Detailed analysis (only for qualifying emails)
+  route: text("route"), // TEXT_PO, ATTACHMENT_PO, REVIEW - populated after classification
+  confidence: real("confidence"), // Confidence score from detailed classification
   processingError: text("processing_error"),
   processedAt: timestamp("processed_at"),
   createdAt: timestamp("created_at").defaultNow(),
