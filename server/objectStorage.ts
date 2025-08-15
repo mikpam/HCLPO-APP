@@ -187,15 +187,63 @@ export class ObjectStorageService {
     if (!entityDir.endsWith("/")) {
       entityDir = `${entityDir}/`;
     }
+    
+    // For stored attachments, construct the path properly
     const objectEntityPath = `${entityDir}${entityId}`;
+    console.log('Looking for object at path:', objectEntityPath);
+    
     const { bucketName, objectName } = parseObjectPath(objectEntityPath);
     const bucket = objectStorageClient.bucket(bucketName);
     const objectFile = bucket.file(objectName);
+    
     const [exists] = await objectFile.exists();
     if (!exists) {
+      console.log(`Object not found: ${objectEntityPath} (bucket: ${bucketName}, object: ${objectName})`);
       throw new ObjectNotFoundError();
     }
     return objectFile;
+  }
+
+  // List files in the private directory
+  async listStoredFiles(): Promise<Array<{
+    filename: string;
+    size: number;
+    contentType: string;
+    uploaded: Date;
+    path: string;
+  }>> {
+    try {
+      const privateDir = this.getPrivateObjectDir();
+      const { bucketName, objectName } = parseObjectPath(privateDir);
+      const bucket = objectStorageClient.bucket(bucketName);
+      
+      // Get the prefix for the private directory
+      const prefix = objectName.endsWith('/') ? objectName : objectName + '/';
+      
+      console.log('Listing files with prefix:', prefix, 'in bucket:', bucketName);
+      
+      const [files] = await bucket.getFiles({ prefix });
+      
+      console.log('Found', files.length, 'files');
+      
+      return files
+        .filter(file => !file.name.endsWith('/')) // Filter out directories
+        .map(file => {
+          const metadata = file.metadata;
+          const relativePath = file.name.replace(prefix, '');
+          
+          return {
+            filename: file.name.split('/').pop() || file.name,
+            size: parseInt(metadata.size) || 0,
+            contentType: metadata.contentType || 'application/octet-stream',
+            uploaded: new Date(metadata.timeCreated || metadata.updated || Date.now()),
+            path: `/objects/${relativePath}`
+          };
+        });
+    } catch (error) {
+      console.error('Error listing stored files:', error);
+      return [];
+    }
   }
 
   normalizeObjectEntityPath(

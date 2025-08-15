@@ -3,8 +3,8 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Separator } from "@/components/ui/separator";
-import { AlertCircle, Upload, FileText, Download, Trash2 } from "lucide-react";
+
+import { AlertCircle, Upload, FileText, Download, Trash2, Eye } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { useToast } from "@/hooks/use-toast";
 import ObjectUploader from "@/components/ObjectUploader";
@@ -23,27 +23,16 @@ export default function FileManagementPage() {
   const [selectedFiles, setSelectedFiles] = useState<string[]>([]);
   const { toast } = useToast();
 
-  // Mock data for now - in production this would come from an API
+  // Fetch files from API
   const { data: files = [], isLoading } = useQuery({
     queryKey: ['/api/files'],
-    queryFn: () => Promise.resolve([
-      {
-        id: '1',
-        filename: 'purchase-order-001.pdf',
-        size: 245760,
-        uploadedAt: new Date().toISOString(),
-        storagePath: '/objects/pdfs/purchase-order-001.pdf',
-        contentType: 'application/pdf'
-      },
-      {
-        id: '2',
-        filename: 'sample-request-002.pdf',
-        size: 189432,
-        uploadedAt: new Date(Date.now() - 86400000).toISOString(),
-        storagePath: '/objects/pdfs/sample-request-002.pdf',
-        contentType: 'application/pdf'
+    queryFn: async () => {
+      const response = await fetch('/api/files');
+      if (!response.ok) {
+        throw new Error('Failed to fetch files');
       }
-    ] as FileItem[])
+      return response.json();
+    }
   });
 
   const handleGetUploadParameters = async () => {
@@ -76,8 +65,24 @@ export default function FileManagementPage() {
   };
 
   const downloadFile = (file: FileItem) => {
-    // Open the file in a new tab for download
-    window.open(file.storagePath, '_blank');
+    // Create a download link with proper headers
+    const link = document.createElement('a');
+    link.href = file.storagePath;
+    link.download = file.filename;
+    link.target = '_blank';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  const viewFile = (file: FileItem) => {
+    // Open PDF in a new tab for viewing
+    if (file.contentType === 'application/pdf') {
+      window.open(file.storagePath, '_blank');
+    } else {
+      // For other file types, just download them
+      downloadFile(file);
+    }
   };
 
   const deleteFiles = async (fileIds: string[]) => {
@@ -174,7 +179,7 @@ export default function FileManagementPage() {
             </div>
           ) : (
             <div className="space-y-4">
-              {files.map((file) => (
+              {files.map((file: FileItem) => (
                 <div key={file.id} className="flex items-center justify-between p-4 border rounded-lg hover:bg-muted/50">
                   <div className="flex items-center gap-4">
                     <input
@@ -200,14 +205,26 @@ export default function FileManagementPage() {
                     <Badge variant="secondary">
                       {file.contentType.includes('pdf') ? 'PDF' : 'Document'}
                     </Badge>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => downloadFile(file)}
-                    >
-                      <Download className="h-4 w-4 mr-2" />
-                      Download
-                    </Button>
+                    <div className="flex gap-2">
+                      {file.contentType === 'application/pdf' && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => viewFile(file)}
+                        >
+                          <Eye className="h-4 w-4 mr-2" />
+                          View
+                        </Button>
+                      )}
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => downloadFile(file)}
+                      >
+                        <Download className="h-4 w-4 mr-2" />
+                        Download
+                      </Button>
+                    </div>
                   </div>
                 </div>
               ))}

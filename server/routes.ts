@@ -355,20 +355,51 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Serve private objects (PDFs, attachments)
+  // Serve private objects (PDFs, attachments) - fixed path handling
   app.get("/objects/:objectPath(*)", async (req, res) => {
     const { ObjectStorageService, ObjectNotFoundError } = await import('./objectStorage');
     const objectStorageService = new ObjectStorageService();
     
     try {
-      const objectFile = await objectStorageService.getObjectEntityFile(req.path);
+      // Construct the full object path correctly
+      const objectPath = `/objects/${req.params.objectPath}`;
+      const objectFile = await objectStorageService.getObjectEntityFile(objectPath);
       objectStorageService.downloadObject(objectFile, res);
     } catch (error) {
       console.error("Error accessing object:", error);
       if (error instanceof ObjectNotFoundError) {
-        return res.sendStatus(404);
+        return res.status(404).json({ error: "File not found" });
       }
-      return res.sendStatus(500);
+      return res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
+  // Get list of stored files
+  app.get("/api/files", async (req, res) => {
+    try {
+      const { ObjectStorageService } = await import('./objectStorage');
+      const objectStorageService = new ObjectStorageService();
+      
+      // Get actual files from object storage
+      const storedFiles = await objectStorageService.listStoredFiles();
+      
+      console.log('Files found in object storage:', storedFiles.length);
+      
+      // Transform to match the expected format
+      const files = storedFiles.map((file, index) => ({
+        id: (index + 1).toString(),
+        filename: file.filename,
+        size: file.size,
+        uploadedAt: file.uploaded.toISOString(),
+        storagePath: file.path,
+        contentType: file.contentType
+      }));
+      
+      res.json(files);
+    } catch (error) {
+      console.error("Error fetching files:", error);
+      // Return empty array if no files or if there's an error
+      res.json([]);
     }
   });
 
