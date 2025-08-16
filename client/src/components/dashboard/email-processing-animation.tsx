@@ -8,13 +8,15 @@ interface EmailProcessingAnimationProps {
   processedCount?: number;
   totalCount?: number;
   currentStep?: string;
+  onAnimationComplete?: () => void;
 }
 
 function EmailProcessingAnimation({
   isProcessing = false, 
   processedCount = 0, 
   totalCount = 0,
-  currentStep = ""
+  currentStep = "",
+  onAnimationComplete
 }: EmailProcessingAnimationProps) {
   const [currentStepIndex, setCurrentStepIndex] = useState(0);
   const [animationKey, setAnimationKey] = useState(0);
@@ -25,7 +27,7 @@ function EmailProcessingAnimation({
       icon: "Mail",
       label: "Email Received",
       description: "New email detected",
-      status: "pending",
+      status: "pending" as "pending" | "processing" | "completed" | "failed",
       duration: 500
     },
     {
@@ -33,7 +35,7 @@ function EmailProcessingAnimation({
       icon: "Brain",
       label: "Preprocessing",
       description: "OpenAI classification",
-      status: "pending",
+      status: "pending" as "pending" | "processing" | "completed" | "failed",
       duration: 2000
     },
     {
@@ -41,7 +43,7 @@ function EmailProcessingAnimation({
       icon: "Route",
       label: "Route Classification",
       description: "Determining processing path",
-      status: "pending", 
+      status: "pending" as "pending" | "processing" | "completed" | "failed", 
       duration: 1000
     },
     {
@@ -49,7 +51,7 @@ function EmailProcessingAnimation({
       icon: "Zap",
       label: "Data Extraction",
       description: "Gemini PO parsing",
-      status: "pending",
+      status: "pending" as "pending" | "processing" | "completed" | "failed",
       duration: 3000
     },
     {
@@ -57,7 +59,7 @@ function EmailProcessingAnimation({
       icon: "Search",
       label: "Data Parsing", 
       description: "Structuring information",
-      status: "pending",
+      status: "pending" as "pending" | "processing" | "completed" | "failed",
       duration: 1500
     },
     {
@@ -65,7 +67,7 @@ function EmailProcessingAnimation({
       icon: "UserCheck",
       label: "Customer ID",
       description: "HCL database lookup",
-      status: "pending",
+      status: "pending" as "pending" | "processing" | "completed" | "failed",
       duration: 1000
     },
     {
@@ -73,21 +75,23 @@ function EmailProcessingAnimation({
       icon: "CheckCircle2",
       label: "Ready for NetSuite",
       description: "Processing complete",
-      status: "pending",
+      status: "pending" as "pending" | "processing" | "completed" | "failed",
       duration: 500
     }
-  ] as const;
+  ];
 
   const [steps, setSteps] = useState(processingSteps);
 
   useEffect(() => {
     if (!isProcessing) {
-      setSteps(processingSteps);
+      setSteps(processingSteps.map(step => ({ ...step, status: "pending" as "pending" | "processing" | "completed" | "failed" })));
       setCurrentStepIndex(0);
       return;
     }
 
-    const interval = setInterval(() => {
+    let timeoutId: NodeJS.Timeout;
+
+    const updateSteps = () => {
       setSteps(prevSteps => {
         const newSteps = [...prevSteps];
         
@@ -110,21 +114,45 @@ function EmailProcessingAnimation({
         return newSteps;
       });
 
+      // Move to next step or complete
       if (currentStepIndex < processingSteps.length - 1) {
-        setTimeout(() => {
+        timeoutId = setTimeout(() => {
           setCurrentStepIndex(prev => prev + 1);
         }, processingSteps[currentStepIndex]?.duration || 1000);
       } else {
-        // Animation complete, reset for next email
-        setTimeout(() => {
-          setCurrentStepIndex(0);
-          setAnimationKey(prev => prev + 1);
-        }, 2000);
+        // Mark final step as completed and stop
+        timeoutId = setTimeout(() => {
+          setSteps(prevSteps => {
+            const finalSteps = [...prevSteps];
+            finalSteps[currentStepIndex] = {
+              ...finalSteps[currentStepIndex],
+              status: "completed"
+            };
+            return finalSteps;
+          });
+          
+          // Call completion callback if provided
+          if (onAnimationComplete) {
+            onAnimationComplete();
+          }
+          
+          // Reset animation after a delay for next email
+          setTimeout(() => {
+            setCurrentStepIndex(0);
+            setAnimationKey(prev => prev + 1);
+          }, 3000); // Stay at completed state for 3 seconds
+        }, 500);
       }
-    }, 100);
+    };
 
-    return () => clearInterval(interval);
-  }, [isProcessing, currentStepIndex, animationKey]);
+    updateSteps();
+
+    return () => {
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+      }
+    };
+  }, [isProcessing, currentStepIndex]);
 
   const getStepStatusColor = (status: string) => {
     switch (status) {
