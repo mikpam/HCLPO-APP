@@ -27,7 +27,10 @@ const BRAND_OVERRIDES: Record<string, CustomerMatch> = {
   'halo': { customer_number: "C2259", customer_name: "Halo Branded Solutions" },
   'halo branded solutions': { customer_number: "C2259", customer_name: "Halo Branded Solutions" },
   'ipromoteu': { customer_number: "C5286", customer_name: "iPromoteu.com" },
-  'ipromoteu.com': { customer_number: "C5286", customer_name: "iPromoteu.com" }
+  'ipromoteu.com': { customer_number: "C5286", customer_name: "iPromoteu.com" },
+  'bda': { customer_number: "C2436", customer_name: "Bensussen-Deutsch & Associates" },
+  'bda inc': { customer_number: "C2436", customer_name: "Bensussen-Deutsch & Associates" },
+  'bdainc': { customer_number: "C2436", customer_name: "Bensussen-Deutsch & Associates" }
 };
 
 export class CustomerFinderService {
