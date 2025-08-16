@@ -314,6 +314,26 @@ export class GmailService {
     }
   }
 
+  async getRawEmailContent(messageId: string): Promise<string> {
+    try {
+      const response = await this.gmail.users.messages.get({
+        userId: 'me',
+        id: messageId,
+        format: 'raw'
+      });
+
+      if (response.data.raw) {
+        // Decode base64url encoded raw email content
+        return Buffer.from(response.data.raw, 'base64url').toString('utf-8');
+      } else {
+        throw new Error('No raw email content available');
+      }
+    } catch (error) {
+      console.error(`Error getting raw email content for message ${messageId}:`, error);
+      throw error;
+    }
+  }
+
   async storeEmailAttachments(messageId: string, attachments: Array<{
     filename: string;
     contentType: string;

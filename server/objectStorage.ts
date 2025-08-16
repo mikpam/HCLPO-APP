@@ -234,7 +234,7 @@ export class ObjectStorageService {
           
           return {
             filename: file.name.split('/').pop() || file.name,
-            size: parseInt(metadata.size) || 0,
+            size: parseInt(metadata.size?.toString() || '0') || 0,
             contentType: metadata.contentType || 'application/octet-stream',
             uploaded: new Date(metadata.timeCreated || metadata.updated || Date.now()),
             path: `/objects/${relativePath}`
@@ -326,6 +326,34 @@ export class ObjectStorageService {
     });
 
     return `/objects/pdfs/${emailId}_${sanitizedFilename}`;
+  }
+
+  // Store original email as .eml file for classified emails
+  async storeEmailFile(emailId: string, subject: string, emailContent: string): Promise<string> {
+    const privateObjectDir = this.getPrivateObjectDir();
+    const sanitizedSubject = subject.replace(/[^a-zA-Z0-9\s-]/g, '').slice(0, 50);
+    const timestamp = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
+    const filename = `${emailId}_${timestamp}_${sanitizedSubject || 'email'}.eml`;
+    const fullPath = `${privateObjectDir}/emails/${filename}`;
+
+    const { bucketName, objectName } = parseObjectPath(fullPath);
+    const bucket = objectStorageClient.bucket(bucketName);
+    const file = bucket.file(objectName);
+
+    // Upload the email content as .eml file
+    await file.save(Buffer.from(emailContent, 'utf-8'), {
+      metadata: {
+        contentType: 'message/rfc822',
+        metadata: {
+          emailId,
+          subject,
+          preservedAt: new Date().toISOString(),
+          fileType: 'original_email',
+        },
+      },
+    });
+
+    return `/objects/emails/${filename}`;
   }
 
   // Clear all files from object storage for testing purposes

@@ -58,6 +58,8 @@ UI Design Priority: Mobile-responsive design is now required across all pages. U
 - **Forwarded Email Processing**: Enhanced @highcaliberline.com email processing with CNumber extraction, HCL customer lookup, and fallback logic - uses Gemini extraction first, then HCL customer database for accurate attribution (August 16, 2025)
 - **Complete Frontend Integration**: Successfully displaying HCL customer data with CNumber badges, forwarded email indicators, and proper customer attribution in both desktop and mobile views (August 16, 2025)
 - **Architecture Simplification**: Removed Airtable and Dropbox integrations, streamlined to use only Neon PostgreSQL for data storage and Replit object storage for documents (August 16, 2025)
+- **Email Preservation System**: Added automatic .eml file preservation for classified emails (Purchase Order, Sample Request, Rush Order) stored in object storage for complete audit trails and compliance (August 16, 2025)
+- **New Customer Flagging**: Enhanced system to flag purchase orders with unknown customers as "new_customer" status for CSR review instead of proceeding to NetSuite (August 16, 2025)
 
 ### Authentication & Authorization
 - **Strategy**: Session-based authentication with role-based access control

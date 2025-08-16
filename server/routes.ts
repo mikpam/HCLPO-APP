@@ -231,6 +231,28 @@ export async function registerRoutes(app: Express): Promise<Server> {
         );
       }
 
+      // Save original email as .eml file for classified emails
+      if (processingResult.preprocessing.shouldProceed && processingResult.classification) {
+        try {
+          console.log(`\n📧 EMAIL PRESERVATION: Saving classified email as .eml file...`);
+          const rawEmailContent = await gmailService.getRawEmailContent(messageToProcess.id);
+          
+          const { ObjectStorageService } = await import('./objectStorage');
+          const objectStorageService = new ObjectStorageService();
+          
+          const emlPath = await objectStorageService.storeEmailFile(
+            messageToProcess.id,
+            messageToProcess.subject,
+            rawEmailContent
+          );
+          
+          console.log(`   ✅ Email preserved at: ${emlPath}`);
+        } catch (error) {
+          console.error(`   ❌ Failed to preserve email:`, error);
+          // Continue processing even if email preservation fails
+        }
+      }
+
       // Create purchase order if email passed both steps
       if (processingResult.preprocessing.shouldProceed && processingResult.classification && 
           processingResult.classification.recommended_route !== 'REVIEW') {
