@@ -3,7 +3,7 @@ import { cn } from "@/lib/utils";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Menu, X, ChevronLeft, ChevronRight } from "lucide-react";
-import { useSidebar } from "@/App";
+import { useLayoutSidebar } from "@/contexts/sidebar-context";
 
 const navigationItems = [
   { path: "/", label: "Dashboard", icon: "fas fa-chart-line" },
@@ -20,7 +20,7 @@ const navigationItems = [
 export default function Sidebar() {
   const [location] = useLocation();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
-  const { isCollapsed, setIsCollapsed } = useSidebar();
+  const { isCollapsed, setIsCollapsed } = useLayoutSidebar();
 
   return (
     <>

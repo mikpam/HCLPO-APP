@@ -3,7 +3,6 @@ import { queryClient } from "./lib/queryClient";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import { useState, createContext, useContext } from "react";
 import NotFound from "@/pages/not-found";
 import Dashboard from "@/pages/dashboard";
 import EmailQueuePage from "@/pages/email-queue";
@@ -15,20 +14,10 @@ import AISettingsPage from "@/pages/ai-settings";
 import FileManagementPage from "@/pages/file-management";
 import CustomerImportPage from "@/pages/customer-import";
 import Sidebar from "@/components/layout/sidebar";
-
-// Create context for sidebar state
-const SidebarContext = createContext<{
-  isCollapsed: boolean;
-  setIsCollapsed: (collapsed: boolean) => void;
-}>({
-  isCollapsed: false,
-  setIsCollapsed: () => {},
-});
-
-export const useSidebar = () => useContext(SidebarContext);
+import { SidebarProvider, useLayoutSidebar } from "@/contexts/sidebar-context";
 
 function Router() {
-  const { isCollapsed } = useSidebar();
+  const { isCollapsed } = useLayoutSidebar();
   
   return (
     <div className="min-h-screen bg-gray-50">
@@ -54,15 +43,13 @@ function Router() {
 }
 
 function App() {
-  const [isCollapsed, setIsCollapsed] = useState(false);
-
   return (
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
-        <SidebarContext.Provider value={{ isCollapsed, setIsCollapsed }}>
+        <SidebarProvider>
           <Toaster />
           <Router />
-        </SidebarContext.Provider>
+        </SidebarProvider>
       </TooltipProvider>
     </QueryClientProvider>
   );
