@@ -252,8 +252,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
             }
 
             // Create purchase order if email passed both steps
+            console.log(`🛣️  ROUTE DEBUG: Route = "${processingResult.classification?.recommended_route}", Should proceed = ${processingResult.preprocessing.shouldProceed}`);
+            
             if (processingResult.preprocessing.shouldProceed && processingResult.classification && 
                 processingResult.classification.recommended_route !== 'REVIEW') {
+              
+              console.log(`🎯 GEMINI EXTRACTION: Starting extraction for route "${processingResult.classification.recommended_route}"`);
               
               // Extract data using appropriate route
               let extractionResult = null;
@@ -261,6 +265,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
               if ((processingResult.classification.recommended_route === 'ATTACHMENT_PO' || 
                    processingResult.classification.recommended_route === 'ATTACHMENT_SAMPLE') &&
                   attachmentPaths.length > 0) {
+                
+                console.log(`📎 ATTACHMENT ROUTE: Processing ${attachmentPaths.length} attachments for ${processingResult.classification.recommended_route}`);
                 
                 // Process PDF attachments with Gemini
                 const pdfAttachments = attachmentPaths.filter(att => 
@@ -289,6 +295,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
                   }
                 }
               } else if (processingResult.classification.recommended_route === 'TEXT_PO') {
+                console.log(`📄 TEXT ROUTE: Processing email text for TEXT_PO extraction`);
+                
                 // Process email text content with Gemini
                 const { GeminiService } = await import('./services/gemini');
                 const geminiService = new GeminiService();
@@ -298,6 +306,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
                   messageToProcess.body,
                   messageToProcess.sender
                 );
+              } else {
+                console.log(`⚠️  SKIPPED EXTRACTION: Route "${processingResult.classification.recommended_route}" not supported for extraction`);
+              }
+
+              if (extractionResult && extractionResult.purchaseOrder?.purchaseOrderNumber) {
+                console.log(`✅ EXTRACTION SUCCESS: Found PO number "${extractionResult.purchaseOrder.purchaseOrderNumber}"`);
+              } else {
+                console.log(`❌ EXTRACTION FAILED: No valid PO data extracted`);
               }
 
               if (extractionResult && extractionResult.purchaseOrder?.purchaseOrderNumber) {
