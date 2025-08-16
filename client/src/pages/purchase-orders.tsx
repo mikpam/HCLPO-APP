@@ -15,7 +15,7 @@ export default function PurchaseOrdersPage() {
   const [isViewModalOpen, setIsViewModalOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
-  const [routeFilter, setRouteFilter] = useState("all");
+
   const [sortField, setSortField] = useState("createdAt");
   const [sortDirection, setSortDirection] = useState<"asc" | "desc">("desc");
   
@@ -70,9 +70,8 @@ export default function PurchaseOrdersPage() {
         customerInfo.email.toLowerCase().includes(searchTerm.toLowerCase());
       
       const matchesStatus = statusFilter === "all" || order.status === statusFilter;
-      const matchesRoute = routeFilter === "all" || order.route === routeFilter;
       
-      return matchesSearch && matchesStatus && matchesRoute;
+      return matchesSearch && matchesStatus;
     });
 
     // Sort the filtered results
@@ -111,7 +110,7 @@ export default function PurchaseOrdersPage() {
     });
     
     return filtered;
-  }, [purchaseOrders, searchTerm, statusFilter, routeFilter, sortField, sortDirection]);
+  }, [purchaseOrders, searchTerm, statusFilter, sortField, sortDirection]);
 
   const getStatusBadge = (status: string) => {
     switch (status) {
@@ -131,18 +130,7 @@ export default function PurchaseOrdersPage() {
     }
   };
 
-  const getRouteBadge = (route: string) => {
-    switch (route) {
-      case 'ATTACHMENT_PO':
-        return { class: 'bg-purple-100 text-purple-800 border-purple-200', label: 'PDF Attachment' };
-      case 'TEXT_PO':
-        return { class: 'bg-indigo-100 text-indigo-800 border-indigo-200', label: 'Email Text' };
-      case 'REVIEW':
-        return { class: 'bg-orange-100 text-orange-800 border-orange-200', label: 'Manual Review' };
-      default:
-        return { class: 'bg-gray-100 text-gray-800 border-gray-200', label: 'Unknown' };
-    }
-  };
+
 
   const handleSort = (field: string) => {
     if (sortField === field) {
@@ -252,17 +240,7 @@ export default function PurchaseOrdersPage() {
                   <SelectItem value="error">Error</SelectItem>
                 </SelectContent>
               </Select>
-              <Select value={routeFilter} onValueChange={setRouteFilter}>
-                <SelectTrigger className="w-full lg:w-48">
-                  <SelectValue placeholder="Filter by route" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Routes</SelectItem>
-                  <SelectItem value="ATTACHMENT_PO">PDF Attachment</SelectItem>
-                  <SelectItem value="TEXT_PO">Email Text</SelectItem>
-                  <SelectItem value="REVIEW">Manual Review</SelectItem>
-                </SelectContent>
-              </Select>
+
             </div>
           </div>
           <Button variant="outline" size="sm" className="hidden lg:flex">
@@ -345,8 +323,7 @@ export default function PurchaseOrdersPage() {
                         <ArrowUpDown className="ml-2 h-3 w-3" />
                       </Button>
                     </TableHead>
-                    <TableHead className="w-[120px]">Route</TableHead>
-                    <TableHead className="w-[100px]">Line Items</TableHead>
+                    <TableHead className="w-[300px]">Line Items</TableHead>
                     <TableHead className="w-[120px]">Customer Number</TableHead>
                     <TableHead className="w-[120px]">Validated JSON</TableHead>
                     <TableHead className="w-[100px]">PO KEY</TableHead>
@@ -356,7 +333,6 @@ export default function PurchaseOrdersPage() {
                 <TableBody>
                   {filteredAndSortedOrders.map((order) => {
                     const statusBadge = getStatusBadge(order.status);
-                    const routeBadge = getRouteBadge(order.route || '');
                     const customer = getCustomerInfo(order);
                     const lineItemsCount = getLineItemsCount(order);
                     const StatusIcon = statusBadge.icon;
@@ -383,11 +359,11 @@ export default function PurchaseOrdersPage() {
                               {formatDate(order.createdAt)}
                             </div>
                             <div className="text-xs text-gray-500">
-                              {new Date(order.createdAt).toLocaleTimeString('en-US', { 
+                              {order.createdAt ? new Date(order.createdAt).toLocaleTimeString('en-US', { 
                                 hour: '2-digit', 
                                 minute: '2-digit', 
                                 second: '2-digit' 
-                              })}
+                              }) : 'N/A'}
                             </div>
                           </div>
                         </TableCell>
@@ -417,14 +393,25 @@ export default function PurchaseOrdersPage() {
                           </Badge>
                         </TableCell>
                         <TableCell>
-                          <Badge variant="outline" className={`${routeBadge.class} text-xs`}>
-                            {routeBadge.label}
-                          </Badge>
-                        </TableCell>
-                        <TableCell>
-                          <span className="text-sm font-medium text-center block">
-                            {lineItemsCount}
-                          </span>
+                          <div className="space-y-1 max-w-[300px]">
+                            {(() => {
+                              const lineItems = (order.extractedData as any)?.purchaseOrder?.lineItems || [];
+                              if (lineItems.length === 0) return <span className="text-gray-400 text-sm">No items</span>;
+                              return lineItems.slice(0, 3).map((item: any, index: number) => (
+                                <div key={index} className="flex items-center justify-between text-xs bg-gray-50 rounded px-2 py-1">
+                                  <span className="font-medium truncate">{item.description || item.sku || 'N/A'}</span>
+                                  <span className="text-gray-600 ml-2 flex-shrink-0">Qty: {item.quantity || 0}</span>
+                                </div>
+                              ));
+                            })()}
+                            {(() => {
+                              const lineItems = (order.extractedData as any)?.purchaseOrder?.lineItems || [];
+                              if (lineItems.length > 3) {
+                                return <div className="text-xs text-gray-500 pl-2">+{lineItems.length - 3} more items</div>;
+                              }
+                              return null;
+                            })()}
+                          </div>
                         </TableCell>
                         <TableCell>
                           <span className="font-mono text-sm text-blue-600">
@@ -475,7 +462,6 @@ export default function PurchaseOrdersPage() {
             <div className="lg:hidden px-4 py-4 space-y-4">
               {filteredAndSortedOrders.map((order) => {
                 const statusBadge = getStatusBadge(order.status);
-                const routeBadge = getRouteBadge(order.route || '');
                 const customer = getCustomerInfo(order);
                 const lineItemsCount = getLineItemsCount(order);
                 const StatusIcon = statusBadge.icon;
@@ -522,17 +508,33 @@ export default function PurchaseOrdersPage() {
                                 {formatDate(order.createdAt)}
                               </div>
                               <div className="text-xs text-gray-500">
-                                {new Date(order.createdAt).toLocaleTimeString('en-US', { 
+                                {order.createdAt ? new Date(order.createdAt).toLocaleTimeString('en-US', { 
                                   hour: '2-digit', 
                                   minute: '2-digit', 
                                   second: '2-digit' 
-                                })}
+                                }) : 'N/A'}
                               </div>
                             </div>
                           </div>
-                          <Badge variant="outline" className={`${routeBadge.class} text-xs`}>
-                            {routeBadge.label}
-                          </Badge>
+                          <div className="space-y-1">
+                            {(() => {
+                              const lineItems = (order.extractedData as any)?.purchaseOrder?.lineItems || [];
+                              if (lineItems.length === 0) return <span className="text-gray-400 text-xs">No items</span>;
+                              return lineItems.slice(0, 2).map((item: any, index: number) => (
+                                <div key={index} className="flex items-center justify-between text-xs bg-gray-50 rounded px-2 py-1">
+                                  <span className="font-medium truncate">{item.description || item.sku || 'N/A'}</span>
+                                  <span className="text-gray-600 ml-2 flex-shrink-0">Qty: {item.quantity || 0}</span>
+                                </div>
+                              ));
+                            })()}
+                            {(() => {
+                              const lineItems = (order.extractedData as any)?.purchaseOrder?.lineItems || [];
+                              if (lineItems.length > 2) {
+                                return <div className="text-xs text-gray-500 pl-2">+{lineItems.length - 2} more</div>;
+                              }
+                              return null;
+                            })()}
+                          </div>
                         </div>
                         
                         <div className="flex items-center justify-between pt-2 border-t border-gray-100">
