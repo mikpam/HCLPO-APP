@@ -141,6 +141,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       let isForwardedEmail = false;
       let extractedCNumber = null;
       let effectiveSender = messageToProcess.sender;
+      let hclCustomerLookup = null;
       
       if (messageToProcess.sender.includes('@highcaliberline.com')) {
         console.log(`\n📨 FORWARDED EMAIL DETECTION: Checking for CNumber in @highcaliberline.com email...`);
@@ -154,7 +155,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
           extractedCNumber = subjectMatch?.[1] || bodyMatch?.[1];
           isForwardedEmail = true;
           console.log(`   ✅ Found CNumber: ${extractedCNumber}`);
-          console.log(`   └─ This is a forwarded email - will use customer from Gemini extraction`);
+          
+          // Lookup customer using the advanced customer finder
+          const { customerFinderService } = await import('./services/customer-finder');
+          const fullCNumber = `C${extractedCNumber}`;
+          hclCustomerLookup = await customerFinderService.findByCNumber(fullCNumber);
+          
+          if (hclCustomerLookup.customer_number) {
+            console.log(`   ✅ HCL Customer found: ${hclCustomerLookup.customer_name} (${hclCustomerLookup.customer_number})`);
+            console.log(`   └─ This is a forwarded email - will use customer from Gemini extraction, or fallback to HCL lookup`);
+          } else {
+            console.log(`   ⚠️  No HCL customer found for CNumber: ${fullCNumber}`);
+          }
         } else {
           console.log(`   └─ No CNumber found in subject or body`);
         }
@@ -405,7 +417,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
             forwardedEmail: isForwardedEmail ? {
               originalSender: messageToProcess.sender,
               cNumber: extractedCNumber,
-              extractedCustomer: customerInfo
+              hclCustomerLookup: hclCustomerLookup,
+              extractedCustomer: customerInfo || hclCustomerLookup // Use Gemini extraction first, fallback to HCL lookup
             } : undefined
           }
         });

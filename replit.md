@@ -52,8 +52,10 @@ UI Design Priority: Mobile-responsive design is now required across all pages. U
 - **Enhanced Gmail Labeling**: Preprocessing classifications now automatically apply Gmail labels for auditing (ai-purchase-order, ai-sample-request, ai-rush-order, ai-follow-up, ai-none-of-these)
 - **Successful Implementation**: Both ATTACHMENT_PO and TEXT_PO routes successfully extracting real client PO numbers with enhanced AI filtering system and complete email queue tracking including filtered emails (August 15, 2025)
 - **Airtable-Style Admin Portal**: Comprehensive purchase order management interface with search, filtering, sorting, status badges, customer data display, and detailed modal views successfully implemented and displaying authentic Gemini-extracted data (August 15, 2025)
-- **Customer Lookup System**: High-performance customer database with 5,000+ record capacity, in-memory caching, fuzzy matching, and multiple lookup strategies (exact number, company name, full-text search) for efficient customer validation during PO processing (August 16, 2025)
-- **Forwarded Email Processing**: Special handling for @highcaliberline.com emails with CNumber extraction and customer override logic - uses customer from Gemini extraction instead of forwarding sender for proper attribution (August 16, 2025)
+- **Customer Lookup System**: High-performance customer database with 6,185+ HCL customer records imported, advanced customer finder service with priority matching (email > ASI/PPAI > name > address), brand overrides, and sophisticated disambiguation logic (August 16, 2025)
+- **HCL Customer Integration**: Successfully imported 6,185 customer records from NetSuite with Internal IDs and CNumbers, enabling precise customer attribution for forwarded emails (August 16, 2025)
+- **Advanced Customer Finder**: Intelligent customer matching service implementing comprehensive search strategies including query expansion, root brand extraction, and Gemini-powered disambiguation when multiple matches found (August 16, 2025)
+- **Forwarded Email Processing**: Enhanced @highcaliberline.com email processing with CNumber extraction, HCL customer lookup, and fallback logic - uses Gemini extraction first, then HCL customer database for accurate attribution (August 16, 2025)
 
 ### Authentication & Authorization
 - **Strategy**: Session-based authentication with role-based access control
