@@ -20,6 +20,8 @@ function EmailProcessingAnimation({
 }: EmailProcessingAnimationProps) {
   const [currentStepIndex, setCurrentStepIndex] = useState(0);
   const [animationKey, setAnimationKey] = useState(0);
+  const [internalProcessing, setInternalProcessing] = useState(false);
+  const [showCompleted, setShowCompleted] = useState(false);
 
   const processingSteps = [
     {
@@ -82,12 +84,19 @@ function EmailProcessingAnimation({
 
   const [steps, setSteps] = useState(processingSteps);
 
+  // Start animation when processing begins
   useEffect(() => {
-    if (!isProcessing) {
-      setSteps(processingSteps.map(step => ({ ...step, status: "pending" as "pending" | "processing" | "completed" | "failed" })));
+    if (isProcessing && !internalProcessing) {
+      setInternalProcessing(true);
+      setShowCompleted(false);
       setCurrentStepIndex(0);
-      return;
+      setSteps(processingSteps.map(step => ({ ...step, status: "pending" as "pending" | "processing" | "completed" | "failed" })));
     }
+  }, [isProcessing]);
+
+  // Handle animation progression  
+  useEffect(() => {
+    if (!internalProcessing) return;
 
     let timeoutId: NodeJS.Timeout;
 
@@ -131,16 +140,20 @@ function EmailProcessingAnimation({
             return finalSteps;
           });
           
+          setShowCompleted(true);
+          setInternalProcessing(false);
+          
           // Call completion callback if provided
           if (onAnimationComplete) {
             onAnimationComplete();
           }
           
-          // Reset animation after a delay for next email
+          // Reset animation after showing completed state
           setTimeout(() => {
             setCurrentStepIndex(0);
+            setShowCompleted(false);
             setAnimationKey(prev => prev + 1);
-          }, 3000); // Stay at completed state for 3 seconds
+          }, 5000); // Stay at completed state for 5 seconds
         }, 500);
       }
     };
@@ -152,7 +165,7 @@ function EmailProcessingAnimation({
         clearTimeout(timeoutId);
       }
     };
-  }, [isProcessing, currentStepIndex]);
+  }, [internalProcessing, currentStepIndex]);
 
   const getStepStatusColor = (status: string) => {
     switch (status) {
@@ -191,9 +204,14 @@ function EmailProcessingAnimation({
         <CardTitle className="flex items-center gap-2">
           <Mail className="h-5 w-5" />
           Email Processing Pipeline
-          {isProcessing && (
+          {(isProcessing || internalProcessing) && (
             <Badge variant="secondary" className="animate-pulse">
               Processing {processedCount}/{totalCount}
+            </Badge>
+          )}
+          {showCompleted && (
+            <Badge variant="default" className="bg-green-500 text-white">
+              ✅ Complete
             </Badge>
           )}
         </CardTitle>
@@ -260,12 +278,13 @@ function EmailProcessingAnimation({
           </div>
 
           {/* Current Status */}
-          {isProcessing && (
+          {(isProcessing || internalProcessing) && (
             <div className="mt-4 p-3 bg-blue-50 rounded-lg border border-blue-200">
               <div className="flex items-center gap-2 text-blue-700">
                 <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse"></div>
                 <span className="text-sm font-medium">
-                  {currentStep || `Processing step ${currentStepIndex + 1} of ${steps.length}`}
+                  {showCompleted ? "✅ Processing complete - Ready for NetSuite!" : 
+                   currentStep || `Processing step ${currentStepIndex + 1} of ${steps.length}`}
                 </span>
               </div>
               
