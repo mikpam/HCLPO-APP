@@ -137,6 +137,29 @@ export async function registerRoutes(app: Express): Promise<Server> {
       console.log(`   └─ From: ${messageToProcess.sender}`);
       console.log(`   └─ Attachments: ${messageToProcess.attachments.length}`);
 
+      // Check for forwarded email from @highcaliberline.com and extract CNumber
+      let isForwardedEmail = false;
+      let extractedCNumber = null;
+      let effectiveSender = messageToProcess.sender;
+      
+      if (messageToProcess.sender.includes('@highcaliberline.com')) {
+        console.log(`\n📨 FORWARDED EMAIL DETECTION: Checking for CNumber in @highcaliberline.com email...`);
+        
+        // Look for CNumber pattern in subject and body (flexible patterns)
+        const cNumberPattern = /(?:Account\s+C|C\s*#?\s*:?\s*)(\d+)/i;
+        const subjectMatch = messageToProcess.subject.match(cNumberPattern);
+        const bodyMatch = messageToProcess.body.match(cNumberPattern);
+        
+        if (subjectMatch || bodyMatch) {
+          extractedCNumber = subjectMatch?.[1] || bodyMatch?.[1];
+          isForwardedEmail = true;
+          console.log(`   ✅ Found CNumber: ${extractedCNumber}`);
+          console.log(`   └─ This is a forwarded email - will use customer from Gemini extraction`);
+        } else {
+          console.log(`   └─ No CNumber found in subject or body`);
+        }
+      }
+
       // Create email queue item
       const queueItem = await storage.createEmailQueueItem({
         gmailId: messageToProcess.id,
@@ -352,17 +375,39 @@ export async function registerRoutes(app: Express): Promise<Server> {
           console.log(`   ⚠️  Generated synthetic PO number: ${poNumber}`);
         }
         
+        // Determine effective sender and customer for forwarded emails
+        let effectiveSenderForPO = messageToProcess.sender;
+        let customerInfo = null;
+        
+        if (isForwardedEmail && extractionResult?.purchaseOrder?.customer) {
+          console.log(`\n📋 FORWARDED EMAIL PROCESSING:`);
+          console.log(`   └─ Original sender: ${messageToProcess.sender}`);
+          console.log(`   └─ CNumber: ${extractedCNumber}`);
+          console.log(`   └─ Using customer from Gemini: ${extractionResult.purchaseOrder.customer.company || extractionResult.purchaseOrder.customer.email || 'Unknown'}`);
+          
+          // For forwarded emails, use the customer info from Gemini extraction
+          customerInfo = extractionResult.purchaseOrder.customer;
+          effectiveSenderForPO = customerInfo.email || messageToProcess.sender;
+        }
+
         purchaseOrder = await storage.createPurchaseOrder({
           poNumber,
           emailId: messageToProcess.id,
-          sender: messageToProcess.sender,
+          sender: effectiveSenderForPO,
           subject: messageToProcess.subject,
           route: processingResult.classification.recommended_route,
           confidence: processingResult.classification.analysis_flags?.confidence_score || 0,
           status: extractionResult ? 'ready_for_netsuite' : 
                   (processingResult.classification.recommended_route === 'TEXT_PO' ? 'ready_for_extraction' : 'pending_review'),
           originalJson: processingResult.classification,
-          extractedData: extractionResult
+          extractedData: {
+            ...extractionResult,
+            forwardedEmail: isForwardedEmail ? {
+              originalSender: messageToProcess.sender,
+              cNumber: extractedCNumber,
+              extractedCustomer: customerInfo
+            } : undefined
+          }
         });
       }
 
@@ -422,6 +467,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
             continue;
           }
 
+          // Check for forwarded email from @highcaliberline.com and extract CNumber
+          let isForwardedEmail = false;
+          let extractedCNumber = null;
+          
+          if (message.sender.includes('@highcaliberline.com')) {
+            // Look for CNumber pattern in subject and body (flexible patterns)
+            const cNumberPattern = /(?:Account\s+C|C\s*#?\s*:?\s*)(\d+)/i;
+            const subjectMatch = message.subject.match(cNumberPattern);
+            const bodyMatch = message.body.match(cNumberPattern);
+            
+            if (subjectMatch || bodyMatch) {
+              extractedCNumber = subjectMatch?.[1] || bodyMatch?.[1];
+              isForwardedEmail = true;
+              console.log(`📨 BULK: Found CNumber ${extractedCNumber} in forwarded email: ${message.subject}`);
+            }
+          }
+
           // Create email queue item
           const queueItem = await storage.createEmailQueueItem({
             gmailId: message.id,
@@ -479,15 +541,31 @@ export async function registerRoutes(app: Express): Promise<Server> {
               processingResult.classification.recommended_route !== 'REVIEW') {
             const poNumber = `PO-${new Date().getFullYear()}-${String(Date.now()).slice(-6)}`;
             
+            // Handle forwarded emails for bulk processing
+            let effectiveSenderForPO = message.sender;
+            let forwardedEmailData = undefined;
+            
+            if (isForwardedEmail) {
+              console.log(`📋 BULK: Processing forwarded email with CNumber ${extractedCNumber}`);
+              // For bulk processing, we'll mark for later extraction with proper customer lookup
+              effectiveSenderForPO = message.sender; // Keep original for now, will be updated after extraction
+              forwardedEmailData = {
+                originalSender: message.sender,
+                cNumber: extractedCNumber,
+                extractedCustomer: null // Will be populated after Gemini extraction
+              };
+            }
+            
             const purchaseOrder = await storage.createPurchaseOrder({
               poNumber,
               emailId: message.id,
-              sender: message.sender,
+              sender: effectiveSenderForPO,
               subject: message.subject,
               route: processingResult.classification.recommended_route,
               confidence: processingResult.classification.analysis_flags?.confidence_score || 0,
               status: processingResult.classification.recommended_route === 'TEXT_PO' ? 'ready_for_extraction' : 'pending_review',
-              originalJson: processingResult.classification
+              originalJson: processingResult.classification,
+              extractedData: forwardedEmailData ? { forwardedEmail: forwardedEmailData } : undefined
             });
 
             processedEmails.push({
