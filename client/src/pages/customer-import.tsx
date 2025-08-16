@@ -1,12 +1,14 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Textarea } from "@/components/ui/textarea";
+import { Input } from "@/components/ui/input";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
-import { Upload, CheckCircle, AlertCircle, FileText, Database } from "lucide-react";
+import { Upload, CheckCircle, AlertCircle, FileText, Database, CloudUpload } from "lucide-react";
 
 interface ImportResult {
   success: boolean;
@@ -18,7 +20,10 @@ interface ImportResult {
 
 export default function CustomerImport() {
   const [csvData, setCsvData] = useState("");
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [importResult, setImportResult] = useState<ImportResult | null>(null);
+  const [activeTab, setActiveTab] = useState("file");
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const queryClient = useQueryClient();
 
   const bulkImportMutation = useMutation({
@@ -32,30 +37,65 @@ export default function CustomerImport() {
     },
   });
 
+  const parseCsvData = (csvContent: string) => {
+    const lines = csvContent.trim().split('\n');
+    if (lines.length < 2) {
+      throw new Error('CSV must have header row and at least one data row');
+    }
+
+    const headers = lines[0].split(',').map(h => h.trim().replace(/"/g, ''));
+    const customers = [];
+
+    for (let i = 1; i < lines.length; i++) {
+      const values = lines[i].split(',').map(v => v.trim().replace(/"/g, ''));
+      const customer: any = {};
+      
+      headers.forEach((header, index) => {
+        if (values[index]) {
+          customer[header] = values[index];
+        }
+      });
+      
+      customers.push(customer);
+    }
+
+    return customers;
+  };
+
+  const handleFileUpload = async () => {
+    if (!selectedFile) {
+      setImportResult({
+        success: false,
+        imported: 0,
+        errors: 1,
+        errorDetails: [{ error: 'Please select a CSV file' }],
+        message: 'No file selected'
+      });
+      return;
+    }
+
+    try {
+      const csvContent = await selectedFile.text();
+      const customers = parseCsvData(csvContent);
+
+      bulkImportMutation.mutate({
+        customers,
+        format: 'csv'
+      });
+    } catch (error) {
+      setImportResult({
+        success: false,
+        imported: 0,
+        errors: 1,
+        errorDetails: [{ error: error instanceof Error ? error.message : 'File processing failed' }],
+        message: 'Failed to process CSV file'
+      });
+    }
+  };
+
   const handleCsvImport = () => {
     try {
-      // Parse CSV data
-      const lines = csvData.trim().split('\n');
-      if (lines.length < 2) {
-        throw new Error('CSV must have header row and at least one data row');
-      }
-
-      const headers = lines[0].split(',').map(h => h.trim().replace(/"/g, ''));
-      const customers = [];
-
-      for (let i = 1; i < lines.length; i++) {
-        const values = lines[i].split(',').map(v => v.trim().replace(/"/g, ''));
-        const customer: any = {};
-        
-        headers.forEach((header, index) => {
-          if (values[index]) {
-            customer[header] = values[index];
-          }
-        });
-        
-        customers.push(customer);
-      }
-
+      const customers = parseCsvData(csvData);
       bulkImportMutation.mutate({
         customers,
         format: 'csv'
@@ -119,83 +159,173 @@ export default function CustomerImport() {
         </Button>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Import Methods */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Upload className="w-5 h-5" />
-              Import Options
-            </CardTitle>
-            <CardDescription>
-              Choose your preferred method to import customer data
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="space-y-3">
-              <div className="p-4 border rounded-lg">
-                <h3 className="font-semibold mb-2">1. CSV Format</h3>
-                <p className="text-sm text-gray-600 mb-3">
-                  Upload CSV with headers: customerNumber, companyName, email, phone, address
-                </p>
-                <code className="text-xs bg-gray-100 p-2 block rounded">
-                  customerNumber,companyName,email,phone{'\n'}
-                  C12345,"ACME Corp","info@acme.com","555-0123"
-                </code>
-              </div>
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+        <TabsList className="grid w-full grid-cols-2">
+          <TabsTrigger value="file">Upload CSV File</TabsTrigger>
+          <TabsTrigger value="paste">Paste Data</TabsTrigger>
+        </TabsList>
 
-              <div className="p-4 border rounded-lg">
-                <h3 className="font-semibold mb-2">2. JSON Format</h3>
-                <p className="text-sm text-gray-600 mb-3">
-                  Upload JSON array of customer objects
-                </p>
-                <code className="text-xs bg-gray-100 p-2 block rounded">
-                  [{`{"customerNumber": "C12345", "companyName": "ACME Corp"}`}]
-                </code>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+        <TabsContent value="file" className="space-y-6">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            {/* File Upload */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <CloudUpload className="w-5 h-5" />
+                  Upload CSV File
+                </CardTitle>
+                <CardDescription>
+                  Select a CSV file from your computer to import customers
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="space-y-4">
+                  <Input
+                    ref={fileInputRef}
+                    type="file"
+                    accept=".csv,.txt"
+                    onChange={(e) => setSelectedFile(e.target.files?.[0] || null)}
+                    className="cursor-pointer"
+                  />
+                  
+                  {selectedFile && (
+                    <div className="p-3 bg-blue-50 rounded-lg border">
+                      <div className="flex items-center gap-2">
+                        <FileText className="w-4 h-4 text-blue-600" />
+                        <span className="text-sm font-medium">{selectedFile.name}</span>
+                        <Badge variant="outline">
+                          {(selectedFile.size / 1024).toFixed(1)} KB
+                        </Badge>
+                      </div>
+                    </div>
+                  )}
 
-        {/* Data Input */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <FileText className="w-5 h-5" />
-              Paste Your Data
-            </CardTitle>
-            <CardDescription>
-              Paste CSV or JSON data below
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <Textarea
-              placeholder="Paste your CSV or JSON customer data here..."
-              value={csvData}
-              onChange={(e) => setCsvData(e.target.value)}
-              className="min-h-[200px] font-mono text-sm"
-            />
-            
-            <div className="flex gap-2">
-              <Button
-                onClick={handleCsvImport}
-                disabled={!csvData.trim() || bulkImportMutation.isPending}
-                className="flex-1"
-              >
-                Import as CSV
-              </Button>
-              <Button
-                onClick={handleJsonImport}
-                disabled={!csvData.trim() || bulkImportMutation.isPending}
-                variant="outline"
-                className="flex-1"
-              >
-                Import as JSON
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
+                  <Button
+                    onClick={handleFileUpload}
+                    disabled={!selectedFile || bulkImportMutation.isPending}
+                    className="w-full"
+                  >
+                    <Upload className="w-4 h-4 mr-2" />
+                    Import CSV File
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* CSV Format Guide */}
+            <Card>
+              <CardHeader>
+                <CardTitle>CSV Format Requirements</CardTitle>
+                <CardDescription>
+                  Make sure your CSV file follows this format
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="p-4 border rounded-lg">
+                  <h4 className="font-semibold mb-2">Required Headers</h4>
+                  <code className="text-xs bg-gray-100 p-2 block rounded">
+                    customerNumber,companyName,email,phone
+                  </code>
+                </div>
+                
+                <div className="p-4 border rounded-lg">
+                  <h4 className="font-semibold mb-2">Example Row</h4>
+                  <code className="text-xs bg-gray-100 p-2 block rounded">
+                    C12345,"ACME Corporation","orders@acme.com","555-0123"
+                  </code>
+                </div>
+
+                <Alert>
+                  <AlertCircle className="h-4 w-4" />
+                  <AlertDescription>
+                    Your CSV file should have headers in the first row and data starting from the second row.
+                  </AlertDescription>
+                </Alert>
+              </CardContent>
+            </Card>
+          </div>
+        </TabsContent>
+
+        <TabsContent value="paste" className="space-y-6">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            {/* Import Methods */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Upload className="w-5 h-5" />
+                  Import Options
+                </CardTitle>
+                <CardDescription>
+                  Choose your preferred method to import customer data
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="space-y-3">
+                  <div className="p-4 border rounded-lg">
+                    <h3 className="font-semibold mb-2">1. CSV Format</h3>
+                    <p className="text-sm text-gray-600 mb-3">
+                      Paste CSV with headers: customerNumber, companyName, email, phone, address
+                    </p>
+                    <code className="text-xs bg-gray-100 p-2 block rounded">
+                      customerNumber,companyName,email,phone{'\n'}
+                      C12345,"ACME Corp","info@acme.com","555-0123"
+                    </code>
+                  </div>
+
+                  <div className="p-4 border rounded-lg">
+                    <h3 className="font-semibold mb-2">2. JSON Format</h3>
+                    <p className="text-sm text-gray-600 mb-3">
+                      Paste JSON array of customer objects
+                    </p>
+                    <code className="text-xs bg-gray-100 p-2 block rounded">
+                      [{`{"customerNumber": "C12345", "companyName": "ACME Corp"}`}]
+                    </code>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Data Input */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <FileText className="w-5 h-5" />
+                  Paste Your Data
+                </CardTitle>
+                <CardDescription>
+                  Paste CSV or JSON data below
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <Textarea
+                  placeholder="Paste your CSV or JSON customer data here..."
+                  value={csvData}
+                  onChange={(e) => setCsvData(e.target.value)}
+                  className="min-h-[200px] font-mono text-sm"
+                />
+                
+                <div className="flex gap-2">
+                  <Button
+                    onClick={handleCsvImport}
+                    disabled={!csvData.trim() || bulkImportMutation.isPending}
+                    className="flex-1"
+                  >
+                    Import as CSV
+                  </Button>
+                  <Button
+                    onClick={handleJsonImport}
+                    disabled={!csvData.trim() || bulkImportMutation.isPending}
+                    variant="outline"
+                    className="flex-1"
+                  >
+                    Import as JSON
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        </TabsContent>
+      </Tabs>
 
       {/* Import Progress */}
       {bulkImportMutation.isPending && (
