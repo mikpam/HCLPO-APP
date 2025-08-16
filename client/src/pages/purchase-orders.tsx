@@ -395,7 +395,9 @@ export default function PurchaseOrdersPage() {
                         <TableCell>
                           <div className="space-y-1 max-w-[300px]">
                             {(() => {
-                              const lineItems = (order.extractedData as any)?.purchaseOrder?.lineItems || [];
+                              const extractedData = order.extractedData as any;
+                              const lineItems = extractedData?.lineItems || [];
+                              
                               if (lineItems.length === 0) return <span className="text-gray-400 text-sm">No items</span>;
                               return lineItems.slice(0, 3).map((item: any, index: number) => (
                                 <div key={index} className="flex items-center justify-between text-xs bg-gray-50 rounded px-2 py-1">
@@ -405,7 +407,8 @@ export default function PurchaseOrdersPage() {
                               ));
                             })()}
                             {(() => {
-                              const lineItems = (order.extractedData as any)?.purchaseOrder?.lineItems || [];
+                              const extractedData = order.extractedData as any;
+                              const lineItems = extractedData?.lineItems || [];
                               if (lineItems.length > 3) {
                                 return <div className="text-xs text-gray-500 pl-2">+{lineItems.length - 3} more items</div>;
                               }
@@ -518,7 +521,9 @@ export default function PurchaseOrdersPage() {
                           </div>
                           <div className="space-y-1">
                             {(() => {
-                              const lineItems = (order.extractedData as any)?.purchaseOrder?.lineItems || [];
+                              const extractedData = order.extractedData as any;
+                              const lineItems = extractedData?.lineItems || [];
+                              
                               if (lineItems.length === 0) return <span className="text-gray-400 text-xs">No items</span>;
                               return lineItems.slice(0, 2).map((item: any, index: number) => (
                                 <div key={index} className="flex items-center justify-between text-xs bg-gray-50 rounded px-2 py-1">
@@ -528,7 +533,8 @@ export default function PurchaseOrdersPage() {
                               ));
                             })()}
                             {(() => {
-                              const lineItems = (order.extractedData as any)?.purchaseOrder?.lineItems || [];
+                              const extractedData = order.extractedData as any;
+                              const lineItems = extractedData?.lineItems || [];
                               if (lineItems.length > 2) {
                                 return <div className="text-xs text-gray-500 pl-2">+{lineItems.length - 2} more</div>;
                               }
