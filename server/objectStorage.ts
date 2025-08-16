@@ -327,6 +327,42 @@ export class ObjectStorageService {
 
     return `/objects/pdfs/${emailId}_${sanitizedFilename}`;
   }
+
+  // Clear all files from object storage for testing purposes
+  async clearAllFiles(): Promise<{ deleted: number; errors: string[] }> {
+    const bucketId = process.env.DEFAULT_OBJECT_STORAGE_BUCKET_ID;
+    if (!bucketId) {
+      throw new Error("DEFAULT_OBJECT_STORAGE_BUCKET_ID not found");
+    }
+
+    const bucket = objectStorageClient.bucket(bucketId);
+    const errors: string[] = [];
+    let deleted = 0;
+
+    try {
+      // List all files in the bucket
+      const [files] = await bucket.getFiles();
+      
+      console.log(`Found ${files.length} files to delete in bucket ${bucketId}`);
+      
+      // Delete each file
+      for (const file of files) {
+        try {
+          await file.delete();
+          deleted++;
+          console.log(`Deleted: ${file.name}`);
+        } catch (error) {
+          const errorMsg = `Failed to delete ${file.name}: ${error instanceof Error ? error.message : 'Unknown error'}`;
+          errors.push(errorMsg);
+          console.error(errorMsg);
+        }
+      }
+
+      return { deleted, errors };
+    } catch (error) {
+      throw new Error(`Failed to clear object storage: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }
 }
 
 function parseObjectPath(path: string): {

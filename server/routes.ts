@@ -1009,6 +1009,26 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Clear object storage for testing
+  app.post("/api/testing/clear-object-storage", async (req, res) => {
+    try {
+      const { ObjectStorageService } = await import("./objectStorage");
+      const objectStorage = new ObjectStorageService();
+      const result = await objectStorage.clearAllFiles();
+      
+      res.json({ 
+        success: true, 
+        deleted: result.deleted,
+        errors: result.errors,
+        message: `Cleared ${result.deleted} files from object storage`
+      });
+    } catch (error) {
+      res.status(500).json({ 
+        message: error instanceof Error ? error.message : 'Failed to clear object storage' 
+      });
+    }
+  });
+
   const httpServer = createServer(app);
   return httpServer;
 }
