@@ -53,6 +53,7 @@ UI Design Priority: Mobile-responsive design is now required across all pages. U
 - **Successful Implementation**: Both ATTACHMENT_PO and TEXT_PO routes successfully extracting real client PO numbers with enhanced AI filtering system and complete email queue tracking including filtered emails (August 15, 2025)
 - **Airtable-Style Admin Portal**: Comprehensive purchase order management interface with search, filtering, sorting, status badges, customer data display, and detailed modal views successfully implemented and displaying authentic Gemini-extracted data (August 15, 2025)
 - **Customer Lookup System**: High-performance customer database with 5,000+ record capacity, in-memory caching, fuzzy matching, and multiple lookup strategies (exact number, company name, full-text search) for efficient customer validation during PO processing (August 16, 2025)
+- **Forwarded Email Processing**: Special handling for @highcaliberline.com emails with CNumber extraction and customer override logic - uses customer from Gemini extraction instead of forwarding sender for proper attribution (August 16, 2025)
 
 ### Authentication & Authorization
 - **Strategy**: Session-based authentication with role-based access control
