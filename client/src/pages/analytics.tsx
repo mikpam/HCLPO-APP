@@ -103,7 +103,8 @@ export default function AnalyticsPage() {
       resolvedErrors,
       pendingErrors,
       errorTypes,
-      resolutionRate: totalErrors > 0 ? (resolvedErrors / totalErrors) * 100 : 0
+      resolutionRate: totalErrors > 0 ? (resolvedErrors / totalErrors) * 100 : 0,
+      errorRate: totalErrors === 0 ? 0 : (pendingErrors / totalErrors) * 100
     };
   };
 
@@ -234,7 +235,7 @@ export default function AnalyticsPage() {
                     {errorsLoading ? (
                       <div className="w-16 h-8 bg-gray-200 rounded animate-pulse"></div>
                     ) : (
-                      `${Math.round(100 - (errorAnalytics?.resolutionRate || 0))}%`
+                      `${Math.round(errorAnalytics?.errorRate || 0)}%`
                     )}
                   </div>
                   <p className="text-xs text-error mt-1">Needs attention</p>
