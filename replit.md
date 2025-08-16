@@ -7,6 +7,7 @@ This is a full-stack web application designed to automate the processing of purc
 ## User Preferences
 
 Preferred communication style: Simple, everyday language.
+UI Design Priority: Desktop-first interface design. Mobile responsiveness is not critical as most users will be on desktop.
 
 ## System Architecture
 
@@ -27,9 +28,10 @@ Preferred communication style: Simple, everyday language.
 
 ### Database Design
 - **Primary Database**: Neon PostgreSQL with Drizzle ORM for persistent data storage
-- **Tables**: Users (authentication), Purchase Orders (core data), Error Logs (monitoring), Email Queue (processing pipeline), System Health (monitoring)
-- **Schema Features**: UUID primary keys, JSONB columns for flexible data storage, timestamp tracking, status enums
+- **Tables**: Users (authentication), Purchase Orders (core data), Error Logs (monitoring), Email Queue (processing pipeline), System Health (monitoring), Customers (master data for 5,000+ records)
+- **Schema Features**: UUID primary keys, JSONB columns for flexible data storage, timestamp tracking, status enums, full-text search vectors, array columns for alternate names
 - **Connection**: Node.js pg driver with connection pooling and SSL support
+- **Customer Indexing**: Multi-strategy lookup system with database indexes, in-memory caching, and fuzzy matching algorithms
 
 ### Email Processing Pipeline
 - **Two-Step Processing Architecture**: Mirrors existing Make.com workflow structure for easier migration
@@ -50,6 +52,7 @@ Preferred communication style: Simple, everyday language.
 - **Enhanced Gmail Labeling**: Preprocessing classifications now automatically apply Gmail labels for auditing (ai-purchase-order, ai-sample-request, ai-rush-order, ai-follow-up, ai-none-of-these)
 - **Successful Implementation**: Both ATTACHMENT_PO and TEXT_PO routes successfully extracting real client PO numbers with enhanced AI filtering system and complete email queue tracking including filtered emails (August 15, 2025)
 - **Airtable-Style Admin Portal**: Comprehensive purchase order management interface with search, filtering, sorting, status badges, customer data display, and detailed modal views successfully implemented and displaying authentic Gemini-extracted data (August 15, 2025)
+- **Customer Lookup System**: High-performance customer database with 5,000+ record capacity, in-memory caching, fuzzy matching, and multiple lookup strategies (exact number, company name, full-text search) for efficient customer validation during PO processing (August 16, 2025)
 
 ### Authentication & Authorization
 - **Strategy**: Session-based authentication with role-based access control
