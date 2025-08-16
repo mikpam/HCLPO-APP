@@ -364,10 +364,30 @@ export async function registerRoutes(app: Express): Promise<Server> {
             
           } catch (error) {
             console.error(`   ❌ Error processing email "${messageToProcess.subject}":`, error);
+            const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+            
+            // Log error to database for analytics tracking
+            try {
+              await storage.createErrorLog({
+                type: 'bulk_processing_error',
+                message: `Failed to process email: ${errorMessage}`,
+                metadata: {
+                  emailId: messageToProcess.id,
+                  subject: messageToProcess.subject,
+                  sender: messageToProcess.sender,
+                  errorDetails: errorMessage,
+                  processingType: 'bulk',
+                  timestamp: new Date().toISOString()
+                }
+              });
+            } catch (logError) {
+              console.error('Failed to log error to database:', logError);
+            }
+            
             errors.push({
               subject: messageToProcess.subject,
               sender: messageToProcess.sender,
-              error: error instanceof Error ? error.message : 'Unknown error'
+              error: errorMessage
             });
           }
         }
@@ -388,6 +408,28 @@ export async function registerRoutes(app: Express): Promise<Server> {
       console.log(`   ⏱️  Total time: ${(duration / 1000).toFixed(1)}s`);
       console.log(`   📊 Average: ${(avgTimePerEmail / 1000).toFixed(1)}s per email`);
 
+      // Log bulk processing summary to database
+      if (errors.length > 0) {
+        try {
+          await storage.createErrorLog({
+            type: 'bulk_processing_summary',
+            message: `Bulk processing completed with ${errors.length} errors out of ${unprocessedMessages.length} emails`,
+            metadata: {
+              totalEmails: unprocessedMessages.length,
+              processedCount,
+              errorCount: errors.length,
+              duration,
+              avgTimePerEmail,
+              processingType: 'bulk_summary',
+              timestamp: new Date().toISOString(),
+              errorSummary: errors.slice(0, 10) // First 10 errors for summary
+            }
+          });
+        } catch (logError) {
+          console.error('Failed to log bulk processing summary:', logError);
+        }
+      }
+
       res.json({
         message: `Successfully processed ${processedCount} emails`,
         processed: processedCount,
@@ -399,6 +441,25 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
     } catch (error) {
       console.error('Bulk processing error:', error);
+      
+      // Log critical bulk processing failure
+      try {
+        await storage.createErrorLog({
+          type: 'bulk_processing_failure',
+          message: `Critical bulk processing failure: ${error instanceof Error ? error.message : 'Unknown error'}`,
+          metadata: {
+            processedCount,
+            errorCount: errors.length,
+            duration: Date.now() - startTime,
+            processingType: 'bulk_critical',
+            timestamp: new Date().toISOString(),
+            stackTrace: error instanceof Error ? error.stack : undefined
+          }
+        });
+      } catch (logError) {
+        console.error('Failed to log critical error:', logError);
+      }
+      
       res.status(500).json({
         message: 'Bulk processing failed',
         processed: processedCount,

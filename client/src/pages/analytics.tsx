@@ -3,10 +3,16 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { DashboardMetrics, SystemHealthItem } from "@/types";
 import { PurchaseOrder, ErrorLog, EmailQueue } from "@shared/schema";
+import { useState } from "react";
+import { Eye, AlertTriangle, CheckCircle, Clock, Bug } from "lucide-react";
 
 export default function AnalyticsPage() {
+  const [selectedError, setSelectedError] = useState<ErrorLog | null>(null);
+  const [isErrorModalOpen, setIsErrorModalOpen] = useState(false);
   const { data: metrics, isLoading: metricsLoading } = useQuery<DashboardMetrics>({
     queryKey: ["/api/dashboard/metrics"],
     refetchInterval: 60000
@@ -19,7 +25,7 @@ export default function AnalyticsPage() {
 
   const { data: errorLogs, isLoading: errorsLoading } = useQuery<ErrorLog[]>({
     queryKey: ["/api/error-logs"],
-    refetchInterval: 60000
+    refetchInterval: 30000
   });
 
   const { data: emailQueue, isLoading: emailLoading } = useQuery<EmailQueue[]>({
@@ -105,6 +111,37 @@ export default function AnalyticsPage() {
   const routeAnalytics = getRouteAnalytics();
   const confidenceAnalytics = getConfidenceAnalytics();
   const errorAnalytics = getErrorAnalytics();
+
+  // Helper functions for error display
+  const getErrorTypeVariant = (type: string): "default" | "secondary" | "destructive" | "outline" => {
+    if (type.includes('bulk_processing')) return 'destructive';
+    if (type.includes('critical') || type.includes('failure')) return 'destructive';
+    if (type.includes('warning')) return 'outline';
+    return 'secondary';
+  };
+
+  const formatErrorType = (type: string): string => {
+    return type
+      .replace(/_/g, ' ')
+      .split(' ')
+      .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+      .join(' ');
+  };
+
+  const formatErrorDate = (date: string | Date): string => {
+    const d = new Date(date);
+    const now = new Date();
+    const diffInHours = (now.getTime() - d.getTime()) / (1000 * 60 * 60);
+    
+    if (diffInHours < 1) {
+      const minutes = Math.floor(diffInHours * 60);
+      return `${minutes}m ago`;
+    } else if (diffInHours < 24) {
+      return `${Math.floor(diffInHours)}h ago`;
+    } else {
+      return d.toLocaleDateString() + ' ' + d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    }
+  };
 
   return (
     <div>
@@ -373,6 +410,98 @@ export default function AnalyticsPage() {
                 </CardContent>
               </Card>
             </div>
+
+            {/* Detailed Error Logs Table */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Bug className="h-5 w-5" />
+                  Detailed Error Logs
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                {errorsLoading ? (
+                  <div className="space-y-4">
+                    {[...Array(5)].map((_, i) => (
+                      <div key={i} className="flex items-center space-x-4 p-3 rounded-lg bg-gray-50 animate-pulse">
+                        <div className="w-24 h-4 bg-gray-200 rounded"></div>
+                        <div className="flex-1 h-4 bg-gray-200 rounded"></div>
+                        <div className="w-20 h-4 bg-gray-200 rounded"></div>
+                        <div className="w-8 h-4 bg-gray-200 rounded"></div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="overflow-hidden">
+                    {errorLogs && errorLogs.length > 0 ? (
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead>Type</TableHead>
+                            <TableHead>Message</TableHead>
+                            <TableHead>Date</TableHead>
+                            <TableHead>Status</TableHead>
+                            <TableHead className="text-right">Actions</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {errorLogs.slice(0, 10).map((error) => (
+                            <TableRow key={error.id}>
+                              <TableCell>
+                                <Badge variant={getErrorTypeVariant(error.type)}>
+                                  {formatErrorType(error.type)}
+                                </Badge>
+                              </TableCell>
+                              <TableCell className="max-w-md">
+                                <div className="truncate" title={error.message}>
+                                  {error.message}
+                                </div>
+                              </TableCell>
+                              <TableCell className="text-sm text-gray-500">
+                                {formatErrorDate(error.createdAt)}
+                              </TableCell>
+                              <TableCell>
+                                {error.resolved ? (
+                                  <Badge variant="secondary" className="bg-green-100 text-green-800">
+                                    <CheckCircle className="h-3 w-3 mr-1" />
+                                    Resolved
+                                  </Badge>
+                                ) : (
+                                  <Badge variant="secondary" className="bg-yellow-100 text-yellow-800">
+                                    <Clock className="h-3 w-3 mr-1" />
+                                    Pending
+                                  </Badge>
+                                )}
+                              </TableCell>
+                              <TableCell className="text-right">
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => {
+                                    setSelectedError(error);
+                                    setIsErrorModalOpen(true);
+                                  }}
+                                >
+                                  <Eye className="h-4 w-4" />
+                                </Button>
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    ) : (
+                      <div className="text-center py-12">
+                        <CheckCircle className="h-12 w-12 text-green-500 mx-auto mb-4" />
+                        <h3 className="text-lg font-medium text-slate-800 mb-2">No Errors Found</h3>
+                        <p className="text-gray-500">
+                          Great! No errors have been logged recently.
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
           </TabsContent>
 
           <TabsContent value="performance" className="space-y-6">
@@ -395,6 +524,93 @@ export default function AnalyticsPage() {
           </TabsContent>
         </Tabs>
       </div>
+
+      {/* Error Details Modal */}
+      <Dialog open={isErrorModalOpen} onOpenChange={setIsErrorModalOpen}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <AlertTriangle className="h-5 w-5 text-red-500" />
+              Error Details
+            </DialogTitle>
+            <DialogDescription>
+              Complete error information and metadata
+            </DialogDescription>
+          </DialogHeader>
+          
+          {selectedError && (
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="text-sm font-medium text-gray-600">Type</label>
+                  <div className="mt-1">
+                    <Badge variant={getErrorTypeVariant(selectedError.type)}>
+                      {formatErrorType(selectedError.type)}
+                    </Badge>
+                  </div>
+                </div>
+                <div>
+                  <label className="text-sm font-medium text-gray-600">Status</label>
+                  <div className="mt-1">
+                    {selectedError.resolved ? (
+                      <Badge variant="secondary" className="bg-green-100 text-green-800">
+                        <CheckCircle className="h-3 w-3 mr-1" />
+                        Resolved
+                      </Badge>
+                    ) : (
+                      <Badge variant="secondary" className="bg-yellow-100 text-yellow-800">
+                        <Clock className="h-3 w-3 mr-1" />
+                        Pending
+                      </Badge>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              <div>
+                <label className="text-sm font-medium text-gray-600">Error Message</label>
+                <div className="mt-1 p-3 bg-gray-50 rounded-lg">
+                  <p className="text-sm">{selectedError.message}</p>
+                </div>
+              </div>
+
+              <div>
+                <label className="text-sm font-medium text-gray-600">Timestamp</label>
+                <div className="mt-1">
+                  <p className="text-sm text-gray-700">
+                    {new Date(selectedError.createdAt).toLocaleString()}
+                  </p>
+                </div>
+              </div>
+
+              {selectedError.metadata && (
+                <div>
+                  <label className="text-sm font-medium text-gray-600">Additional Details</label>
+                  <div className="mt-1 p-3 bg-gray-50 rounded-lg">
+                    <pre className="text-xs text-gray-700 whitespace-pre-wrap overflow-x-auto">
+                      {JSON.stringify(selectedError.metadata, null, 2)}
+                    </pre>
+                  </div>
+                </div>
+              )}
+
+              {!selectedError.resolved && (
+                <div className="flex justify-end pt-4 border-t">
+                  <Button 
+                    variant="outline" 
+                    onClick={() => {
+                      // TODO: Add resolve error functionality
+                      console.log('Resolve error:', selectedError.id);
+                    }}
+                  >
+                    Mark as Resolved
+                  </Button>
+                </div>
+              )}
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
