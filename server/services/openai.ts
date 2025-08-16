@@ -85,6 +85,27 @@ export class OpenAIService {
     return poPattern.test(filename) || poMimeTypes.test(contentType);
   }
 
+  // Truncate email body to prevent token limit issues
+  private truncateEmailBody(body: string, maxChars: number = 10000): string {
+    if (body.length <= maxChars) {
+      return body;
+    }
+    
+    // Keep the beginning of the email (most important content)
+    const truncated = body.substring(0, maxChars);
+    
+    // Try to end at a complete sentence to maintain context
+    const lastSentence = truncated.lastIndexOf('.');
+    const lastNewline = truncated.lastIndexOf('\n');
+    const cutPoint = Math.max(lastSentence, lastNewline);
+    
+    if (cutPoint > maxChars * 0.8) { // If we can find a good break point
+      return truncated.substring(0, cutPoint + 1) + '\n\n[... content truncated for processing ...]';
+    }
+    
+    return truncated + '\n\n[... content truncated for processing ...]';
+  }
+
   async preProcessEmail(input: EmailClassificationInput): Promise<{
     response: string;
     score: string;
@@ -93,13 +114,18 @@ export class OpenAIService {
     try {
       // Build attachment filenames string
       const attachmentFilenames = input.attachments?.map(a => a.filename).join(', ') || '';
+      
+      // Truncate email body to prevent token limit issues
+      const truncatedBody = this.truncateEmailBody(input.body);
+      
+      console.log(`📊 EMAIL SIZE: Original body ${input.body.length} chars, truncated to ${truncatedBody.length} chars`);
 
       const response = await openai.chat.completions.create({
         model: "gpt-4o", // the newest OpenAI model is "gpt-4o" which was released May 13, 2024. do not change this unless explicitly requested by the user
         messages: [
           {
             role: "user",
-            content: `Analyze the email with subject ${input.subject} and body text ${input.body} and attachments file name: ${attachmentFilenames} . Determine its intent based on the following detailed options:
+            content: `Analyze the email with subject ${input.subject} and body text ${truncatedBody} and attachments file name: ${attachmentFilenames} . Determine its intent based on the following detailed options:
 
 Purchase Order: The email includes a new order for product items (typically 10 or more) with details such as billing, delivery, or payment information. If the email is part of a follow-up but clearly includes new purchase order details, classify it as a Purchase Order.
 Sample Request: The email requests product samples, typically for quantities less than 10 items for evaluation purposes.
@@ -211,7 +237,7 @@ OUTPUT RULES
             role: "user", 
             content: `INPUT FIELDS
 * Subject: "${input.subject}"
-* Body Text: "${input.body}"
+* Body Text: "${this.truncateEmailBody(input.body)}"
 * Sender Name: "${input.sender}"
 * Sender Email: "${input.sender}"
 * Attachment Filenames: "${attachmentFilenames}"
