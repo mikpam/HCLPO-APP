@@ -378,9 +378,18 @@ export default function PurchaseOrdersPage() {
                           </div>
                         </TableCell>
                         <TableCell>
-                          <span className="text-sm text-gray-600">
-                            {formatDate(order.createdAt)}
-                          </span>
+                          <div className="space-y-1">
+                            <div className="text-sm text-gray-900">
+                              {formatDate(order.createdAt)}
+                            </div>
+                            <div className="text-xs text-gray-500">
+                              {new Date(order.createdAt).toLocaleTimeString('en-US', { 
+                                hour: '2-digit', 
+                                minute: '2-digit', 
+                                second: '2-digit' 
+                              })}
+                            </div>
+                          </div>
                         </TableCell>
                         <TableCell>
                           <div className="space-y-1">
@@ -512,9 +521,18 @@ export default function PurchaseOrdersPage() {
                         <div className="flex items-center justify-between">
                           <div className="flex items-center space-x-2">
                             <Calendar className="w-4 h-4 text-gray-400" />
-                            <span className="text-sm text-gray-600">
-                              {formatDate(order.createdAt)}
-                            </span>
+                            <div className="space-y-0">
+                              <div className="text-sm text-gray-900">
+                                {formatDate(order.createdAt)}
+                              </div>
+                              <div className="text-xs text-gray-500">
+                                {new Date(order.createdAt).toLocaleTimeString('en-US', { 
+                                  hour: '2-digit', 
+                                  minute: '2-digit', 
+                                  second: '2-digit' 
+                                })}
+                              </div>
+                            </div>
                           </div>
                           <Badge variant="outline" className={`${routeBadge.class} text-xs`}>
                             {routeBadge.label}
