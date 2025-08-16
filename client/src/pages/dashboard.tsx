@@ -4,6 +4,7 @@ import MetricsCards from "@/components/dashboard/metrics-cards";
 import RecentProcessing from "@/components/dashboard/recent-processing";
 import SystemHealth from "@/components/dashboard/system-health";
 import ManualProcessModal from "@/components/modals/manual-process-modal";
+import EmailProcessingAnimation from "@/components/dashboard/email-processing-animation";
 import { useState, useEffect } from "react";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -56,42 +57,7 @@ export default function Dashboard() {
     },
   });
 
-  const processBulkEmails = useMutation({
-    mutationFn: async () => {
-      const response = await fetch("/api/emails/process-all", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-      });
-      
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-      
-      return await response.json();
-    },
-    onSuccess: (result) => {
-      setLastProcessResult(result);
-      toast({
-        title: "Bulk Processing Complete",
-        description: `Processed ${result.processed} emails in ${(result.duration / 1000).toFixed(1)}s`,
-        duration: 10000,
-      });
-      
-      // Refresh dashboard metrics and email queue
-      queryClient.invalidateQueries({ queryKey: ["/api/dashboard/metrics"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/email-queue"] });
-    },
-    onError: (error: any) => {
-      console.error("Bulk processing error:", error);
-      toast({
-        title: "Bulk Processing Failed",
-        description: error.message || "Failed to process emails",
-        variant: "destructive",
-      });
-    },
-  });
+
 
   const processNormalEmails = useMutation({
     mutationFn: async () => {
@@ -186,24 +152,17 @@ export default function Dashboard() {
               <span className="text-xs text-amber-700 font-medium">DEV</span>
               <button
                 onClick={() => processSingleEmail.mutate()}
-                disabled={processSingleEmail.isPending || processBulkEmails.isPending || processNormalEmails.isPending}
+                disabled={processSingleEmail.isPending || processNormalEmails.isPending}
                 className="px-3 py-1 bg-amber-600 text-white text-xs rounded hover:bg-amber-700 transition-colors disabled:opacity-50"
               >
                 {processSingleEmail.isPending ? "Processing..." : "Process 1 Email"}
               </button>
               <button
                 onClick={() => processNormalEmails.mutate()}
-                disabled={processNormalEmails.isPending || processSingleEmail.isPending || processBulkEmails.isPending}
+                disabled={processNormalEmails.isPending || processSingleEmail.isPending}
                 className="px-3 py-1 bg-green-600 text-white text-xs rounded hover:bg-green-700 transition-colors disabled:opacity-50"
               >
                 {processNormalEmails.isPending ? "Processing..." : "📋 Process Normally"}
-              </button>
-              <button
-                onClick={() => processBulkEmails.mutate()}
-                disabled={processBulkEmails.isPending || processSingleEmail.isPending || processNormalEmails.isPending}
-                className="px-3 py-1 bg-blue-600 text-white text-xs rounded hover:bg-blue-700 transition-colors disabled:opacity-50"
-              >
-                {processBulkEmails.isPending ? "Processing All..." : "🚀 Process All Emails"}
               </button>
             </div>
             
@@ -229,36 +188,22 @@ export default function Dashboard() {
           isLoading={metricsLoading}
         />
 
+        {/* Email Processing Animation */}
+        <EmailProcessingAnimation 
+          isProcessing={processSingleEmail.isPending || processNormalEmails.isPending}
+          processedCount={lastProcessResult?.processedEmails?.length || 0}
+          totalCount={lastProcessResult?.total || 0}
+          currentStep={processSingleEmail.isPending ? "Processing single email..." : 
+                      processNormalEmails.isPending ? "Processing emails normally..." : ""}
+        />
+
         {/* Development Processing Result Display */}
         {lastProcessResult && (
           <div className="mb-8 bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-200 rounded-xl p-6">
             <h3 className="text-lg font-semibold text-amber-800 mb-4">
               <i className="fas fa-code text-amber-600 mr-2"></i>
-              {lastProcessResult.processed > 1 ? 'Bulk Processing Result' : 
-               lastProcessResult.processedEmails ? 'Normal Processing Result' : 'Development Processing Result'}
+              {lastProcessResult.processedEmails ? 'Normal Processing Result' : 'Development Processing Result'}
             </h3>
-            
-            {/* Performance Summary for Bulk Processing */}
-            {lastProcessResult.processed > 1 && (
-              <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
-                <div className="bg-white rounded-lg p-4 border border-amber-200">
-                  <div className="text-2xl font-bold text-blue-600">{lastProcessResult.processed}</div>
-                  <div className="text-sm text-gray-600">Emails Processed</div>
-                </div>
-                <div className="bg-white rounded-lg p-4 border border-amber-200">
-                  <div className="text-2xl font-bold text-green-600">{(lastProcessResult.duration / 1000).toFixed(1)}s</div>
-                  <div className="text-sm text-gray-600">Total Time</div>
-                </div>
-                <div className="bg-white rounded-lg p-4 border border-amber-200">
-                  <div className="text-2xl font-bold text-purple-600">{(lastProcessResult.avgTimePerEmail / 1000).toFixed(1)}s</div>
-                  <div className="text-sm text-gray-600">Avg Per Email</div>
-                </div>
-                <div className="bg-white rounded-lg p-4 border border-amber-200">
-                  <div className="text-2xl font-bold text-red-600">{lastProcessResult.errors}</div>
-                  <div className="text-sm text-gray-600">Errors</div>
-                </div>
-              </div>
-            )}
             
             {lastProcessResult.details ? (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
