@@ -12,6 +12,7 @@ import SystemStatusPage from "@/pages/system-status";
 import AnalyticsPage from "@/pages/analytics";
 import AISettingsPage from "@/pages/ai-settings";
 import FileManagementPage from "@/pages/file-management";
+import CustomerImportPage from "@/pages/customer-import";
 import Sidebar from "@/components/layout/sidebar";
 
 function Router() {
@@ -28,6 +29,7 @@ function Router() {
           <Route path="/analytics" component={AnalyticsPage} />
           <Route path="/ai-settings" component={AISettingsPage} />
           <Route path="/files" component={FileManagementPage} />
+          <Route path="/customer-import" component={CustomerImportPage} />
           <Route component={NotFound} />
         </Switch>
       </main>

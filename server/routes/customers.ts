@@ -55,7 +55,100 @@ export function registerCustomerRoutes(app: Express): void {
     }
   });
 
-  // Create/update customer
+  // Bulk import customers from CSV/JSON
+  app.post("/api/customers/bulk-import", async (req, res) => {
+    try {
+      const { customers: customerData, format = 'json' } = req.body;
+      
+      if (!customerData || !Array.isArray(customerData)) {
+        return res.status(400).json({ error: "Invalid customer data format" });
+      }
+
+      console.log(`📥 Bulk importing ${customerData.length} customers...`);
+      
+      // Validate and transform data
+      const validCustomers = [];
+      const errors = [];
+      
+      for (let i = 0; i < customerData.length; i++) {
+        const customer = customerData[i];
+        
+        // Validate required fields
+        if (!customer.customerNumber || !customer.companyName) {
+          errors.push({
+            row: i + 1,
+            error: "Missing required fields: customerNumber or companyName",
+            data: customer
+          });
+          continue;
+        }
+        
+        // Normalize and prepare customer data
+        const normalizedCustomer = {
+          customerNumber: customer.customerNumber.toString().trim(),
+          companyName: customer.companyName.trim(),
+          alternateNames: customer.alternateNames || [],
+          email: customer.email?.trim() || null,
+          phone: customer.phone?.trim() || null,
+          address: customer.address || null,
+          netsuiteId: customer.netsuiteId?.trim() || null,
+          isActive: customer.isActive !== false, // Default to true
+        };
+        
+        validCustomers.push(normalizedCustomer);
+      }
+      
+      // Insert customers in batches
+      const batchSize = 100;
+      let imported = 0;
+      
+      for (let i = 0; i < validCustomers.length; i += batchSize) {
+        const batch = validCustomers.slice(i, i + batchSize);
+        
+        try {
+          await db.insert(customers).values(batch).onConflictDoUpdate({
+            target: customers.customerNumber,
+            set: {
+              companyName: customers.companyName,
+              alternateNames: customers.alternateNames,
+              email: customers.email,
+              phone: customers.phone,
+              address: customers.address,
+              netsuiteId: customers.netsuiteId,
+              isActive: customers.isActive,
+              updatedAt: new Date(),
+            }
+          });
+          
+          imported += batch.length;
+          console.log(`   ✅ Imported batch: ${imported}/${validCustomers.length}`);
+        } catch (batchError) {
+          console.error(`Error importing batch:`, batchError);
+          errors.push({
+            batch: `${i + 1}-${Math.min(i + batchSize, validCustomers.length)}`,
+            error: batchError instanceof Error ? batchError.message : 'Unknown error'
+          });
+        }
+      }
+      
+      // Refresh cache after import
+      await customerLookupService.refreshCache();
+      
+      res.json({
+        success: true,
+        imported,
+        errors: errors.length,
+        errorDetails: errors.slice(0, 10), // Show first 10 errors
+        message: `Successfully imported ${imported} customers`
+      });
+      
+    } catch (error) {
+      console.error("Error in bulk import:", error);
+      res.status(500).json({ error: "Bulk import failed" });
+    }
+  });
+
+  // Create/update single customer
   app.post("/api/customers", async (req, res) => {
     try {
       const customerData = req.body;
