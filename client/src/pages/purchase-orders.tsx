@@ -28,7 +28,24 @@ export default function PurchaseOrdersPage() {
   const getCustomerInfo = (order: PurchaseOrder) => {
     const extractedData = order.extractedData as any;
     
-    // Check for forwarded email data first (priority for @highcaliberline.com emails)
+    // Check for HCL customer lookup result first (highest priority)
+    const customerMeta = order.customerMeta as any;
+    if (customerMeta && customerMeta.customer_number) {
+      const customer = extractedData?.purchaseOrder?.customer || extractedData?.customer || {};
+      return {
+        name: customerMeta.customer_name,
+        email: customer.email || order.sender || 'No email',
+        address: customer.address1 ? 
+          `${customer.address1}${customer.city ? `, ${customer.city}` : ''}${customer.state ? `, ${customer.state}` : ''}` : 
+          'No address',
+        customerNumber: customerMeta.customer_number,
+        cNumber: null,
+        isForwarded: false,
+        isHclCustomer: true
+      };
+    }
+    
+    // Check for forwarded email data (priority for @highcaliberline.com emails)
     const forwardedEmail = extractedData?.forwardedEmail;
     if (forwardedEmail) {
       // Use HCL customer lookup if available, otherwise fall back to Gemini extraction

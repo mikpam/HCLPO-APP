@@ -30,7 +30,9 @@ const BRAND_OVERRIDES: Record<string, CustomerMatch> = {
   'ipromoteu.com': { customer_number: "C5286", customer_name: "iPromoteu.com" },
   'bda': { customer_number: "C2436", customer_name: "Bensussen-Deutsch & Associates" },
   'bda inc': { customer_number: "C2436", customer_name: "Bensussen-Deutsch & Associates" },
-  'bdainc': { customer_number: "C2436", customer_name: "Bensussen-Deutsch & Associates" }
+  'bdainc': { customer_number: "C2436", customer_name: "Bensussen-Deutsch & Associates" },
+  '4allpromos': { customer_number: "C4211", customer_name: "4 All Promos LLC" },
+  '4 all promos': { customer_number: "C4211", customer_name: "4 All Promos LLC" }
 };
 
 export class CustomerFinderService {
