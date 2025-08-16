@@ -236,6 +236,50 @@ export class GmailService {
     }
   }
 
+  async getEmailsWithLabel(labelName: string, maxResults: number = 100): Promise<GmailMessage[]> {
+    return this.getMessages(`label:${labelName}`, maxResults);
+  }
+
+  async addLabelToEmail(messageId: string, labelName: string): Promise<void> {
+    try {
+      const labelId = await this.getLabelId(labelName);
+      if (!labelId) {
+        console.error(`Label '${labelName}' not found`);
+        return;
+      }
+
+      await this.gmail.users.messages.modify({
+        userId: 'me',
+        id: messageId,
+        requestBody: {
+          addLabelIds: [labelId]
+        }
+      });
+    } catch (error) {
+      console.error(`Error adding label '${labelName}' to message ${messageId}:`, error);
+    }
+  }
+
+  async removeLabelFromEmail(messageId: string, labelName: string): Promise<void> {
+    try {
+      const labelId = await this.getLabelId(labelName);
+      if (!labelId) {
+        console.error(`Label '${labelName}' not found`);
+        return;
+      }
+
+      await this.gmail.users.messages.modify({
+        userId: 'me',
+        id: messageId,
+        requestBody: {
+          removeLabelIds: [labelId]
+        }
+      });
+    } catch (error) {
+      console.error(`Error removing label '${labelName}' from message ${messageId}:`, error);
+    }
+  }
+
   async markAsProcessed(messageId: string, preprocessingResult?: { shouldProceed: boolean; response: string }): Promise<void> {
     try {
       console.log(`Updating Gmail labels for message ${messageId}`);
