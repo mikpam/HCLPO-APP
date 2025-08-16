@@ -5,7 +5,6 @@ import { registerCustomerRoutes } from "./routes/customers";
 import { gmailService } from "./services/gmail";
 import { openaiService } from "./services/openai";
 import { aiService, type AIEngine } from "./services/ai-service";
-import { airtableService } from "./services/airtable";
 import { netsuiteService } from "./services/netsuite";
 import { dropboxService } from "./services/dropbox";
 import { insertPurchaseOrderSchema, insertErrorLogSchema, classificationResultSchema } from "@shared/schema";
