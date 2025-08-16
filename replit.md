@@ -7,7 +7,7 @@ This is a full-stack web application designed to automate the processing of purc
 ## User Preferences
 
 Preferred communication style: Simple, everyday language.
-UI Design Priority: Desktop-first interface design. Mobile responsiveness is not critical as most users will be on desktop.
+UI Design Priority: Mobile-responsive design is now required across all pages. Users need the system to work well on both desktop and mobile devices.
 
 ## System Architecture
 

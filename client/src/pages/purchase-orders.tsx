@@ -168,6 +168,14 @@ export default function PurchaseOrdersPage() {
     return extractedData?.lineItems?.length || 0;
   };
 
+  const getValidationBadge = (extractedData: any) => {
+    if (extractedData) {
+      return { class: 'text-xs bg-green-50 text-green-700 border-green-200', label: 'Valid' };
+    } else {
+      return { class: 'text-xs bg-gray-50 text-gray-700 border-gray-200', label: 'Pending' };
+    }
+  };
+
   const handleImportToNetSuite = async (orderId: string) => {
     try {
       const response = await fetch(`/api/purchase-orders/${orderId}/import-netsuite`, {
@@ -194,33 +202,34 @@ export default function PurchaseOrdersPage() {
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Header */}
-      <div className="bg-white border-b border-gray-200 px-6 py-4">
-        <div className="flex items-center justify-between">
+      <div className="bg-white border-b border-gray-200 px-4 lg:px-6 py-4">
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between space-y-4 lg:space-y-0">
           <div>
-            <h1 className="text-2xl font-semibold text-gray-900">Purchase Order Admin Portal</h1>
-            <p className="text-gray-600 mt-1">Manage and track purchase order processing pipeline</p>
+            <h1 className="text-xl lg:text-2xl font-semibold text-gray-900">Purchase Order Admin Portal</h1>
+            <p className="text-gray-600 mt-1 text-sm lg:text-base">Manage and track purchase order processing pipeline</p>
           </div>
-          <div className="flex items-center space-x-3">
-            <Badge variant="outline" className="text-sm">
+          <div className="flex items-center space-x-2 lg:space-x-3">
+            <Badge variant="outline" className="text-xs lg:text-sm">
               {filteredAndSortedOrders.length} orders
             </Badge>
-            <Button variant="outline" size="sm">
+            <Button variant="outline" size="sm" className="hidden lg:flex">
               <FileText className="w-4 h-4 mr-2" />
               Export
             </Button>
             <Button size="sm">
               <Hash className="w-4 h-4 mr-2" />
-              Manual Entry
+              <span className="hidden lg:inline">Manual Entry</span>
+              <span className="lg:hidden">Add</span>
             </Button>
           </div>
         </div>
       </div>
 
       {/* Filters and Search */}
-      <div className="bg-white border-b border-gray-200 px-6 py-4">
-        <div className="flex items-center justify-between space-x-4">
-          <div className="flex items-center space-x-4 flex-1">
-            <div className="relative flex-1 max-w-md">
+      <div className="bg-white border-b border-gray-200 px-4 lg:px-6 py-4">
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between space-y-4 lg:space-y-0 lg:space-x-4">
+          <div className="flex flex-col lg:flex-row lg:items-center space-y-4 lg:space-y-0 lg:space-x-4 flex-1">
+            <div className="relative flex-1 lg:max-w-md">
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
               <Input
                 placeholder="Search by PO number, customer, or email..."
@@ -229,39 +238,41 @@ export default function PurchaseOrdersPage() {
                 className="pl-10"
               />
             </div>
-            <Select value={statusFilter} onValueChange={setStatusFilter}>
-              <SelectTrigger className="w-48">
-                <SelectValue placeholder="Filter by status" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Statuses</SelectItem>
-                <SelectItem value="pending">Pending</SelectItem>
-                <SelectItem value="processing">Processing</SelectItem>
-                <SelectItem value="ready_for_netsuite">Ready for NetSuite</SelectItem>
-                <SelectItem value="imported">Imported</SelectItem>
-                <SelectItem value="error">Error</SelectItem>
-              </SelectContent>
-            </Select>
-            <Select value={routeFilter} onValueChange={setRouteFilter}>
-              <SelectTrigger className="w-48">
-                <SelectValue placeholder="Filter by route" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Routes</SelectItem>
-                <SelectItem value="ATTACHMENT_PO">PDF Attachment</SelectItem>
-                <SelectItem value="TEXT_PO">Email Text</SelectItem>
-                <SelectItem value="REVIEW">Manual Review</SelectItem>
-              </SelectContent>
-            </Select>
+            <div className="flex space-x-2 lg:space-x-4">
+              <Select value={statusFilter} onValueChange={setStatusFilter}>
+                <SelectTrigger className="w-full lg:w-48">
+                  <SelectValue placeholder="Filter by status" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Statuses</SelectItem>
+                  <SelectItem value="pending">Pending</SelectItem>
+                  <SelectItem value="processing">Processing</SelectItem>
+                  <SelectItem value="ready_for_netsuite">Ready for NetSuite</SelectItem>
+                  <SelectItem value="imported">Imported</SelectItem>
+                  <SelectItem value="error">Error</SelectItem>
+                </SelectContent>
+              </Select>
+              <Select value={routeFilter} onValueChange={setRouteFilter}>
+                <SelectTrigger className="w-full lg:w-48">
+                  <SelectValue placeholder="Filter by route" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Routes</SelectItem>
+                  <SelectItem value="ATTACHMENT_PO">PDF Attachment</SelectItem>
+                  <SelectItem value="TEXT_PO">Email Text</SelectItem>
+                  <SelectItem value="REVIEW">Manual Review</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
           </div>
-          <Button variant="outline" size="sm">
+          <Button variant="outline" size="sm" className="hidden lg:flex">
             <Filter className="w-4 h-4 mr-2" />
             More Filters
           </Button>
         </div>
       </div>
 
-      {/* Table */}
+      {/* Content */}
       <div className="flex-1 overflow-auto">
         {isLoading ? (
           <div className="flex items-center justify-center py-12">
@@ -271,75 +282,196 @@ export default function PurchaseOrdersPage() {
             </div>
           </div>
         ) : (
-          <Table>
-            <TableHeader>
-              <TableRow className="bg-gray-50">
-                <TableHead className="w-[140px]">
-                  <Button 
-                    variant="ghost" 
-                    size="sm" 
-                    onClick={() => handleSort('poNumber')}
-                    className="h-8 p-0 font-medium text-left"
-                  >
-                    Purchase Number
-                    <ArrowUpDown className="ml-2 h-3 w-3" />
-                  </Button>
-                </TableHead>
-                <TableHead className="w-[100px]">Record ID</TableHead>
-                <TableHead className="w-[110px]">
-                  <Button 
-                    variant="ghost" 
-                    size="sm" 
-                    onClick={() => handleSort('orderDate')}
-                    className="h-8 p-0 font-medium text-left"
-                  >
-                    Order Date
-                    <ArrowUpDown className="ml-2 h-3 w-3" />
-                  </Button>
-                </TableHead>
-                <TableHead className="w-[110px]">
-                  <Button 
-                    variant="ghost" 
-                    size="sm" 
-                    onClick={() => handleSort('createdAt')}
-                    className="h-8 p-0 font-medium text-left"
-                  >
-                    Created
-                    <ArrowUpDown className="ml-2 h-3 w-3" />
-                  </Button>
-                </TableHead>
-                <TableHead className="w-[200px]">
-                  <Button 
-                    variant="ghost" 
-                    size="sm" 
-                    onClick={() => handleSort('customer')}
-                    className="h-8 p-0 font-medium text-left"
-                  >
-                    Customer
-                    <ArrowUpDown className="ml-2 h-3 w-3" />
-                  </Button>
-                </TableHead>
-                <TableHead className="w-[200px]">Customer Email</TableHead>
-                <TableHead className="w-[140px]">
-                  <Button 
-                    variant="ghost" 
-                    size="sm" 
-                    onClick={() => handleSort('status')}
-                    className="h-8 p-0 font-medium text-left"
-                  >
-                    Status
-                    <ArrowUpDown className="ml-2 h-3 w-3" />
-                  </Button>
-                </TableHead>
-                <TableHead className="w-[120px]">Route</TableHead>
-                <TableHead className="w-[100px]">Line Items</TableHead>
-                <TableHead className="w-[120px]">Customer Number</TableHead>
-                <TableHead className="w-[120px]">Validated JSON</TableHead>
-                <TableHead className="w-[100px]">PO KEY</TableHead>
-                <TableHead className="w-[100px]">Actions</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
+          <>
+            {/* Desktop Table View */}
+            <div className="hidden lg:block">
+              <Table>
+                <TableHeader>
+                  <TableRow className="bg-gray-50">
+                    <TableHead className="w-[140px]">
+                      <Button 
+                        variant="ghost" 
+                        size="sm" 
+                        onClick={() => handleSort('poNumber')}
+                        className="h-8 p-0 font-medium text-left"
+                      >
+                        Purchase Number
+                        <ArrowUpDown className="ml-2 h-3 w-3" />
+                      </Button>
+                    </TableHead>
+                    <TableHead className="w-[100px]">Record ID</TableHead>
+                    <TableHead className="w-[110px]">
+                      <Button 
+                        variant="ghost" 
+                        size="sm" 
+                        onClick={() => handleSort('orderDate')}
+                        className="h-8 p-0 font-medium text-left"
+                      >
+                        Order Date
+                        <ArrowUpDown className="ml-2 h-3 w-3" />
+                      </Button>
+                    </TableHead>
+                    <TableHead className="w-[110px]">
+                      <Button 
+                        variant="ghost" 
+                        size="sm" 
+                        onClick={() => handleSort('createdAt')}
+                        className="h-8 p-0 font-medium text-left"
+                      >
+                        Created
+                        <ArrowUpDown className="ml-2 h-3 w-3" />
+                      </Button>
+                    </TableHead>
+                    <TableHead className="w-[200px]">
+                      <Button 
+                        variant="ghost" 
+                        size="sm" 
+                        onClick={() => handleSort('customer')}
+                        className="h-8 p-0 font-medium text-left"
+                      >
+                        Customer
+                        <ArrowUpDown className="ml-2 h-3 w-3" />
+                      </Button>
+                    </TableHead>
+                    <TableHead className="w-[200px]">Customer Email</TableHead>
+                    <TableHead className="w-[140px]">
+                      <Button 
+                        variant="ghost" 
+                        size="sm" 
+                        onClick={() => handleSort('status')}
+                        className="h-8 p-0 font-medium text-left"
+                      >
+                        Status
+                        <ArrowUpDown className="ml-2 h-3 w-3" />
+                      </Button>
+                    </TableHead>
+                    <TableHead className="w-[120px]">Route</TableHead>
+                    <TableHead className="w-[100px]">Line Items</TableHead>
+                    <TableHead className="w-[120px]">Customer Number</TableHead>
+                    <TableHead className="w-[120px]">Validated JSON</TableHead>
+                    <TableHead className="w-[100px]">PO KEY</TableHead>
+                    <TableHead className="w-[100px]">Actions</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {filteredAndSortedOrders.map((order) => {
+                    const statusBadge = getStatusBadge(order.status);
+                    const routeBadge = getRouteBadge(order.route || '');
+                    const customer = getCustomerInfo(order);
+                    const lineItemsCount = getLineItemsCount(order);
+                    const StatusIcon = statusBadge.icon;
+                    
+                    return (
+                      <TableRow key={order.id} className="hover:bg-gray-50">
+                        <TableCell className="font-medium">
+                          <div className="flex items-center space-x-2">
+                            <Hash className="w-4 h-4 text-gray-400" />
+                            <span className="text-blue-600 font-mono">{order.poNumber}</span>
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <span className="text-gray-500 text-sm font-mono">
+                            {order.id.slice(0, 8)}...
+                          </span>
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex items-center space-x-2">
+                            <Calendar className="w-4 h-4 text-gray-400" />
+                            <span className="text-sm">
+                              {(order.extractedData as any)?.purchaseOrder?.orderDate || 'N/A'}
+                            </span>
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <span className="text-sm text-gray-600">
+                            {formatDate(order.createdAt)}
+                          </span>
+                        </TableCell>
+                        <TableCell>
+                          <div className="space-y-1">
+                            <div className="flex items-center space-x-2">
+                              <User className="w-4 h-4 text-gray-400" />
+                              <span className="font-medium text-sm">{customer.name}</span>
+                            </div>
+                            <div className="flex items-center space-x-2">
+                              <MapPin className="w-3 h-3 text-gray-400" />
+                              <span className="text-xs text-gray-500 truncate max-w-[150px]">
+                                {customer.address}
+                              </span>
+                            </div>
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex items-center space-x-2">
+                            <Mail className="w-4 h-4 text-gray-400" />
+                            <span className="text-sm text-gray-600 truncate max-w-[150px]">
+                              {customer.email}
+                            </span>
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <Badge className={`${statusBadge.class} text-xs`}>
+                            <StatusIcon className="w-3 h-3 mr-1" />
+                            {order.status}
+                          </Badge>
+                        </TableCell>
+                        <TableCell>
+                          <Badge variant="outline" className={`${routeBadge.class} text-xs`}>
+                            {routeBadge.label}
+                          </Badge>
+                        </TableCell>
+                        <TableCell>
+                          <span className="text-sm font-medium text-center block">
+                            {lineItemsCount}
+                          </span>
+                        </TableCell>
+                        <TableCell>
+                          <span className="font-mono text-sm text-blue-600">
+                            {(order.extractedData as any)?.purchaseOrder?.customer?.customerNumber || 'N/A'}
+                          </span>
+                        </TableCell>
+                        <TableCell>
+                          <Badge 
+                            variant="outline"
+                            className={getValidationBadge(order.extractedData).class}
+                          >
+                            {getValidationBadge(order.extractedData).label}
+                          </Badge>
+                        </TableCell>
+                        <TableCell>
+                          <span className="text-gray-400 text-sm">-</span>
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex items-center space-x-2">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => handleViewOrder(order)}
+                              className="h-8 w-8 p-0"
+                            >
+                              <Eye className="w-4 h-4" />
+                            </Button>
+                            {order.status === 'ready_for_netsuite' && (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => handleImportToNetSuite(order.id)}
+                                className="h-8 w-8 p-0 text-green-600 hover:text-green-700"
+                              >
+                                <ExternalLink className="w-4 h-4" />
+                              </Button>
+                            )}
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
+                </TableBody>
+              </Table>
+            </div>
+
+            {/* Mobile Card View */}
+            <div className="lg:hidden px-4 py-4 space-y-4">
               {filteredAndSortedOrders.map((order) => {
                 const statusBadge = getStatusBadge(order.status);
                 const routeBadge = getRouteBadge(order.route || '');
@@ -348,117 +480,79 @@ export default function PurchaseOrdersPage() {
                 const StatusIcon = statusBadge.icon;
                 
                 return (
-                  <TableRow key={order.id} className="hover:bg-gray-50">
-                    <TableCell className="font-medium">
-                      <div className="flex items-center space-x-2">
-                        <Hash className="w-4 h-4 text-gray-400" />
-                        <span className="text-blue-600 font-mono">{order.poNumber}</span>
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <span className="text-gray-500 text-sm font-mono">
-                        {order.id.slice(0, 8)}...
-                      </span>
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex items-center space-x-2">
-                        <Calendar className="w-4 h-4 text-gray-400" />
-                        <span className="text-sm">
-                          {(order.extractedData as any)?.purchaseOrder?.orderDate || 'N/A'}
-                        </span>
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <span className="text-sm text-gray-600">
-                        {formatDate(order.createdAt)}
-                      </span>
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex items-center space-x-2">
-                        <User className="w-4 h-4 text-gray-400" />
-                        <div>
-                          <div className="font-medium text-sm">{customer.name}</div>
-                          <div className="text-xs text-gray-500 truncate max-w-[180px]">
-                            {customer.address}
-                          </div>
+                  <Card key={order.id} className="hover:shadow-md transition-shadow">
+                    <CardContent className="p-4">
+                      <div className="flex items-start justify-between mb-3">
+                        <div className="flex items-center space-x-2">
+                          <Hash className="w-4 h-4 text-gray-400" />
+                          <span className="text-blue-600 font-mono font-semibold">{order.poNumber}</span>
                         </div>
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex items-center space-x-2">
-                        <Mail className="w-4 h-4 text-gray-400" />
-                        <span className="text-sm text-gray-600 truncate max-w-[180px]">
-                          {customer.email}
-                        </span>
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <Badge className={`${statusBadge.class} border`}>
-                        <StatusIcon className="w-3 h-3 mr-1" />
-                        {order.status.replace('_', ' ')}
-                      </Badge>
-                    </TableCell>
-                    <TableCell>
-                      <Badge className={`${routeBadge.class} border text-xs`}>
-                        {routeBadge.label}
-                      </Badge>
-                    </TableCell>
-                    <TableCell>
-                      <div className="text-center">
-                        <Badge variant="outline" className="text-xs">
-                          {lineItemsCount} items
-                        </Badge>
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <div className="text-center">
-                        <span className="text-sm text-gray-600">
-                          {(order.extractedData as any)?.purchaseOrder?.customer?.customerNumber || 'N/A'}
-                        </span>
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <div className="text-center">
-                        <Badge variant="outline" className="text-xs bg-blue-50 text-blue-700 border-blue-200">
-                          {order.extractedData ? 'Valid' : 'Pending'}
-                        </Badge>
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <div className="text-center">
-                        <span className="text-sm text-gray-600 font-mono">
-                          {/* PO KEY to be populated later */}
-                          --
-                        </span>
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex items-center space-x-1">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => handleViewOrder(order)}
-                          className="h-8 w-8 p-0"
-                        >
-                          <Eye className="h-4 w-4" />
-                        </Button>
-                        {order.status === 'ready_for_netsuite' && (
+                        <div className="flex items-center space-x-2">
+                          <Badge className={`${statusBadge.class} text-xs`}>
+                            <StatusIcon className="w-3 h-3 mr-1" />
+                            {order.status}
+                          </Badge>
                           <Button
                             variant="ghost"
                             size="sm"
-                            onClick={() => handleImportToNetSuite(order.id)}
-                            className="h-8 w-8 p-0 text-blue-600 hover:text-blue-700"
+                            onClick={() => handleViewOrder(order)}
+                            className="h-8 w-8 p-0"
                           >
-                            <ExternalLink className="h-4 w-4" />
+                            <Eye className="w-4 h-4" />
                           </Button>
-                        )}
+                        </div>
                       </div>
-                    </TableCell>
-                  </TableRow>
+                      
+                      <div className="space-y-2">
+                        <div className="flex items-center space-x-2">
+                          <User className="w-4 h-4 text-gray-400" />
+                          <span className="font-medium text-sm">{customer.name}</span>
+                        </div>
+                        
+                        <div className="flex items-center space-x-2">
+                          <Mail className="w-4 h-4 text-gray-400" />
+                          <span className="text-sm text-gray-600 truncate">{customer.email}</span>
+                        </div>
+                        
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center space-x-2">
+                            <Calendar className="w-4 h-4 text-gray-400" />
+                            <span className="text-sm text-gray-600">
+                              {formatDate(order.createdAt)}
+                            </span>
+                          </div>
+                          <Badge variant="outline" className={`${routeBadge.class} text-xs`}>
+                            {routeBadge.label}
+                          </Badge>
+                        </div>
+                        
+                        <div className="flex items-center justify-between pt-2 border-t border-gray-100">
+                          <div className="flex items-center space-x-4">
+                            <span className="text-xs text-gray-500">
+                              {lineItemsCount} items
+                            </span>
+                            <span className="font-mono text-xs text-blue-600">
+                              {(order.extractedData as any)?.purchaseOrder?.customer?.customerNumber || 'N/A'}
+                            </span>
+                          </div>
+                          {order.status === 'ready_for_netsuite' && (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => handleImportToNetSuite(order.id)}
+                              className="h-8 w-8 p-0 text-green-600 hover:text-green-700"
+                            >
+                              <ExternalLink className="w-4 h-4" />
+                            </Button>
+                          )}
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
                 );
               })}
-            </TableBody>
-          </Table>
+            </div>
+          </>
         )}
       </div>
 
