@@ -409,6 +409,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
               console.log(`   ✅ Found HCL customer: ${customerMatch.customer_name} (${customerMatch.customer_number})`);
             } else {
               console.log(`   ❌ No HCL customer match found for: ${extractionResult.purchaseOrder.customer.company}`);
+              console.log(`   🆕 FLAGGING AS NEW CUSTOMER for CSR review`);
             }
           } catch (error) {
             console.error(`   ❌ Customer lookup failed:`, error);
@@ -433,7 +434,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
           subject: messageToProcess.subject,
           route: processingResult.classification.recommended_route,
           confidence: processingResult.classification.analysis_flags?.confidence_score || 0,
-          status: extractionResult ? 'ready_for_netsuite' : 
+          status: extractionResult ? 
+                  (customerMeta ? 'ready_for_netsuite' : 'new_customer') : 
                   (processingResult.classification.recommended_route === 'TEXT_PO' ? 'ready_for_extraction' : 'pending_review'),
           originalJson: processingResult.classification,
           extractedData: {

@@ -159,6 +159,8 @@ export default function PurchaseOrdersPage() {
         return { class: 'bg-blue-100 text-blue-800 border-blue-200', icon: Clock };
       case 'pending_review':
         return { class: 'bg-amber-100 text-amber-800 border-amber-200', icon: Clock };
+      case 'new_customer':
+        return { class: 'bg-purple-100 text-purple-800 border-purple-200', icon: User };
       case 'error':
         return { class: 'bg-red-100 text-red-800 border-red-200', icon: XCircle };
       default:
@@ -272,6 +274,8 @@ export default function PurchaseOrdersPage() {
                   <SelectItem value="pending">Pending</SelectItem>
                   <SelectItem value="processing">Processing</SelectItem>
                   <SelectItem value="ready_for_netsuite">Ready for NetSuite</SelectItem>
+                  <SelectItem value="pending_review">Pending Review</SelectItem>
+                  <SelectItem value="new_customer">New Customer</SelectItem>
                   <SelectItem value="imported">Imported</SelectItem>
                   <SelectItem value="error">Error</SelectItem>
                 </SelectContent>
