@@ -3,15 +3,6 @@ import { Mail, Brain, Route, Zap, Search, UserCheck, CheckCircle2, ArrowRight } 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 
-interface ProcessingStep {
-  id: string;
-  icon: React.ComponentType<{ className?: string }>;
-  label: string;
-  description: string;
-  status: "pending" | "processing" | "completed" | "failed";
-  duration?: number;
-}
-
 interface EmailProcessingAnimationProps {
   isProcessing?: boolean;
   processedCount?: number;
@@ -19,7 +10,7 @@ interface EmailProcessingAnimationProps {
   currentStep?: string;
 }
 
-export default function EmailProcessingAnimation({ 
+function EmailProcessingAnimation({ 
   isProcessing = false, 
   processedCount = 0, 
   totalCount = 0,
@@ -28,7 +19,7 @@ export default function EmailProcessingAnimation({
   const [currentStepIndex, setCurrentStepIndex] = useState(0);
   const [animationKey, setAnimationKey] = useState(0);
 
-  const processingSteps: ProcessingStep[] = [
+  const processingSteps = [
     {
       id: "email",
       icon: Mail,
@@ -271,3 +262,5 @@ export default function EmailProcessingAnimation({
     </Card>
   );
 }
+
+export default EmailProcessingAnimation;
