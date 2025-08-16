@@ -389,6 +389,31 @@ export async function registerRoutes(app: Express): Promise<Server> {
         // Determine effective sender and customer for forwarded emails
         let effectiveSenderForPO = messageToProcess.sender;
         let customerInfo = null;
+        let customerMeta = null;
+        
+        // Lookup customer in HCL database for all purchase orders
+        if (extractionResult?.purchaseOrder?.customer) {
+          console.log(`\n🔍 CUSTOMER LOOKUP:`);
+          console.log(`   └─ Searching HCL database for: ${extractionResult.purchaseOrder.customer.company || 'Unknown'}`);
+          
+          try {
+            const { customerFinderService } = await import('./services/customer-finder');
+            const customerMatch = await customerFinderService.findCustomer({
+              customerName: extractionResult.purchaseOrder.customer.company,
+              customerEmail: extractionResult.purchaseOrder.customer.email,
+              senderEmail: messageToProcess.sender
+            });
+            
+            if (customerMatch?.customer_number) {
+              customerMeta = customerMatch;
+              console.log(`   ✅ Found HCL customer: ${customerMatch.customer_name} (${customerMatch.customer_number})`);
+            } else {
+              console.log(`   ❌ No HCL customer match found for: ${extractionResult.purchaseOrder.customer.company}`);
+            }
+          } catch (error) {
+            console.error(`   ❌ Customer lookup failed:`, error);
+          }
+        }
         
         if (isForwardedEmail && extractionResult?.purchaseOrder?.customer) {
           console.log(`\n📋 FORWARDED EMAIL PROCESSING:`);
@@ -419,7 +444,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
               hclCustomerLookup: hclCustomerLookup,
               extractedCustomer: customerInfo || hclCustomerLookup // Use Gemini extraction first, fallback to HCL lookup
             } : undefined
-          }
+          },
+          customerMeta: customerMeta // Include HCL customer lookup result
         });
       }
 

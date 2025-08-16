@@ -1,6 +1,6 @@
 import { db } from '../db';
 import { customers } from '../../shared/schema';
-import { eq, ilike, or, and, sql } from 'drizzle-orm';
+import { eq, ilike, or, and, sql, isNotNull } from 'drizzle-orm';
 
 interface CustomerDetails {
   customerEmail?: string;
@@ -140,7 +140,7 @@ export class CustomerFinderService {
             .from(customers)
             .where(
               and(
-                customers.email !== null,
+                isNotNull(customers.email),
                 ilike(customers.email, `%${domain}%`)
               )
             )
@@ -209,8 +209,8 @@ export class CustomerFinderService {
             .from(customers)
             .where(
               and(
-                customers.email !== null,
-                eq(customers.email, email)
+                isNotNull(customers.email),
+                eq(customers.email, email!)
               )
             )
             .limit(1);
