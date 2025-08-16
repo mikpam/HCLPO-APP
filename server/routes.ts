@@ -145,13 +145,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (messageToProcess.sender.includes('@highcaliberline.com')) {
         console.log(`\n📨 FORWARDED EMAIL DETECTION: Checking for CNumber in @highcaliberline.com email...`);
         
-        // Look for CNumber pattern in subject and body (flexible patterns)
-        const cNumberPattern = /(?:Account\s+C|C\s*#?\s*:?\s*)(\d+)/i;
+        // Look for CNumber pattern in subject and body (more specific patterns to avoid zip codes)
+        // Only match explicit customer number patterns, not general "C: number" which could be zip codes
+        const cNumberPattern = /(?:Account\s+C|Customer\s+C|CNumber\s*:?\s*C?|C\s*#\s*:?\s*C?)(\d{4,6})\b/i;
         const subjectMatch = messageToProcess.subject.match(cNumberPattern);
         const bodyMatch = messageToProcess.body.match(cNumberPattern);
         
-        if (subjectMatch || bodyMatch) {
-          extractedCNumber = subjectMatch?.[1] || bodyMatch?.[1];
+        // Additional validation: ensure it's a reasonable CNumber format (4-6 digits)
+        let validCNumber = null;
+        const foundMatch = subjectMatch?.[1] || bodyMatch?.[1];
+        if (foundMatch && foundMatch.length >= 4 && foundMatch.length <= 6) {
+          validCNumber = foundMatch;
+        }
+        
+        if (validCNumber) {
+          extractedCNumber = validCNumber;
           isForwardedEmail = true;
           console.log(`   ✅ Found CNumber: ${extractedCNumber}`);
           
