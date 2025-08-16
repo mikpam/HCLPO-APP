@@ -8,6 +8,7 @@ interface EmailProcessingAnimationProps {
   processedCount?: number;
   totalCount?: number;
   currentStep?: string;
+  finalStatus?: "ready_for_netsuite" | "new_customer" | "pending_review" | "ready_for_extraction" | "pending";
   onAnimationComplete?: () => void;
 }
 
@@ -16,18 +17,35 @@ function EmailProcessingAnimation({
   processedCount = 0, 
   totalCount = 0,
   currentStep = "",
+  finalStatus = "pending",
   onAnimationComplete
 }: EmailProcessingAnimationProps) {
   const [currentStepIndex, setCurrentStepIndex] = useState(0);
   const [animationKey, setAnimationKey] = useState(0);
   const [internalProcessing, setInternalProcessing] = useState(false);
   const [showCompleted, setShowCompleted] = useState(false);
+  
+  // Status display mapping
+  const getStatusDisplay = (status: string) => {
+    switch (status) {
+      case "ready_for_netsuite":
+        return { label: "Ready for NetSuite", description: "✅ Customer found - Ready for import", color: "text-green-600", bgColor: "bg-green-50", borderColor: "border-green-200" };
+      case "new_customer": 
+        return { label: "New Customer Review", description: "👀 Flagged for CSR review", color: "text-orange-600", bgColor: "bg-orange-50", borderColor: "border-orange-200" };
+      case "pending_review":
+        return { label: "Pending Review", description: "📝 Manual review required", color: "text-yellow-600", bgColor: "bg-yellow-50", borderColor: "border-yellow-200" };
+      case "ready_for_extraction":
+        return { label: "Ready for Extraction", description: "📄 Text extraction pending", color: "text-blue-600", bgColor: "bg-blue-50", borderColor: "border-blue-200" };
+      default:
+        return { label: "Processing Complete", description: "✅ Email processed", color: "text-gray-600", bgColor: "bg-gray-50", borderColor: "border-gray-200" };
+    }
+  };
 
   const processingSteps = [
     {
       id: "email",
       icon: "Mail",
-      label: "Email Received",
+      label: "Email Received", 
       description: "New email detected",
       status: "pending" as "pending" | "processing" | "completed" | "failed",
       duration: 500
@@ -36,16 +54,16 @@ function EmailProcessingAnimation({
       id: "preprocessing", 
       icon: "Brain",
       label: "Preprocessing",
-      description: "OpenAI classification",
+      description: "OpenAI intent classification",
       status: "pending" as "pending" | "processing" | "completed" | "failed",
       duration: 2000
     },
     {
-      id: "routing",
-      icon: "Route",
+      id: "classification",
+      icon: "Route", 
       label: "Route Classification",
-      description: "Determining processing path",
-      status: "pending" as "pending" | "processing" | "completed" | "failed", 
+      description: "Detailed analysis & routing",
+      status: "pending" as "pending" | "processing" | "completed" | "failed",
       duration: 1000
     },
     {
@@ -53,30 +71,22 @@ function EmailProcessingAnimation({
       icon: "Zap",
       label: "Data Extraction",
       description: "Gemini PO parsing",
-      status: "pending" as "pending" | "processing" | "completed" | "failed",
+      status: "pending" as "pending" | "processing" | "completed" | "failed", 
       duration: 3000
     },
     {
-      id: "parsing",
-      icon: "Search",
-      label: "Data Parsing", 
-      description: "Structuring information",
-      status: "pending" as "pending" | "processing" | "completed" | "failed",
-      duration: 1500
-    },
-    {
-      id: "customer",
+      id: "customer_lookup",
       icon: "UserCheck",
-      label: "Customer ID",
-      description: "HCL database lookup",
+      label: "Customer Lookup",
+      description: "HCL database matching",
       status: "pending" as "pending" | "processing" | "completed" | "failed",
       duration: 1000
     },
     {
-      id: "ready",
-      icon: "CheckCircle2",
-      label: "Ready for NetSuite",
-      description: "Processing complete",
+      id: "final_status",
+      icon: "CheckCircle2", 
+      label: "Status Assignment",
+      description: "Final processing status",
       status: "pending" as "pending" | "processing" | "completed" | "failed",
       duration: 500
     }
@@ -129,7 +139,7 @@ function EmailProcessingAnimation({
           setCurrentStepIndex(prev => prev + 1);
         }, processingSteps[currentStepIndex]?.duration || 1000);
       } else {
-        // Mark final step as completed and stop
+        // Mark final step as completed and show real status
         timeoutId = setTimeout(() => {
           setSteps(prevSteps => {
             const finalSteps = [...prevSteps];
@@ -153,7 +163,7 @@ function EmailProcessingAnimation({
             setCurrentStepIndex(0);
             setShowCompleted(false);
             setAnimationKey(prev => prev + 1);
-          }, 5000); // Stay at completed state for 5 seconds
+          }, 7000); // Stay at completed state longer to show final status
         }, 500);
       }
     };
@@ -210,8 +220,8 @@ function EmailProcessingAnimation({
             </Badge>
           )}
           {showCompleted && (
-            <Badge variant="default" className="bg-green-500 text-white">
-              ✅ Complete
+            <Badge variant="default" className={`${getStatusDisplay(finalStatus).color} ${getStatusDisplay(finalStatus).bgColor} border ${getStatusDisplay(finalStatus).borderColor}`}>
+              {getStatusDisplay(finalStatus).label}
             </Badge>
           )}
         </CardTitle>
@@ -283,7 +293,7 @@ function EmailProcessingAnimation({
               <div className="flex items-center gap-2 text-blue-700">
                 <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse"></div>
                 <span className="text-sm font-medium">
-                  {showCompleted ? "✅ Processing complete - Ready for NetSuite!" : 
+                  {showCompleted ? getStatusDisplay(finalStatus).description : 
                    currentStep || `Processing step ${currentStepIndex + 1} of ${steps.length}`}
                 </span>
               </div>
