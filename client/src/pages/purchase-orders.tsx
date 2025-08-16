@@ -28,7 +28,41 @@ export default function PurchaseOrdersPage() {
   const getCustomerInfo = (order: PurchaseOrder) => {
     const extractedData = order.extractedData as any;
     
-    // Try multiple possible locations for customer data in Gemini JSON
+    // Check for forwarded email data first (priority for @highcaliberline.com emails)
+    const forwardedEmail = extractedData?.forwardedEmail;
+    if (forwardedEmail) {
+      // Use HCL customer lookup if available, otherwise fall back to Gemini extraction
+      const hclCustomer = forwardedEmail.hclCustomerLookup;
+      const extractedCustomer = forwardedEmail.extractedCustomer;
+      
+      if (hclCustomer && hclCustomer.customer_name) {
+        // HCL database customer found
+        return {
+          name: hclCustomer.customer_name,
+          email: extractedCustomer?.email || order.sender || 'No email',
+          address: extractedCustomer?.address1 ? 
+            `${extractedCustomer.address1}${extractedCustomer.city ? `, ${extractedCustomer.city}` : ''}${extractedCustomer.state ? `, ${extractedCustomer.state}` : ''}` : 
+            'No address',
+          customerNumber: hclCustomer.customer_number,
+          cNumber: forwardedEmail.cNumber,
+          isForwarded: true
+        };
+      } else if (extractedCustomer && extractedCustomer.company) {
+        // Gemini extraction from forwarded email
+        return {
+          name: extractedCustomer.company,
+          email: extractedCustomer.email || order.sender || 'No email',
+          address: extractedCustomer.address1 ? 
+            `${extractedCustomer.address1}${extractedCustomer.city ? `, ${extractedCustomer.city}` : ''}${extractedCustomer.state ? `, ${extractedCustomer.state}` : ''}` : 
+            'No address',
+          customerNumber: extractedCustomer.customerNumber || 'N/A',
+          cNumber: forwardedEmail.cNumber,
+          isForwarded: true
+        };
+      }
+    }
+    
+    // Regular Gemini extraction (non-forwarded emails)
     const customer = extractedData?.purchaseOrder?.customer || extractedData?.customer || {};
     const shipTo = extractedData?.purchaseOrder?.shipTo || {};
     
@@ -52,7 +86,9 @@ export default function PurchaseOrdersPage() {
     return {
       name: customerName,
       email: email,
-      address: fullAddress || 'No address'
+      address: fullAddress || 'No address',
+      customerNumber: customer.customerNumber || 'N/A',
+      isForwarded: false
     };
   };
 
@@ -372,7 +408,20 @@ export default function PurchaseOrdersPage() {
                             <div className="flex items-center space-x-2">
                               <User className="w-4 h-4 text-gray-400" />
                               <span className="font-medium text-sm">{customer.name}</span>
+                              {customer.isForwarded && (
+                                <Badge variant="secondary" className="text-xs px-1 py-0.5">
+                                  Forwarded
+                                </Badge>
+                              )}
                             </div>
+                            {customer.cNumber && (
+                              <div className="flex items-center space-x-2">
+                                <Hash className="w-3 h-3 text-blue-400" />
+                                <span className="text-xs text-blue-600 font-mono">
+                                  C{customer.cNumber}
+                                </span>
+                              </div>
+                            )}
                             <div className="flex items-center space-x-2">
                               <MapPin className="w-3 h-3 text-gray-400" />
                               <span className="text-xs text-gray-500 truncate max-w-[150px]">
@@ -417,9 +466,16 @@ export default function PurchaseOrdersPage() {
                           </div>
                         </TableCell>
                         <TableCell>
-                          <span className="font-mono text-sm text-blue-600">
-                            {(order.extractedData as any)?.purchaseOrder?.customer?.customerNumber || 'N/A'}
-                          </span>
+                          <div className="space-y-1">
+                            <span className="font-mono text-sm text-blue-600">
+                              {customer.customerNumber || 'N/A'}
+                            </span>
+                            {customer.isForwarded && customer.cNumber && (
+                              <div className="text-xs text-gray-500">
+                                HCL: C{customer.cNumber}
+                              </div>
+                            )}
+                          </div>
                         </TableCell>
                         <TableCell>
                           <Badge 
@@ -476,6 +532,11 @@ export default function PurchaseOrdersPage() {
                         <div className="flex items-center space-x-2">
                           <Hash className="w-4 h-4 text-gray-400" />
                           <span className="text-blue-600 font-mono font-semibold">{order.poNumber}</span>
+                          {customer.isForwarded && (
+                            <Badge variant="secondary" className="text-xs px-1 py-0.5">
+                              Forwarded
+                            </Badge>
+                          )}
                         </div>
                         <div className="flex items-center space-x-2">
                           <Badge className={`${statusBadge.class} text-xs`}>
@@ -498,6 +559,15 @@ export default function PurchaseOrdersPage() {
                           <User className="w-4 h-4 text-gray-400" />
                           <span className="font-medium text-sm">{customer.name}</span>
                         </div>
+                        
+                        {customer.cNumber && (
+                          <div className="flex items-center space-x-2">
+                            <Hash className="w-4 h-4 text-blue-400" />
+                            <span className="text-sm text-blue-600 font-mono">
+                              HCL: C{customer.cNumber}
+                            </span>
+                          </div>
+                        )}
                         
                         <div>
                           <span className="text-sm text-gray-600 truncate">{customer.email}</span>
@@ -549,7 +619,7 @@ export default function PurchaseOrdersPage() {
                               {lineItemsCount} items
                             </span>
                             <span className="font-mono text-xs text-blue-600">
-                              {(order.extractedData as any)?.purchaseOrder?.customer?.customerNumber || 'N/A'}
+                              {customer.customerNumber || 'N/A'}
                             </span>
                           </div>
                           {order.status === 'ready_for_netsuite' && (
