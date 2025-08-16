@@ -86,12 +86,12 @@ export class GmailService {
     }
   }
 
-  async getMessages(query: string = 'in:inbox'): Promise<GmailMessage[]> {
+  async getMessages(query: string = 'in:inbox', maxResults: number = 50): Promise<GmailMessage[]> {
     try {
       const listResponse = await this.gmail.users.messages.list({
         userId: 'me',
         q: query,
-        maxResults: 50
+        maxResults: maxResults
       });
 
       const messageIds = listResponse.data.messages || [];

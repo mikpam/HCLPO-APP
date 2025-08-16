@@ -98,6 +98,317 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Bulk email processing endpoint
+  app.post('/api/emails/process-all', async (req, res) => {
+    const startTime = Date.now();
+    let processedCount = 0;
+    let errors: any[] = [];
+    
+    try {
+      console.log(`\n🚀 BULK PROCESSING: Starting bulk email processing...`);
+      
+      // Fetch all emails from inbox
+      const messages = await gmailService.getMessages('in:inbox', 500); // Process up to 500 emails
+      console.log(`📬 FOUND ${messages.length} TOTAL EMAILS`);
+      
+      if (messages.length === 0) {
+        return res.json({ 
+          message: "No emails found to process",
+          processed: 0,
+          errors: 0,
+          duration: 0
+        });
+      }
+
+      // Filter out already processed emails
+      const unprocessedMessages = [];
+      for (const message of messages) {
+        const existingQueue = await storage.getEmailQueueByGmailId(message.id);
+        if (!existingQueue) {
+          unprocessedMessages.push(message);
+        }
+      }
+      
+      console.log(`📋 UNPROCESSED EMAILS: ${unprocessedMessages.length}`);
+      
+      if (unprocessedMessages.length === 0) {
+        return res.json({ 
+          message: "All emails have been processed already",
+          processed: 0,
+          errors: 0,
+          duration: Date.now() - startTime
+        });
+      }
+
+      // Process emails in batches to avoid overwhelming APIs
+      const batchSize = 3; // Process 3 emails at a time
+      const batches = [];
+      for (let i = 0; i < unprocessedMessages.length; i += batchSize) {
+        batches.push(unprocessedMessages.slice(i, i + batchSize));
+      }
+      
+      console.log(`⚡ PROCESSING ${unprocessedMessages.length} emails in ${batches.length} batches of ${batchSize}`);
+
+      for (let batchIndex = 0; batchIndex < batches.length; batchIndex++) {
+        const batch = batches[batchIndex];
+        console.log(`\n📦 BATCH ${batchIndex + 1}/${batches.length}: Processing ${batch.length} emails...`);
+        
+        // Process batch sequentially to manage API rate limits
+        for (let emailIndex = 0; emailIndex < batch.length; emailIndex++) {
+          const messageToProcess = batch[emailIndex];
+          try {
+            console.log(`\n🔄 EMAIL ${batchIndex * batchSize + emailIndex + 1}: "${messageToProcess.subject}"`);
+            console.log(`   └─ From: ${messageToProcess.sender}`);
+            
+            // Check for forwarded email and extract CNumber
+            let isForwardedEmail = false;
+            let extractedCNumber = null;
+            let hclCustomerLookup = null;
+            
+            if (messageToProcess.sender.includes('@highcaliberline.com')) {
+              const cNumberPattern = /(?:Account\s+C|Customer\s+C|CNumber\s*:?\s*C?|C\s*#\s*:?\s*C?)(\d{4,6})\b/i;
+              const subjectMatch = messageToProcess.subject.match(cNumberPattern);
+              const bodyMatch = messageToProcess.body.match(cNumberPattern);
+              
+              const foundMatch = subjectMatch?.[1] || bodyMatch?.[1];
+              if (foundMatch && foundMatch.length >= 4 && foundMatch.length <= 6) {
+                extractedCNumber = foundMatch;
+                isForwardedEmail = true;
+                
+                const { customerFinderService } = await import('./services/customer-finder');
+                const fullCNumber = `C${extractedCNumber}`;
+                hclCustomerLookup = await customerFinderService.findByCNumber(fullCNumber);
+              }
+            }
+
+            // Create email queue item
+            const queueItem = await storage.createEmailQueueItem({
+              gmailId: messageToProcess.id,
+              sender: messageToProcess.sender,
+              subject: messageToProcess.subject,
+              body: messageToProcess.body,
+              attachments: messageToProcess.attachments,
+              labels: messageToProcess.labels,
+              status: 'processing'
+            });
+
+            // Process email using two-step approach
+            const processingResult = await aiService.processEmail({
+              sender: messageToProcess.sender,
+              subject: messageToProcess.subject,
+              body: messageToProcess.body,
+              attachments: messageToProcess.attachments
+            });
+
+            // Update queue item with results
+            const updateData: any = {
+              preprocessingResult: processingResult.preprocessing,
+              status: processingResult.preprocessing.shouldProceed ? 'processed' : 'filtered',
+              processedAt: new Date()
+            };
+
+            if (processingResult.classification) {
+              updateData.classificationResult = processingResult.classification;
+              updateData.route = processingResult.classification.recommended_route;
+              updateData.confidence = processingResult.classification.analysis_flags?.confidence_score || 0;
+            } else {
+              updateData.route = 'FILTERED';
+              updateData.classificationResult = {
+                analysis_flags: {
+                  filtered_reason: processingResult.preprocessing.response,
+                  confidence_score: processingResult.preprocessing.score || 0
+                }
+              };
+            }
+
+            await storage.updateEmailQueueItem(queueItem.id, updateData);
+
+            let purchaseOrder = null;
+            let attachmentPaths: Array<{filename: string; storagePath: string; buffer?: Buffer}> = [];
+
+            // Store PDF attachments if any
+            if (messageToProcess.attachments.length > 0) {
+              attachmentPaths = await gmailService.storeEmailAttachments(
+                messageToProcess.id,
+                messageToProcess.attachments
+              );
+            }
+
+            // Save original email as .eml file for classified emails
+            if (processingResult.preprocessing.shouldProceed && processingResult.classification) {
+              try {
+                const rawEmailContent = await gmailService.getRawEmailContent(messageToProcess.id);
+                const { ObjectStorageService } = await import('./objectStorage');
+                const objectStorageService = new ObjectStorageService();
+                
+                await objectStorageService.storeEmailFile(
+                  messageToProcess.id,
+                  messageToProcess.subject,
+                  rawEmailContent
+                );
+              } catch (error) {
+                console.error(`Failed to preserve email:`, error);
+              }
+            }
+
+            // Create purchase order if email passed both steps
+            if (processingResult.preprocessing.shouldProceed && processingResult.classification && 
+                processingResult.classification.recommended_route !== 'REVIEW') {
+              
+              // Extract data using appropriate route
+              let extractionResult = null;
+              
+              if ((processingResult.classification.recommended_route === 'ATTACHMENT_PO' || 
+                   processingResult.classification.recommended_route === 'ATTACHMENT_SAMPLE') &&
+                  attachmentPaths.length > 0) {
+                
+                // Process PDF attachments with Gemini
+                const pdfAttachments = attachmentPaths.filter(att => 
+                  att.filename.toLowerCase().endsWith('.pdf') && att.buffer
+                );
+                
+                if (pdfAttachments.length > 0) {
+                  // Use Gemini to filter documents and extract data
+                  const { GeminiService } = await import('./services/gemini');
+                  const geminiService = new GeminiService();
+                  
+                  // Filter documents first
+                  for (const pdfDoc of pdfAttachments) {
+                    try {
+                      const filterResult = await geminiService.filterDocumentType(pdfDoc.buffer!, pdfDoc.filename);
+                      if (filterResult.document_type === "purchase order") {
+                        extractionResult = await geminiService.extractPODataFromPDF(
+                          pdfDoc.buffer!,
+                          pdfDoc.filename
+                        );
+                        break; // Use first valid PO document
+                      }
+                    } catch (error) {
+                      console.error(`Error processing PDF ${pdfDoc.filename}:`, error);
+                    }
+                  }
+                }
+              } else if (processingResult.classification.recommended_route === 'TEXT_PO') {
+                // Process email text content with Gemini
+                const { GeminiService } = await import('./services/gemini');
+                const geminiService = new GeminiService();
+                
+                extractionResult = await geminiService.extractPODataFromText(
+                  messageToProcess.subject,
+                  messageToProcess.body,
+                  messageToProcess.sender
+                );
+              }
+
+              if (extractionResult && extractionResult.purchaseOrder?.purchaseOrderNumber) {
+                // Look up customer in HCL database
+                const { customerFinderService } = await import('./services/customer-finder');
+                const extractedCustomer = extractionResult.purchaseOrder?.customer;
+                
+                let customerMeta = null;
+                if (extractedCustomer) {
+                  const customerMatch = await customerFinderService.findCustomer({
+                    customerEmail: extractedCustomer.email,
+                    senderEmail: messageToProcess.sender,
+                    customerName: extractedCustomer.company || extractedCustomer.customerName,
+                    asiNumber: extractedCustomer.asiNumber,
+                    ppaiNumber: extractedCustomer.ppaiNumber
+                  });
+                  
+                  if (customerMatch.customer_number) {
+                    customerMeta = customerMatch;
+                  }
+                }
+
+                // Handle forwarded email data
+                let finalExtractionResult = extractionResult;
+                if (isForwardedEmail) {
+                  finalExtractionResult = {
+                    ...extractionResult,
+                    forwardedEmail: {
+                      cNumber: extractedCNumber,
+                      hclCustomerLookup,
+                      extractedCustomer
+                    }
+                  };
+                }
+
+                // Create purchase order
+                purchaseOrder = await storage.createPurchaseOrder({
+                  poNumber: extractionResult.purchaseOrder.purchaseOrderNumber,
+                  emailId: messageToProcess.id,
+                  sender: messageToProcess.sender,
+                  subject: messageToProcess.subject,
+                  route: processingResult.classification.recommended_route,
+                  confidence: processingResult.classification.analysis_flags?.confidence_score || 0,
+                  originalJson: processingResult.classification,
+                  extractedData: finalExtractionResult,
+                  customerMeta: customerMeta,
+                  status: customerMeta ? 'ready_for_netsuite' : 'new_customer'
+                });
+              }
+            }
+
+            // Update Gmail labels
+            try {
+              await gmailService.markAsProcessed(
+                messageToProcess.id, 
+                processingResult.preprocessing
+              );
+            } catch (error) {
+              console.error(`Failed to update Gmail labels:`, error);
+            }
+
+            processedCount++;
+            console.log(`   ✅ Processed (${processedCount}/${unprocessedMessages.length})`);
+            
+          } catch (error) {
+            console.error(`   ❌ Error processing email "${messageToProcess.subject}":`, error);
+            errors.push({
+              subject: messageToProcess.subject,
+              sender: messageToProcess.sender,
+              error: error instanceof Error ? error.message : 'Unknown error'
+            });
+          }
+        }
+        
+        // Add delay between batches to respect API rate limits
+        if (batchIndex < batches.length - 1) {
+          console.log(`⏳ Waiting 3 seconds before next batch...`);
+          await new Promise(resolve => setTimeout(resolve, 3000));
+        }
+      }
+
+      const duration = Date.now() - startTime;
+      const avgTimePerEmail = processedCount > 0 ? duration / processedCount : 0;
+      
+      console.log(`\n🎉 BULK PROCESSING COMPLETE:`);
+      console.log(`   ✅ Processed: ${processedCount} emails`);
+      console.log(`   ❌ Errors: ${errors.length}`);
+      console.log(`   ⏱️  Total time: ${(duration / 1000).toFixed(1)}s`);
+      console.log(`   📊 Average: ${(avgTimePerEmail / 1000).toFixed(1)}s per email`);
+
+      res.json({
+        message: `Successfully processed ${processedCount} emails`,
+        processed: processedCount,
+        errors: errors.length,
+        duration: duration,
+        avgTimePerEmail: avgTimePerEmail,
+        errorDetails: errors.slice(0, 5) // Return first 5 errors
+      });
+
+    } catch (error) {
+      console.error('Bulk processing error:', error);
+      res.status(500).json({
+        message: 'Bulk processing failed',
+        processed: processedCount,
+        errors: errors.length + 1,
+        duration: Date.now() - startTime,
+        error: error instanceof Error ? error.message : 'Unknown error'
+      });
+    }
+  });
+
   // Process single email for development
   app.post("/api/emails/process-single", async (req, res) => {
     try {
