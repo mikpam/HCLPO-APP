@@ -10,7 +10,7 @@ interface EmailProcessingAnimationProps {
   currentStep?: string;
 }
 
-function EmailProcessingAnimation({ 
+function EmailProcessingAnimation({
   isProcessing = false, 
   processedCount = 0, 
   totalCount = 0,
@@ -22,7 +22,7 @@ function EmailProcessingAnimation({
   const processingSteps = [
     {
       id: "email",
-      icon: Mail,
+      icon: "Mail",
       label: "Email Received",
       description: "New email detected",
       status: "pending",
@@ -30,7 +30,7 @@ function EmailProcessingAnimation({
     },
     {
       id: "preprocessing", 
-      icon: Brain,
+      icon: "Brain",
       label: "Preprocessing",
       description: "OpenAI classification",
       status: "pending",
@@ -38,7 +38,7 @@ function EmailProcessingAnimation({
     },
     {
       id: "routing",
-      icon: Route,
+      icon: "Route",
       label: "Route Classification",
       description: "Determining processing path",
       status: "pending", 
@@ -46,7 +46,7 @@ function EmailProcessingAnimation({
     },
     {
       id: "extraction",
-      icon: Zap,
+      icon: "Zap",
       label: "Data Extraction",
       description: "Gemini PO parsing",
       status: "pending",
@@ -54,7 +54,7 @@ function EmailProcessingAnimation({
     },
     {
       id: "parsing",
-      icon: Search,
+      icon: "Search",
       label: "Data Parsing", 
       description: "Structuring information",
       status: "pending",
@@ -62,7 +62,7 @@ function EmailProcessingAnimation({
     },
     {
       id: "customer",
-      icon: UserCheck,
+      icon: "UserCheck",
       label: "Customer ID",
       description: "HCL database lookup",
       status: "pending",
@@ -70,13 +70,13 @@ function EmailProcessingAnimation({
     },
     {
       id: "ready",
-      icon: CheckCircle2,
+      icon: "CheckCircle2",
       label: "Ready for NetSuite",
       description: "Processing complete",
       status: "pending",
       duration: 500
     }
-  ];
+  ] as const;
 
   const [steps, setSteps] = useState(processingSteps);
 
@@ -144,6 +144,19 @@ function EmailProcessingAnimation({
     }
   };
 
+  const getIcon = (iconName: string) => {
+    switch (iconName) {
+      case "Mail": return Mail;
+      case "Brain": return Brain;
+      case "Route": return Route;
+      case "Zap": return Zap;
+      case "Search": return Search;
+      case "UserCheck": return UserCheck;
+      case "CheckCircle2": return CheckCircle2;
+      default: return Mail;
+    }
+  };
+
   return (
     <Card className="w-full">
       <CardHeader>
@@ -162,12 +175,12 @@ function EmailProcessingAnimation({
           {/* Processing Steps */}
           <div className="grid grid-cols-1 md:grid-cols-7 gap-4">
             {steps.map((step, index) => {
-              const Icon = step.icon;
+              const IconComponent = getIcon(step.icon);
               const isActive = step.status === "processing";
               const isCompleted = step.status === "completed";
               
               return (
-                <div key={`${step.id}-${animationKey}`} className="relative">
+                <div key={`${step.id}-${animationKey}-${index}`} className="relative">
                   {/* Connection Line */}
                   {index < steps.length - 1 && (
                     <div className="hidden md:block absolute top-6 left-full w-4 h-0.5 bg-gray-300 z-0">
@@ -186,7 +199,7 @@ function EmailProcessingAnimation({
                     <div className="flex flex-col items-center text-center space-y-2">
                       {/* Icon */}
                       <div className={`w-8 h-8 rounded-full flex items-center justify-center ${getStepStatusColor(step.status)}`}>
-                        <Icon className={`h-4 w-4 ${
+                        <IconComponent className={`h-4 w-4 ${
                           step.status === "completed" || step.status === "processing" 
                             ? "text-white" 
                             : "text-gray-600"
