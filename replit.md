@@ -57,6 +57,7 @@ UI Design Priority: Mobile-responsive design is now required across all pages. U
 - **Advanced Customer Finder**: Intelligent customer matching service implementing comprehensive search strategies including query expansion, root brand extraction, and Gemini-powered disambiguation when multiple matches found (August 16, 2025)
 - **Forwarded Email Processing**: Enhanced @highcaliberline.com email processing with CNumber extraction, HCL customer lookup, and fallback logic - uses Gemini extraction first, then HCL customer database for accurate attribution (August 16, 2025)
 - **Complete Frontend Integration**: Successfully displaying HCL customer data with CNumber badges, forwarded email indicators, and proper customer attribution in both desktop and mobile views (August 16, 2025)
+- **Architecture Simplification**: Removed Airtable and Dropbox integrations, streamlined to use only Neon PostgreSQL for data storage and Replit object storage for documents (August 16, 2025)
 
 ### Authentication & Authorization
 - **Strategy**: Session-based authentication with role-based access control
@@ -87,8 +88,8 @@ UI Design Priority: Mobile-responsive design is now required across all pages. U
 - **Persistent Storage**: All data stored locally in PostgreSQL with no external database dependencies
 
 ### Document Management
-- **Dropbox API**: PDF storage and retrieval by filename
-- **File Management**: Original purchase order PDFs, artwork filtering, document attachment to NetSuite records
+- **Object Storage**: PDF and document storage using Replit's built-in object storage
+- **File Management**: Original purchase order PDFs, artwork filtering, and document attachments stored securely
 
 ### ERP Integration
 - **NetSuite REST API**: Sales order creation with custom User Event scripts

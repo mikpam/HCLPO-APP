@@ -6,7 +6,7 @@ import { gmailService } from "./services/gmail";
 import { openaiService } from "./services/openai";
 import { aiService, type AIEngine } from "./services/ai-service";
 import { netsuiteService } from "./services/netsuite";
-import { dropboxService } from "./services/dropbox";
+
 import { insertPurchaseOrderSchema, insertErrorLogSchema, classificationResultSchema } from "@shared/schema";
 import { z } from "zod";
 
@@ -853,25 +853,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
       }
 
-      // Handle attachment-based PO data extraction using Gemini 2.5 Pro
-      if (!poData && order.route === 'ATTACHMENT_PO' && order.originalPdfFilename) {
-        const pdfPath = await dropboxService.findPDFByFilename(order.originalPdfFilename);
-        if (pdfPath) {
-          const pdfBuffer = await dropboxService.downloadFile(pdfPath);
-          // Convert PDF to text and extract using Gemini 2.5 Pro
-          const pdfText = pdfBuffer.toString('utf-8'); // Simplified - in production use proper PDF parsing
-          poData = await aiService.extractPOData('', pdfText);
-          await storage.updatePurchaseOrder(order.id, { validatedJson: poData });
-        }
-      }
-
-      // Find PDF in Dropbox if available
-      let pdfData: Buffer | undefined;
-      if (order.originalPdfFilename) {
-        const pdfPath = await dropboxService.findPDFByFilename(order.originalPdfFilename);
-        if (pdfPath) {
-          pdfData = await dropboxService.downloadFile(pdfPath);
-        }
+      // Handle attachment-based PO data extraction
+      if (!poData && order.route === 'ATTACHMENT_PO') {
+        // PO data should already be extracted during processing
+        // If missing, we can't reconstruct it without the original PDF
+        console.warn(`Missing PO data for ATTACHMENT_PO order ${order.id}`);
       }
 
       // Create NetSuite Sales Order
@@ -886,15 +872,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const result = await netsuiteService.createSalesOrder(salesOrderData);
 
       if (result.success) {
-        // Attach PDF if available
-        if (pdfData && result.internalId) {
-          await netsuiteService.attachPDFToSalesOrder(
-            result.internalId, 
-            pdfData, 
-            order.originalPdfFilename || `${order.poNumber}.pdf`
-          );
-        }
-
         // Update order with NetSuite IDs
         await storage.updatePurchaseOrder(order.id, {
           nsInternalId: result.internalId,

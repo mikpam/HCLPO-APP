@@ -64,13 +64,13 @@ export class DatabaseStorage implements IStorage {
 
   private async initializeSystemHealth() {
     // Initialize system health records for all services
-    const services = ['Gmail API', 'OpenAI', 'Airtable', 'NetSuite', 'Dropbox'];
+    const services = ['Gmail API', 'OpenAI', 'NetSuite'];
     for (const service of services) {
       try {
         await db.insert(systemHealth).values({
           service,
-          status: service === 'Airtable' ? 'delayed' : 'online',
-          responseTime: service === 'Airtable' ? 2500 : Math.floor(Math.random() * 100) + 50,
+          status: 'online',
+          responseTime: Math.floor(Math.random() * 100) + 50,
           errorMessage: null,
         }).onConflictDoUpdate({
           target: systemHealth.service,
