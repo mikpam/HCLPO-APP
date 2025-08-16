@@ -406,12 +406,9 @@ export default function PurchaseOrdersPage() {
                           </div>
                         </TableCell>
                         <TableCell>
-                          <div className="flex items-center space-x-2">
-                            <Mail className="w-4 h-4 text-gray-400" />
-                            <span className="text-sm text-gray-600 truncate max-w-[150px]">
-                              {customer.email}
-                            </span>
-                          </div>
+                          <span className="text-sm text-gray-600 truncate max-w-[150px]">
+                            {customer.email}
+                          </span>
                         </TableCell>
                         <TableCell>
                           <Badge className={`${statusBadge.class} text-xs`}>
@@ -513,8 +510,7 @@ export default function PurchaseOrdersPage() {
                           <span className="font-medium text-sm">{customer.name}</span>
                         </div>
                         
-                        <div className="flex items-center space-x-2">
-                          <Mail className="w-4 h-4 text-gray-400" />
+                        <div>
                           <span className="text-sm text-gray-600 truncate">{customer.email}</span>
                         </div>
                         
