@@ -93,6 +93,43 @@ export default function Dashboard() {
     },
   });
 
+  const processNormalEmails = useMutation({
+    mutationFn: async () => {
+      const response = await fetch("/api/emails/process", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+      });
+      
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      
+      return await response.json();
+    },
+    onSuccess: (result) => {
+      setLastProcessResult(result);
+      toast({
+        title: "Normal Processing Complete",
+        description: `Processed ${result.processedEmails?.length || 0} emails`,
+        duration: 8000,
+      });
+      
+      // Refresh dashboard metrics and email queue
+      queryClient.invalidateQueries({ queryKey: ["/api/dashboard/metrics"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/email-queue"] });
+    },
+    onError: (error: any) => {
+      console.error("Normal processing error:", error);
+      toast({
+        title: "Normal Processing Failed",
+        description: error.message || "Failed to process emails",
+        variant: "destructive",
+      });
+    },
+  });
+
   // Handle modal opening from global events (for backward compatibility with existing buttons)
   useEffect(() => {
     const handleGlobalModalOpen = (event: CustomEvent) => {
@@ -149,14 +186,21 @@ export default function Dashboard() {
               <span className="text-xs text-amber-700 font-medium">DEV</span>
               <button
                 onClick={() => processSingleEmail.mutate()}
-                disabled={processSingleEmail.isPending || processBulkEmails.isPending}
+                disabled={processSingleEmail.isPending || processBulkEmails.isPending || processNormalEmails.isPending}
                 className="px-3 py-1 bg-amber-600 text-white text-xs rounded hover:bg-amber-700 transition-colors disabled:opacity-50"
               >
                 {processSingleEmail.isPending ? "Processing..." : "Process 1 Email"}
               </button>
               <button
+                onClick={() => processNormalEmails.mutate()}
+                disabled={processNormalEmails.isPending || processSingleEmail.isPending || processBulkEmails.isPending}
+                className="px-3 py-1 bg-green-600 text-white text-xs rounded hover:bg-green-700 transition-colors disabled:opacity-50"
+              >
+                {processNormalEmails.isPending ? "Processing..." : "📋 Process Normally"}
+              </button>
+              <button
                 onClick={() => processBulkEmails.mutate()}
-                disabled={processBulkEmails.isPending || processSingleEmail.isPending}
+                disabled={processBulkEmails.isPending || processSingleEmail.isPending || processNormalEmails.isPending}
                 className="px-3 py-1 bg-blue-600 text-white text-xs rounded hover:bg-blue-700 transition-colors disabled:opacity-50"
               >
                 {processBulkEmails.isPending ? "Processing All..." : "🚀 Process All Emails"}
@@ -190,7 +234,8 @@ export default function Dashboard() {
           <div className="mb-8 bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-200 rounded-xl p-6">
             <h3 className="text-lg font-semibold text-amber-800 mb-4">
               <i className="fas fa-code text-amber-600 mr-2"></i>
-              {lastProcessResult.processed > 1 ? 'Bulk Processing Result' : 'Development Processing Result'}
+              {lastProcessResult.processed > 1 ? 'Bulk Processing Result' : 
+               lastProcessResult.processedEmails ? 'Normal Processing Result' : 'Development Processing Result'}
             </h3>
             
             {/* Performance Summary for Bulk Processing */}
