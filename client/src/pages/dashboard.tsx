@@ -43,9 +43,10 @@ export default function Dashboard() {
         duration: 5000,
       });
       
-      // Refresh dashboard metrics and email queue
+      // Refresh dashboard metrics, email queue, and purchase orders
       queryClient.invalidateQueries({ queryKey: ["/api/dashboard/metrics"] });
       queryClient.invalidateQueries({ queryKey: ["/api/email-queue"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/purchase-orders"] });
     },
     onError: (error: any) => {
       console.error("Processing error:", error);
@@ -82,9 +83,10 @@ export default function Dashboard() {
         duration: 8000,
       });
       
-      // Refresh dashboard metrics and email queue
+      // Refresh dashboard metrics, email queue, and purchase orders
       queryClient.invalidateQueries({ queryKey: ["/api/dashboard/metrics"] });
       queryClient.invalidateQueries({ queryKey: ["/api/email-queue"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/purchase-orders"] });
     },
     onError: (error: any) => {
       console.error("Normal processing error:", error);
