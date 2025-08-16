@@ -299,7 +299,7 @@ export default function PurchaseOrdersPage() {
                         <ArrowUpDown className="ml-2 h-3 w-3" />
                       </Button>
                     </TableHead>
-                    <TableHead className="w-[100px]">Record ID</TableHead>
+
                     <TableHead className="w-[110px]">
                       <Button 
                         variant="ghost" 
@@ -368,11 +368,6 @@ export default function PurchaseOrdersPage() {
                             <Hash className="w-4 h-4 text-gray-400" />
                             <span className="text-blue-600 font-mono">{order.poNumber}</span>
                           </div>
-                        </TableCell>
-                        <TableCell>
-                          <span className="text-gray-500 text-sm font-mono">
-                            {order.id.slice(0, 8)}...
-                          </span>
                         </TableCell>
                         <TableCell>
                           <div className="flex items-center space-x-2">
