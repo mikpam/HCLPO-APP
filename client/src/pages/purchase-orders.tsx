@@ -589,7 +589,7 @@ export default function PurchaseOrdersPage() {
                                 <div className="space-y-1">
                                   {displayItems.map((item: any, index: number) => (
                                     <div key={index} className="flex items-center justify-between text-xs bg-blue-50 rounded px-2 py-1">
-                                      <span className={`font-mono font-medium text-blue-700 ${isExpanded ? '' : 'truncate'}`}>{item.finalSKU}</span>
+                                      <span className="font-mono font-medium text-blue-700">{item.finalSKU}</span>
                                       <span className="text-gray-600 ml-2 flex-shrink-0">Qty: {item.quantity || 0}</span>
                                     </div>
                                   ))}
@@ -777,7 +777,7 @@ export default function PurchaseOrdersPage() {
                                 <div className="space-y-1">
                                   {displayItems.map((item: any, index: number) => (
                                     <div key={index} className="flex items-center justify-between text-xs bg-blue-50 rounded px-2 py-1">
-                                      <span className={`font-mono font-medium text-blue-700 ${isExpanded ? '' : 'truncate'}`}>{item.finalSKU}</span>
+                                      <span className="font-mono font-medium text-blue-700">{item.finalSKU}</span>
                                       <span className="text-gray-600 ml-2 flex-shrink-0">Qty: {item.quantity || 0}</span>
                                     </div>
                                   ))}
