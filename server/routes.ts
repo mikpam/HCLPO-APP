@@ -716,7 +716,7 @@ totalPrice: ${item.totalPrice || 0}`;
           });
 
           // Store PDF attachments for this email
-          let storedAttachments = [];
+          let storedAttachments: any[] = [];
           if (message.attachments.length > 0) {
             storedAttachments = await gmailService.storeEmailAttachments(
               message.id,
@@ -788,11 +788,102 @@ totalPrice: ${item.totalPrice || 0}`;
               extractedData: forwardedEmailData ? { forwardedEmail: forwardedEmailData } : undefined
             });
 
+            // MISSING LOGIC: Add Gemini extraction for qualifying routes
+            let extractionResult: any = null;
+            const route = processingResult.classification.recommended_route;
+            
+            if (route === 'ATTACHMENT_PO' || route === 'TEXT_PO') {
+              try {
+                console.log(`🧠 BULK GEMINI EXTRACTION: Processing ${route} for PO ${poNumber}...`);
+                
+                const { GeminiService } = await import('./services/gemini');
+                const geminiService = new GeminiService();
+                
+                if (route === 'ATTACHMENT_PO' && storedAttachments.length > 0) {
+                  // Process attachment with priority logic  
+                  const prioritizedAttachment = storedAttachments.find((att: any) => 
+                    att.filename.toLowerCase().includes('purchaseorder') ||
+                    att.filename.toLowerCase().includes('purchase_order') ||
+                    att.filename.toLowerCase().includes('po_')
+                  ) || storedAttachments[0]; // fallback to first attachment
+                  
+                  if (prioritizedAttachment.buffer) {
+                    extractionResult = await geminiService.extractPODataFromPDF(
+                      prioritizedAttachment.buffer,
+                      prioritizedAttachment.filename
+                    );
+                  }
+                } else if (route === 'TEXT_PO') {
+                  extractionResult = await geminiService.extractPODataFromText(
+                    message.body,
+                    message.subject,
+                    message.sender
+                  );
+                }
+                
+                if (extractionResult) {
+                  // Customer lookup
+                  let finalCustomerData = null;
+                  const { CustomerFinderService } = await import('./services/customer-finder');
+                  const customerFinderService = new CustomerFinderService();
+                  
+                  if (extractionResult.customer?.name) {
+                    const customerResult = await customerFinderService.findCustomer({
+                      customerName: extractionResult.customer.name,
+                      customerEmail: extractionResult.customer.email || '',
+                      senderEmail: message.sender,
+                      asiNumber: extractionResult.customer.asi_number || '',
+                      ppaiNumber: extractionResult.customer.ppai_number || '',
+                      address: extractionResult.customer.address || ''
+                    });
+                    
+                    if (customerResult.customer_number) {
+                      finalCustomerData = customerResult;
+                      console.log(`   ✅ BULK: Customer found: ${finalCustomerData.customer_name} (${finalCustomerData.customer_number})`);
+                    } else {
+                      console.log(`   ⚠️  BULK: Customer not found, will flag as new_customer`);
+                    }
+                  }
+                  
+                  // SKU validation
+                  let validatedItems: any[] = [];
+                  if (extractionResult.line_items?.length > 0) {
+                    const { OpenAISKUValidator } = await import('./services/openai-sku-validator');
+                    const skuValidator = new OpenAISKUValidator();
+                    
+                    validatedItems = await skuValidator.validateLineItems(
+                      extractionResult.line_items
+                    );
+                    console.log(`   ✅ BULK: SKU validation complete: ${validatedItems.length} items processed`);
+                  }
+                  
+                  // Update PO with extracted data
+                  const finalStatus = !finalCustomerData ? 'new_customer' : 'ready_for_netsuite';
+                  
+                  await storage.updatePurchaseOrder(purchaseOrder.id, {
+                    extractedData: extractionResult,
+                    customerMeta: finalCustomerData,
+                    status: finalStatus
+                  });
+                  
+                  console.log(`   ✅ BULK: Updated PO ${poNumber} with extracted data (Status: ${finalStatus})`);
+                }
+                
+              } catch (extractionError: any) {
+                console.error(`   ❌ BULK: Extraction failed for PO ${poNumber}:`, extractionError);
+                await storage.updatePurchaseOrder(purchaseOrder.id, {
+                  status: 'pending_review',
+                  extractedData: { error: 'Extraction failed', details: extractionError?.message || 'Unknown error' }
+                });
+              }
+            }
+
             processedEmails.push({
               email: message,
               preprocessing: processingResult.preprocessing,
               classification: processingResult.classification,
-              purchaseOrder
+              purchaseOrder,
+              extractionResult
             });
           } else if (!processingResult.preprocessing.shouldProceed) {
             console.log(`Email filtered out: ${processingResult.preprocessing.response} (${processingResult.preprocessing.score})`);
