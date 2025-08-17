@@ -5,17 +5,29 @@ import { customers } from "@shared/schema";
 import { eq } from "drizzle-orm";
 
 export function registerCustomerRoutes(app: Express): void {
-  // Get all customers (paginated)
+  // Get all customers (with optional pagination)
   app.get("/api/customers", async (req, res) => {
     try {
       const page = parseInt(req.query.page as string) || 1;
-      const limit = parseInt(req.query.limit as string) || 50;
+      const limit = parseInt(req.query.limit as string) || 10000; // Allow fetching all customers
       const offset = (page - 1) * limit;
 
       const allCustomers = await db
-        .select()
+        .select({
+          id: customers.id,
+          customer_number: customers.customerNumber,
+          company_name: customers.companyName,
+          alternate_names: customers.alternateNames,
+          email: customers.email,
+          phone: customers.phone,
+          address: customers.address,
+          netsuite_id: customers.netsuiteId,
+          is_active: customers.isActive,
+          created_at: customers.createdAt,
+          updated_at: customers.updatedAt
+        })
         .from(customers)
-        .where(eq(customers.isActive, true))
+        .orderBy(customers.companyName)
         .limit(limit)
         .offset(offset);
 
