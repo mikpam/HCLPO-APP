@@ -2,6 +2,7 @@ import { db } from "../db";
 import { customers } from "@shared/schema";
 import { sql, ilike, or } from "drizzle-orm";
 import OpenAI from "openai";
+import { storage } from "../storage";
 
 const openai = new OpenAI({ 
   apiKey: process.env.OPENAI_API_KEY 

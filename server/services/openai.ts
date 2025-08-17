@@ -32,9 +32,79 @@ export interface ClassificationResult {
 }
 
 export class OpenAIService {
+
+  // AI-powered attachment content analysis to determine if it's a legitimate PO document
+  async analyzeAttachmentContent(filename: string, contentType: string): Promise<{
+    isPurchaseOrder: boolean;
+    isArtwork: boolean;
+    confidence: number;
+    reason: string;
+  }> {
+    try {
+      const response = await openai.chat.completions.create({
+        model: "gpt-4o",
+        messages: [
+          {
+            role: "system", 
+            content: `You are an AI document classifier. Analyze the filename and content type to determine if this is a legitimate purchase order document vs artwork/proof files.
+
+PURCHASE ORDER indicators:
+- Filenames containing: po, order, purchase, quote, invoice, proposal
+- File types: PDF, Word docs, Excel files  
+- Business document patterns
+
+ARTWORK/PROOF indicators:
+- Image files (PNG, JPG, AI, EPS, SVG)
+- Filenames like: artwork, logo, proof, design, image001.png
+- Generic image patterns
+
+Return JSON with:
+- isPurchaseOrder: boolean
+- isArtwork: boolean  
+- confidence: number (0-1)
+- reason: string explanation`
+          },
+          {
+            role: "user",
+            content: `Analyze this attachment:
+Filename: ${filename}
+Content Type: ${contentType}
+
+Classify as purchase order document or artwork/proof file.`
+          }
+        ],
+        response_format: { type: "json_object" }
+      });
+
+      const result = JSON.parse(response.choices[0].message.content || '{}');
+      return {
+        isPurchaseOrder: result.isPurchaseOrder || false,
+        isArtwork: result.isArtwork || false,
+        confidence: result.confidence || 0.5,
+        reason: result.reason || 'Analysis completed'
+      };
+    } catch (error) {
+      console.error('Attachment analysis error:', error);
+      // Fallback to pattern matching
+      return {
+        isPurchaseOrder: this.isAttachmentPO(filename, contentType),
+        isArtwork: this.isArtworkFile(filename, contentType),
+        confidence: 0.6,
+        reason: 'Fallback pattern matching'
+      };
+    }
+  }
+
   private isArtworkFile(filename: string, contentType: string): boolean {
-    const artworkExtensions = ['.ai', '.eps', '.svg', '.png', '.jpg', '.jpeg', '.tif', '.gif'];
+    const artworkExtensions = ['.ai', '.eps', '.svg', '.png', '.jpg', '.jpeg', '.tif', '.gif', '.bmp', '.psd'];
     const artworkMimeTypes = ['image/', 'application/illustrator', 'application/postscript', 'application/eps'];
+    
+    // Common artwork filename patterns
+    const artworkPatterns = [
+      /^(artwork|logo|proof|design|image\d*)\./i,
+      /\b(logo|artwork|proof|design)\b.*\.(png|jpg|jpeg|ai|eps|svg)$/i,
+      /^image\d+\.(png|jpg|jpeg)$/i  // Generic image files like image001.png
+    ];
     
     const hasArtworkExtension = artworkExtensions.some(ext => 
       filename.toLowerCase().endsWith(ext)
@@ -44,7 +114,11 @@ export class OpenAIService {
       contentType.toLowerCase().includes(mime)
     );
     
-    return hasArtworkExtension || hasArtworkMimeType;
+    const hasArtworkPattern = artworkPatterns.some(pattern => 
+      pattern.test(filename)
+    );
+    
+    return hasArtworkExtension || hasArtworkMimeType || hasArtworkPattern;
   }
 
   private checkPODetailsInBody(body: string): boolean {
@@ -79,10 +153,21 @@ export class OpenAIService {
   }
 
   private isAttachmentPO(filename: string, contentType: string): boolean {
-    const poPattern = /^(po|order).*\.(pdf|docx?|xlsx?)$/i;
+    const poPattern = /^(po|order|purchase).*\.(pdf|docx?|xlsx?)$/i;
     const poMimeTypes = /application\/(pdf|msword|vnd\.openxmlformats-officedocument.*)/;
     
-    return poPattern.test(filename) || poMimeTypes.test(contentType);
+    // Enhanced PO filename patterns
+    const commonPOPatterns = [
+      /\bpo\b.*\.(pdf|docx?|xlsx?)$/i,
+      /\border\b.*\.(pdf|docx?|xlsx?)$/i,  
+      /\bpurchase\b.*\.(pdf|docx?|xlsx?)$/i,
+      /\b(invoice|quote|proposal)\b.*\.(pdf|docx?|xlsx?)$/i
+    ];
+    
+    const hasPOPattern = commonPOPatterns.some(pattern => pattern.test(filename));
+    const hasPOMimeType = poMimeTypes.test(contentType);
+    
+    return hasPOPattern || hasPOMimeType;
   }
 
   // Truncate email body to prevent token limit issues

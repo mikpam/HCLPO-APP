@@ -1303,33 +1303,58 @@ totalPrice: ${item.totalPrice || 0}`;
                 console.log(`   └─ Processing prioritized attachment: ${prioritizedAttachment.filename}`);
                 console.log(`   └─ Attachment keys available:`, Object.keys(prioritizedAttachment));
                 
-                if (prioritizedAttachment && prioritizedAttachment.data) {
-                  console.log(`   └─ Attachment data available: ${prioritizedAttachment.data.length} bytes`);
-                  extractedData = await aiService.extractPODataFromPDF(
-                    prioritizedAttachment.data,
-                    prioritizedAttachment.filename
-                  );
-                } else if (prioritizedAttachment.attachmentId) {
-                  console.log(`   └─ Loading attachment data using attachmentId: ${prioritizedAttachment.attachmentId}`);
-                  try {
-                    const attachmentBuffer = await gmailService.downloadAttachment(
-                      messageToProcess.id,
-                      prioritizedAttachment.attachmentId
+                // AI-powered attachment filtering before Gemini extraction
+                console.log(`🔍 AI ATTACHMENT FILTER: Analyzing ${prioritizedAttachment.filename}...`);
+                const attachmentAnalysis = await openaiService.analyzeAttachmentContent(
+                  prioritizedAttachment.filename,
+                  prioritizedAttachment.contentType || 'application/octet-stream'
+                );
+                
+                console.log(`   └─ Analysis: PO=${attachmentAnalysis.isPurchaseOrder}, Artwork=${attachmentAnalysis.isArtwork}, Confidence=${Math.round(attachmentAnalysis.confidence * 100)}%`);
+                console.log(`   └─ Reason: ${attachmentAnalysis.reason}`);
+                
+                // Only proceed if it's likely a PO document and not artwork
+                if (attachmentAnalysis.isPurchaseOrder && !attachmentAnalysis.isArtwork && attachmentAnalysis.confidence > 0.6) {
+                  console.log(`   ✅ Attachment passed AI filter - proceeding with Gemini extraction`);
+                  
+                  if (prioritizedAttachment && prioritizedAttachment.data) {
+                    console.log(`   └─ Attachment data available: ${prioritizedAttachment.data.length} bytes`);
+                    extractedData = await aiService.extractPODataFromPDF(
+                      prioritizedAttachment.data,
+                      prioritizedAttachment.filename
                     );
-                    if (attachmentBuffer) {
-                      console.log(`   ✅ Loaded attachment data: ${attachmentBuffer.length} bytes`);
-                      extractedData = await aiService.extractPODataFromPDF(
-                        attachmentBuffer,
-                        prioritizedAttachment.filename
+                  } else if (prioritizedAttachment.attachmentId) {
+                    console.log(`   └─ Loading attachment data using attachmentId: ${prioritizedAttachment.attachmentId}`);
+                    try {
+                      const attachmentBuffer = await gmailService.downloadAttachment(
+                        messageToProcess.id,
+                        prioritizedAttachment.attachmentId
                       );
-                    } else {
-                      console.log(`   ❌ Failed to load attachment buffer`);
+                      if (attachmentBuffer) {
+                        console.log(`   ✅ Loaded attachment data: ${attachmentBuffer.length} bytes`);
+                        extractedData = await aiService.extractPODataFromPDF(
+                          attachmentBuffer,
+                          prioritizedAttachment.filename
+                        );
+                      } else {
+                        console.log(`   ❌ Failed to load attachment buffer`);
+                      }
+                    } catch (error) {
+                      console.log(`   ❌ Error loading attachment: ${error.message}`);
                     }
-                  } catch (error) {
-                    console.log(`   ❌ Error loading attachment: ${error.message}`);
+                  } else {
+                    console.log(`   ❌ No attachment data or attachmentId available for: ${prioritizedAttachment.filename}`);
                   }
                 } else {
-                  console.log(`   ❌ No attachment data or attachmentId available for: ${prioritizedAttachment.filename}`);
+                  console.log(`   ❌ Attachment filtered out by AI: Not a valid PO document`);
+                  console.log(`   └─ Switching to email text processing instead`);
+                  
+                  // Fall back to text processing if attachment is filtered out
+                  extractedData = await aiService.extractPODataFromText(
+                    gmailMessage.subject || "",
+                    gmailMessage.body || "",
+                    gmailMessage.sender
+                  );
                 }
               }
             } else if (route === "TEXT_PO" || route === "TEXT_SAMPLE") {

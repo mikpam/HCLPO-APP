@@ -214,8 +214,14 @@ Output *only* the following JSON object, with no other text, comments, or explan
   async extractPODataFromText(subject: string, body: string, fromAddress: string): Promise<any> {
     try {
       console.log(`Processing email text with Gemini for TEXT_PO extraction`);
+      
+      // Strip HTML from body text
+      const cleanBody = body.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+      
+      const prompt = `Analyze the data ${subject}${cleanBody}${fromAddress} 
+and return the most accurate result in this schema.  
 
-      const prompt = `Analyze the data ${subject}${body}${fromAddress} and extract data according to this schema. Output the result as a valid JSON object without any markdown formatting or additional text:
+Output must be a single valid JSON object with no markdown, comments, or extra text.
 
 {  
   "purchaseOrder": {    
@@ -241,16 +247,16 @@ Output *only* the following JSON object, with no other text, comments, or explan
     "asiNumber": "string",    
     "salesPersonName": "string",    
     "salesPersonEmail": "string",    
-    "vendor": {      
-      "name": "string",      
-      "address1": "string",      
-      "address2": "string",      
-      "city": "string",      
-      "state": "string",      
-      "country": "string",      
-      "zipCode": "string",      
-      "phone": "string",      
-      "email": "string"    
+    "vendor": {   // Always hard-coded
+      "name": "High Caliber Line",
+      "address1": "6250 Irwindale Ave",
+      "address2": "",
+      "city": "Irwindale",
+      "state": "California",
+      "country": "United States",
+      "zipCode": "91702",
+      "phone": "6269694660",
+      "email": ""
     },    
     "shipTo": {      
       "name": "string",      
@@ -288,14 +294,51 @@ Output *only* the following JSON object, with no other text, comments, or explan
 
 ---
 
-**Normalization Rules for \`sku\`:**
+---
 
-1. Remove vendor prefixes like \`199-\`, \`4AP-\`, \`ALLP-\`, \`AP-\` from the beginning of the SKU.
-2. If the SKU has a suffix (e.g., \`-O\`, \`-99\`, \`-X\`) and it is **not** in the approved color codes list, strip the suffix.
-3. If a SKU is blank or malformed, try to infer it from the \`description\`.
-4. Always return SKUs in uppercase, without trailing dashes or invalid tokens.
+### Processing Rules
 
-**Use the normalized \`sku\` value when forming the \`finalSKU\`.**`;
+**1. Vendor**  
+Always use the hard-coded High Caliber Line vendor block above.  
+
+**2. Customer vs Ship-To**  
+- Customer = issuing company from the text header/body (not Ship-To, not HCL).  
+- Ship-To = final delivery destination only.  
+
+**3. SKU Normalization**  
+- Strip vendor prefixes at start: \`199-\`, \`4AP-\`, \`ALLP-\`, \`AP-\`.  
+- Remove suffixes not in the approved color codes list.  
+- Uppercase all SKUs; trim trailing dashes/spaces.  
+- If SKU missing/malformed, infer from description.  
+- Use the normalized SKU when forming \`finalSKU\`.  
+
+**4. Non-Inventory / Charge Codes (hard-coded)**  
+If description matches any of these (case-insensitive, allow variations like "setup charge", "SU", "set up"), set both \`sku\` and \`finalSKU\` to the exact code:  
+
+48RUSH, LTM, CCC, DB, DDP, DP, DS, EC, ED, EL, HT, ICC, LE,  
+P, PC, PE, PMS, PP, R, SETUP, SPEC, SR, VD, VI, X  
+
+**5. Color Codes (explicit map)**  
+If not a charge code, build \`finalSKU\` from base SKU + color code.  
+If no match → \`OE-MISC-CHARGE\`.  
+
+ColorCode Map:  
+{ "00": "White", "00M": "Matte White", "00S": "Shiny White", "01": "Blue", "01M": "Matte Blue", "01S": "Shiny Blue", "01T": "Transparent Blue", "02": "Red", "02S": "Solid Red", "02T": "Transparent Red", "03": "Green", "03M": "Matte Green", "04": "Orange", "04M": "Matte Orange", "05": "Purple", "06": "Black", "06M": "Matte Black", "07": "Gray", "07M": "Matte Gray", "08": "Yellow", "09": "Silver", "-10": "Navy Blue", "10M": "Matte Navy Blue", "11": "Light Blue", "12": "Pink", "12M": "Matte Pink", "13": "Brown", "14": "Maroon", "15": "Forest Green", "16": "Burgundy", "17": "Lime Green", "18": "Teal", "19": "Magenta", "20": "Tan", "21": "Khaki", "22": "Violet", "23": "Turquoise", "24": "Gold", "25": "Rose Gold", "26": "Copper", "27": "Bronze", "28": "Charcoal", "29": "Slate", "30": "Ivory", "31": "Cream", "32": "Beige" }
+
+**6. Dates**  
+- Format all as \`MM/DD/YYYY\`.  
+- If orderDate missing → today's date.  
+- Keep extracted values even if sequence invalid; add issue in \`additionalNotes\`.  
+
+**7. Prices**  
+- totalPrice ≈ quantity × unitPrice.  
+- merchandiseSubtotal = sum of lineItem totals.  
+- grandTotal = merchandiseSubtotal + additionalChargesSubtotal.  
+- Flag mismatches > $0.01 in \`additionalNotes\`.  
+
+**8. Missing Values**  
+- Use \`""\` for text, leave numbers blank.  
+- If critical info missing (e.g., customer name, grand total), add note in \`additionalNotes\`.
 
       const response = await ai.models.generateContent({
         model: "gemini-2.5-flash",
@@ -344,7 +387,8 @@ Output *only* the following JSON object, with no other text, comments, or explan
       const mimeType = this.getMimeTypeFromFilename(filename);
       console.log(`   └─ Using MIME type: ${mimeType}`);
 
-      const prompt = `Analyze the PDF file and create the most accurate data according to this schema, outputting only a valid JSON object:
+      const prompt = `Analyze the provided file and return the most accurate data in this schema.  
+Output must be a single valid JSON object with no markdown, comments, or extra text.
 
 JSON Schema:
 {

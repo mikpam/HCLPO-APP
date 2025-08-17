@@ -1,0 +1,126 @@
+Analyze the data {{1.subject}}{{stripHTML(1.text)}}{{1.from.address}} 
+and return the most accurate result in this schema.  
+
+Output must be a single valid JSON object with no markdown, comments, or extra text.
+
+Schema:
+{  
+  "purchaseOrder": {    
+    "purchaseOrderNumber": "string",    
+    "orderDate": "date",    
+    "inHandsDate": "date",    
+    "requiredShipDate": "date",    
+    "customer": {      
+      "company": "string",  
+      "customernumber": "string",    
+      "firstName": "string",      
+      "lastName": "string",      
+      "email": "string",      
+      "address1": "string",      
+      "address2": "string",      
+      "city": "string",      
+      "state": "string",      
+      "country": "string",      
+      "zipCode": "string",      
+      "phone": "string"    
+    },    
+    "ppaiNumber": "string",    
+    "asiNumber": "string",    
+    "salesPersonName": "string",    
+    "salesPersonEmail": "string",    
+
+    "vendor": {   // Always hard-coded
+      "name": "High Caliber Line",
+      "address1": "6250 Irwindale Ave",
+      "address2": "",
+      "city": "Irwindale",
+      "state": "California",
+      "country": "United States",
+      "zipCode": "91702",
+      "phone": "6269694660",
+      "email": ""
+    },    
+
+    "shipTo": {      
+      "name": "string",      
+      "company": "string",      
+      "address1": "string",      
+      "address2": "string",      
+      "city": "string",      
+      "state": "string",      
+      "country": "string",      
+      "zipCode": "string"    
+    },    
+
+    "shippingMethod": "string",    
+    "shippingCarrier": "string"  
+  },  
+
+  "lineItems": [    
+    {      
+      "sku": "string",      
+      "itemColor": "string",      
+      "imprintColor": "string",      
+      "description": "string",      
+      "quantity": "number",      
+      "unitPrice": "number",      
+      "totalPrice": "number",      
+      "finalSKU": "string"    
+    }  
+  ],  
+
+  "subtotals": {    
+    "merchandiseSubtotal": "number",    
+    "additionalChargesSubtotal": "number",    
+    "grandTotal": "number"  
+  },  
+
+  "specialInstructions": "string",  
+  "additionalNotes": ["string"]
+}
+
+---
+
+### Processing Rules
+
+**1. Vendor**  
+Always use the hard-coded High Caliber Line vendor block above.  
+
+**2. Customer vs Ship-To**  
+- Customer = issuing company from the text header/body (not Ship-To, not HCL).  
+- Ship-To = final delivery destination only.  
+
+**3. SKU Normalization**  
+- Strip vendor prefixes at start: `199-`, `4AP-`, `ALLP-`, `AP-`.  
+- Remove suffixes not in the approved color codes list.  
+- Uppercase all SKUs; trim trailing dashes/spaces.  
+- If SKU missing/malformed, infer from description.  
+- Use the normalized SKU when forming `finalSKU`.  
+
+**4. Non-Inventory / Charge Codes (hard-coded)**  
+If description matches any of these (case-insensitive, allow variations like “setup charge”, “SU”, “set up”), set both `sku` and `finalSKU` to the exact code:  
+
+48RUSH, LTM, CCC, DB, DDP, DP, DS, EC, ED, EL, HT, ICC, LE,  
+P, PC, PE, PMS, PP, R, SETUP, SPEC, SR, VD, VI, X  
+
+**5. Color Codes (explicit map)**  
+If not a charge code, build `finalSKU` from base SKU + color code.  
+If no match → `OE-MISC-CHARGE`.  
+
+ColorCode Map:  
+{ "00": "White", "00M": "Matte White", "00S": "Shiny White", "01": "Blue", "01M": "Matte Blue", "01S": "Shiny Blue", "01T": "Transparent Blue", "02": "Red", "02S": "Solid Red", "02T": "Transparent Red", "03": "Green", "03M": "Matte Green", "04": "Orange", "04M": "Matte Orange", "05": "Purple", "06": "Black", "06M": "Matte Black", "07": "Gray", "07M": "Matte Gray", "08": "Yellow", "09": "Silver", "-10": "Navy Blue", "10M": "Matte Navy Blue", "11": "Light Blue", "12": "Pink", "12M": "Matte Pink", "12S": "Solid Pink", "13": "Dark Green", "14": "Reflex Blue", "15": "Dark Blue", "16": "Charcoal Black", "17": "Khaki", "18": "Brown", "19": "Tan", "20": "Cyan Blue", "21": "Hot Pink", "22": "Burgundy", "23": "Rose Gold", "24": "Beige", "28": "Gold", "30": "Tri Color", "37": "Teal", "40": "Fuchsia", "50": "Bamboo", "63": "Sage", "65": "Lavender", "68": "Gold", "BKS": "Black Swirl", "BS": "Blue Swirl", "CL": "Clear", "CM": "Camo", "CP": "Copper", "GS": "Green Swirl", "OS": "Orange Swirl", "PS": "Purple Swirl", "RB": "Rainbow", "RDS": "Red Swirl", "RS": "Rainbow Swirl" }  
+
+**6. Dates**  
+- Format all as `MM/DD/YYYY`.  
+- If orderDate missing → today’s date.  
+- Keep extracted values even if sequence invalid; add issue in `additionalNotes`.  
+
+**7. Prices**  
+- totalPrice ≈ quantity × unitPrice.  
+- merchandiseSubtotal = sum of lineItem totals.  
+- grandTotal = merchandiseSubtotal + additionalChargesSubtotal.  
+- Flag mismatches > $0.01 in `additionalNotes`.  
+
+**8. Missing Values**  
+- Use `""` for text, leave numbers blank.  
+- If critical info missing (e.g., customer name, grand total), add note in `additionalNotes`.  

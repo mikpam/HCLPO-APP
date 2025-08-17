@@ -1,0 +1,166 @@
+Analyze the provided file and return the most accurate data in this schema.  
+Output must be a single valid JSON object with no markdown, comments, or extra text.
+
+Schema:
+{
+  "purchaseOrder": {
+    "purchaseOrderNumber": "string",
+    "orderDate": "date",
+    "inHandsDate": "date",
+    "requiredShipDate": "date",
+    "customer": {
+      "customerNumber": "string",
+      "company": "string",
+      "firstName": "string",
+      "lastName": "string",
+      "email": "string",
+      "address1": "string",
+      "address2": "string",
+      "city": "string",
+      "state": "string",
+      "country": "string",
+      "zipCode": "string",
+      "phone": "string"
+    },
+    "ppaiNumber": "string",
+    "asiNumber": "string",
+    "salesPersonName": "string",
+    "salesPersonEmail": "string",
+    "vendor": {
+      "name": "string",
+      "address1": "string",
+      "address2": "string",
+      "city": "string",
+      "state": "string",
+      "country": "string",
+      "zipCode": "string",
+      "phone": "string",
+      "email": "string"
+    },
+    "shipTo": {
+      "name": "string",
+      "company": "string",
+      "address1": "string",
+      "address2": "string",
+      "city": "string",
+      "state": "string",
+      "country": "string",
+      "zipCode": "string"
+    },
+    "shippingMethod": "string",
+    "shippingCarrier": "string"
+  },
+  "lineItems": [
+    {
+      "sku": "string",
+      "itemColor": "string",
+      "imprintColor": "string",
+      "description": "string",
+      "quantity": "number",
+      "unitPrice": "number",
+      "totalPrice": "number",
+      "finalSKU": "string"
+    }
+  ],
+  "subtotals": {
+    "merchandiseSubtotal": "number",
+    "additionalChargesSubtotal": "number",
+    "grandTotal": "number"
+  },
+  "specialInstructions": "string",
+  "additionalNotes": ["string"]
+}
+
+---
+
+### Processing & Validation Rules
+
+**1. Vendor (Hard-coded)**
+Always set `purchaseOrder.vendor` to exactly this:
+{
+  "name": "High Caliber Line",
+  "address1": "6250 Irwindale Ave",
+  "address2": "",
+  "city": "Irwindale",
+  "state": "California",
+  "country": "United States",
+  "zipCode": "91702",
+  "phone": "6269694660",
+  "email": ""
+}
+
+**2. Customer vs Ship-To**
+- Customer = issuing company in header/logo. Never use Ship-To or High Caliber Line.  
+- Ship-To = final delivery address only.  
+
+**3. Contact Info**
+- Email: priority = header contact → billing/proofs → sales rep. Use "" if none.  
+- Phone: must be 10 digits; strip formatting.  
+
+**4. Addresses**
+- Convert US state abbreviations to full names.  
+- Default country to "United States" if missing.  
+- Ensure ZIP aligns with state when possible.  
+
+**5. Line Items**
+- First, check for **non-inventory/charge codes**.  
+  If description matches (case-insensitive, allow common variations), set both `sku` and `finalSKU` exactly as shown:  
+
+  {
+    "48 Rush": "48RUSH",
+    "LTM": "LTM",
+    "CCC": "CCC",
+    "DB": "DB",
+    "DDP": "DDP",
+    "DP": "DP",
+    "DS": "DS",
+    "EC": "EC",
+    "ED": "ED",
+    "EL": "EL",
+    "HT": "HT",
+    "ICC": "ICC",
+    "LE": "LE",
+    "P": "P",
+    "PC": "PC",
+    "PE": "PE",
+    "PMS": "PMS",
+    "PP": "PP",
+    "R": "R",
+    "SETUP": "SETUP",
+    "SPEC": "SPEC",
+    "SR": "SR",
+    "VD": "VD",
+    "VI": "VI",
+    "X": "X"
+  }
+
+- If no match in this table:  
+  • If description contains "setup" → sku="SETUP", finalSKU="SETUP"  
+  • If "extra color" → sku="EC", finalSKU="EC"  
+  • If "extra location" → sku="EL", finalSKU="EL"  
+  • Otherwise: combine base SKU + ColorCode from mapping table.  
+  • If still no match → finalSKU="OE-MISC-CHARGE".  
+
+**6. Color Codes**
+Use this mapping to build finalSKU:
+{ "00": "White", "00M": "Matte White", "00S": "Shiny White", "01": "Blue", "01M": "Matte Blue", "01S": "Shiny Blue", "01T": "Transparent Blue", "02": "Red", "02S": "Solid Red", "02T": "Transparent Red", "03": "Green", "03M": "Matte Green", "04": "Orange", "04M": "Matte Orange", "05": "Purple", "06": "Black", "06M": "Matte Black", "07": "Gray", "07M": "Matte Gray", "08": "Yellow", "09": "Silver", "-10": "Navy Blue", "10M": "Matte Navy Blue", "11": "Light Blue", "12": "Pink", "12M": "Matte Pink", "12S": "Solid Pink", "13": "Dark Green", "14": "Reflex Blue", "15": "Dark Blue", "16": "Charcoal Black", "17": "Khaki", "18": "Brown", "19": "Tan", "20": "Cyan Blue", "21": "Hot Pink", "22": "Burgundy", "23": "Rose Gold", "24": "Beige", "28": "Gold", "30": "Tri Color", "37": "Teal", "40": "Fuchsia", "50": "Bamboo", "63": "Sage", "65": "Lavender", "68": "Gold", "BKS": "Black Swirl", "BS": "Blue Swirl", "CL": "Clear", "CM": "Camo", "CP": "Copper", "GS": "Green Swirl", "OS": "Orange Swirl", "PS": "Purple Swirl", "RB": "Rainbow", "RDS": "Red Swirl", "RS": "Rainbow Swirl" }
+
+**7. Dates**
+- Convert all to MM/DD/YYYY.  
+- If orderDate missing, use today’s date.  
+- Keep extracted values even if sequence invalid; note issue in `additionalNotes`.  
+
+**8. Prices**
+- totalPrice ≈ quantity × unitPrice.  
+- merchandiseSubtotal = sum of lineItem totals.  
+- grandTotal = merchandiseSubtotal + additionalChargesSubtotal.  
+- Flag mismatches > $0.01 in `additionalNotes`.  
+
+**9. Missing Values**
+- Use "" for text.  
+- Leave number fields blank.  
+- If critical info missing, add note in `additionalNotes`.  
+
+---
+
+Return only the JSON object. Do not include explanations, markdown, or extra text.
