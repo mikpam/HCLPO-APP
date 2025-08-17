@@ -84,6 +84,7 @@ export default function ErrorLogsPage() {
                 <tr>
                   <th className="px-6 py-3 text-left text-xs font-medium text-secondary uppercase tracking-wider">Error Type</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-secondary uppercase tracking-wider">Message</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-secondary uppercase tracking-wider">Explanation</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-secondary uppercase tracking-wider">Related PO</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-secondary uppercase tracking-wider">Status</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-secondary uppercase tracking-wider">Time</th>
@@ -96,6 +97,7 @@ export default function ErrorLogsPage() {
                     <tr key={i}>
                       <td className="px-6 py-4"><div className="w-24 h-6 bg-gray-200 rounded animate-pulse"></div></td>
                       <td className="px-6 py-4"><div className="w-48 h-4 bg-gray-200 rounded animate-pulse"></div></td>
+                      <td className="px-6 py-4"><div className="w-64 h-4 bg-gray-200 rounded animate-pulse"></div></td>
                       <td className="px-6 py-4"><div className="w-20 h-4 bg-gray-200 rounded animate-pulse"></div></td>
                       <td className="px-6 py-4"><div className="w-16 h-6 bg-gray-200 rounded animate-pulse"></div></td>
                       <td className="px-6 py-4"><div className="w-24 h-4 bg-gray-200 rounded animate-pulse"></div></td>
@@ -112,6 +114,14 @@ export default function ErrorLogsPage() {
                       </td>
                       <td className="px-6 py-4">
                         <p className="text-sm text-slate-800 max-w-md truncate">{error.message}</p>
+                      </td>
+                      <td className="px-6 py-4">
+                        <div className="max-w-lg">
+                          <p className="text-sm text-blue-700 bg-blue-50 p-2 rounded border-l-4 border-blue-400">
+                            <i className="fas fa-info-circle mr-2"></i>
+                            {error.explanation || 'No explanation available'}
+                          </p>
+                        </div>
                       </td>
                       <td className="px-6 py-4 text-sm text-slate-800">
                         {error.relatedPoNumber || 'N/A'}
@@ -140,7 +150,7 @@ export default function ErrorLogsPage() {
                   ))
                 ) : (
                   <tr>
-                    <td colSpan={6} className="px-6 py-8 text-center text-gray-500">
+                    <td colSpan={7} className="px-6 py-8 text-center text-gray-500">
                       No error logs found
                     </td>
                   </tr>
