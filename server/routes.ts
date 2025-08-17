@@ -1170,35 +1170,28 @@ totalPrice: ${item.totalPrice || 0}`;
   // Background processing function for auto-start - FULL PIPELINE
   async function processEmailsInBackground() {
     try {
-      // First, count how many unprocessed emails exist - fetch only unlabeled emails
-      const allMessages = await gmailService.getMessages('in:inbox -label:processed -label:filtered');
-      let unprocessedCount = 0;
+      // Broader search - get ALL inbox emails, not just unlabeled ones
+      const allMessages = await gmailService.getMessages('in:inbox', 100);
+      console.log(`📊 FULL INBOX SCAN: Found ${allMessages.length} total inbox emails`);
+      
+      // Filter out emails already processed in database
+      let unprocessedMessages = [];
       for (const message of allMessages) {
-        const hasProcessedLabel = message.labelIds?.includes('processed');
-        if (!hasProcessedLabel) {
-          unprocessedCount++;
+        const existingQueue = await storage.getEmailQueueByGmailId(message.id);
+        if (!existingQueue) {
+          unprocessedMessages.push(message);
         }
       }
 
-      console.log(`📊 AUTO PROCESSING: Found ${unprocessedCount} unprocessed emails out of ${allMessages.length} total emails`);
+      console.log(`📊 AUTO PROCESSING: Found ${unprocessedMessages.length} unprocessed emails out of ${allMessages.length} total emails`);
 
       let processedCount = 0;
-      const maxEmails = Math.max(100, unprocessedCount);
+      const maxEmails = Math.max(100, unprocessedMessages.length);
 
       // Process emails one at a time until no more unprocessed emails
-      while (processedCount < maxEmails) {
-        // Fetch unlabeled emails only
-        const messages = await gmailService.getMessages('in:inbox -label:processed -label:filtered');
-        
-        // Find first unprocessed email
-        let messageToProcess = null;
-        for (const message of messages) {
-          const hasProcessedLabel = message.labelIds?.includes('processed');
-          if (!hasProcessedLabel) {
-            messageToProcess = message;
-            break;
-          }
-        }
+      while (processedCount < maxEmails && unprocessedMessages.length > 0) {
+        // Process emails from our filtered list sequentially
+        const messageToProcess = unprocessedMessages.shift(); // Take first email from queue
         
         // No more unprocessed emails
         if (!messageToProcess) {
