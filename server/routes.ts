@@ -1941,17 +1941,28 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 const currentPO = await storage.getPurchaseOrder(purchaseOrder.id);
                 const finalUpdateData: any = {};
                 
-                // CUSTOMER DATA: Extract from actual data structures that exist
-                if (currentPO?.status === 'customer_found' && currentPO?.extractedData?.purchaseOrder?.customer?.customerNumber) {
+                // CUSTOMER DATA: Extract from customer_lookup (where OpenAI customer finder stores results)
+                if (currentPO?.status === 'customer_found' && currentPO?.extractedData?.customer_lookup?.customer_number) {
+                  const customerLookup = currentPO.extractedData.customer_lookup;
+                  const customerMeta = {
+                    customer_name: customerLookup.customer_name || 'Unknown',
+                    customer_number: customerLookup.customer_number
+                  };
+                  finalUpdateData.customerMeta = customerMeta;
+                  console.log(`   ✅ Storing customer data from lookup: ${customerMeta.customer_name} (${customerMeta.customer_number})`);
+                } else if (currentPO?.status === 'customer_found' && currentPO?.extractedData?.purchaseOrder?.customer?.customerNumber) {
+                  // Fallback: Check original extraction data location
                   const customerData = currentPO.extractedData.purchaseOrder.customer;
                   const customerMeta = {
                     customer_name: customerData.company || 'Unknown',
                     customer_number: customerData.customerNumber
                   };
                   finalUpdateData.customerMeta = customerMeta;
-                  console.log(`   ✅ Storing customer data: ${customerMeta.customer_name} (${customerMeta.customer_number})`);
+                  console.log(`   ✅ Storing customer data from extraction: ${customerMeta.customer_name} (${customerMeta.customer_number})`);
                 } else if (currentPO?.status === 'customer_found') {
-                  console.log(`   ⚠️  Customer found but data structure unexpected`);
+                  console.log(`   ⚠️  Customer found but data structure missing`);
+                  console.log(`   🔍 DEBUG: customer_lookup exists: ${!!currentPO?.extractedData?.customer_lookup}`);
+                  console.log(`   🔍 DEBUG: purchaseOrder.customer exists: ${!!currentPO?.extractedData?.purchaseOrder?.customer}`);
                 } else {
                   console.log(`   ⚠️  Customer not found, status: ${currentPO?.status || 'unknown'}`);
                 }
