@@ -16,9 +16,8 @@ import { eq, desc, and, or, lt } from "drizzle-orm";
 import { insertPurchaseOrderSchema, insertErrorLogSchema, classificationResultSchema } from "@shared/schema";
 import { z } from "zod";
 
-// Create singleton service instances to prevent conflicts and ensure consistency
-const skuValidatorInstance = new OpenAISKUValidatorService();
-const contactValidatorInstance = new OpenAIContactValidatorService();
+// NOTE: Validator instances are now created per-email to prevent race conditions
+// Previously used singleton validators caused state pollution between sequential emails
 
 // Enhanced error logging helper for comprehensive tracking
 async function logProcessingError(
@@ -559,8 +558,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
           
           // Optionally validate against HCL contacts database
           try {
-            // Use singleton instance to prevent conflicts
-            const validatedContact = await contactValidatorInstance.validateContact({
+            // Create fresh validator instance for this email to prevent race conditions
+            const contactValidator = new OpenAIContactValidatorService();
+            const validatedContact = await contactValidator.validateContact({
               extractedData: extractionResult,
               senderName: extractionResult.purchaseOrder.contact?.name,
               senderEmail: messageToProcess.sender,
@@ -647,11 +647,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
           console.log(`\n🤖 OPENAI SKU VALIDATOR: Processing ${extractionResult.lineItems.length} extracted line items...`);
           
           try {
-            // Use singleton instance to prevent conflicts
+            // Create fresh validator instance for this email to prevent race conditions
             console.log(`   └─ Processing ${extractionResult.lineItems.length} line items for validation`);
             
-            // Validate line items with OpenAI
-            validatedLineItems = await skuValidatorInstance.validateLineItems(extractionResult.lineItems);
+            // Validate line items with OpenAI using isolated instance
+            const skuValidator = new OpenAISKUValidatorService();
+            validatedLineItems = await skuValidator.validateLineItems(extractionResult.lineItems);
             
             console.log(`   ✅ SKU validation complete: ${validatedLineItems.length} items processed`);
             
@@ -917,10 +918,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
             console.log(`   └─ Detailed route: ${classification.route} (${Math.round(classification.confidence)}%)`);
           }
 
-          // Generate PO number
-          console.log(`📋 PO NUMBER ASSIGNMENT:`);
-          const poNumber = `PO-${new Date().getFullYear()}-${String(Date.now()).slice(-6)}`;
-          console.log(`   ✅ Generating PO number: ${poNumber}`);
+          // Generate temporary PO number (will be updated after extraction)
+          console.log(`📋 TEMPORARY PO NUMBER ASSIGNMENT:`);
+          let poNumber = `PO-${new Date().getFullYear()}-${String(Date.now()).slice(-6)}`;
+          console.log(`   ⏳ Temporary PO number: ${poNumber} (will update after extraction)`);
 
           let purchaseOrder = null;
           if (preprocessing.shouldProceed && classification) {
@@ -1430,10 +1431,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
             // Declare extractedData at function scope to avoid temporal dead zone
             let extractedData = null;
             
-            // Generate PO number
-            console.log('📋 PO NUMBER ASSIGNMENT:');
-            const poNumber = `PO-${new Date().getFullYear()}-${String(Date.now()).slice(-6)}`;
-            console.log(`   ✅ Generating PO number: ${poNumber}`);
+            // Generate temporary PO number (will be updated after extraction)
+            console.log('📋 TEMPORARY PO NUMBER ASSIGNMENT:');
+            let poNumber = `PO-${new Date().getFullYear()}-${String(Date.now()).slice(-6)}`;
+            console.log(`   ⏳ Temporary PO number: ${poNumber} (will update after extraction)`);
             
             // Update status with PO number
             updateProcessingStatus({
@@ -1572,6 +1573,41 @@ export async function registerRoutes(app: Express): Promise<Server> {
               console.log(`   └─ Customer: ${extractedData.customer?.name || 'Not specified'}`);
               console.log(`   └─ Line Items: ${extractedData.lineItems?.length || 0}`);
 
+              // NOW assign the final PO number using extracted data
+              console.log(`\n🆔 FINAL PO NUMBER ASSIGNMENT:`);
+              
+              // Try multiple extraction paths for PO number
+              const extractedPONumber = extractedData?.purchaseOrder?.purchaseOrderNumber || 
+                                        extractedData?.purchaseOrderNumber ||
+                                        extractedData?.clientPONumber;
+              
+              if (extractedPONumber && extractedPONumber.trim()) {
+                // Clean up the PO number (remove extra spaces, prefixes like "PO:", etc.)
+                let cleanPONumber = extractedPONumber.trim().replace(/^(PO:?|Purchase Order:?)\s*/i, '');
+                
+                // Check if this PO number already exists and append suffix if needed
+                let finalPONumber = cleanPONumber;
+                let originalPoNumber = finalPONumber;
+                let suffix = 1;
+                
+                while (await storage.getPurchaseOrderByNumber(finalPONumber)) {
+                  finalPONumber = `${originalPoNumber}-${suffix}`;
+                  suffix++;
+                }
+                
+                if (suffix > 1) {
+                  console.log(`   ⚠️  PO number ${originalPoNumber} already exists, using: ${finalPONumber}`);
+                } else {
+                  console.log(`   ✅ Using extracted PO number: ${finalPONumber}`);
+                }
+                
+                // Update the PO number to use extracted value
+                poNumber = finalPONumber;
+              } else {
+                console.log(`   ⚠️  No PO number found in extraction, keeping synthetic: ${poNumber}`);
+                console.log(`   └─ Extraction structure check: purchaseOrder=${!!extractedData?.purchaseOrder}, purchaseOrderNumber=${extractedData?.purchaseOrder?.purchaseOrderNumber}`);
+              }
+
               // Add forwarded email info if present
               if (forwardedEmail) {
                 extractedData.forwardedEmail = forwardedEmail;
@@ -1706,8 +1742,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
                   console.log(`   🔍 DEBUG: Sender name resolution: "${senderName}"`);
                   console.log(`   🔍 DEBUG: messageToProcess.sender: "${messageToProcess.sender}"`);
                   
-                  // Use singleton instance to prevent conflicts
-                  validationContext.contactMeta = await contactValidatorInstance.validateContact({
+                  // Create fresh validator instance for this email to prevent race conditions
+                  const contactValidator = new OpenAIContactValidatorService();
+                  validationContext.contactMeta = await contactValidator.validateContact({
                     extractedData: extractedData,
                     senderName: senderName,
                     senderEmail: messageToProcess.sender,
@@ -1756,8 +1793,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 });
                 
                 try {
-                  // Use singleton instance to prevent conflicts
-                  const validatedItems = await skuValidatorInstance.validateLineItems(extractedData.lineItems);
+                  // Create fresh validator instance for this email to prevent race conditions
+                  const skuValidator = new OpenAISKUValidatorService();
+                  const validatedItems = await skuValidator.validateLineItems(extractedData.lineItems);
                   console.log(`   ✅ Line items validated: ${validatedItems.length} items processed`);
                   
                   // Log validation results
@@ -1796,8 +1834,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 console.log(`   ⚠️  No line items found - running empty validator for consistency`);
                 // Still run validator with empty data for deterministic behavior
                 try {
-                  // Use singleton instance to prevent conflicts
-                  const validatedItems = await skuValidatorInstance.validateLineItems([]);
+                  // Create fresh validator instance for this email to prevent race conditions
+                  const skuValidator = new OpenAISKUValidatorService();
+                  const validatedItems = await skuValidator.validateLineItems([]);
                   console.log(`   ✅ Empty line items validation completed (deterministic)`);
                 } catch (error) {
                   console.log(`   ⚠️  Empty line items validation failed (non-critical)`);
@@ -2130,10 +2169,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
           // Create purchase order if email passed both steps
           if (processingResult.preprocessing.shouldProceed && processingResult.classification && 
               processingResult.classification.recommended_route !== 'REVIEW') {
-            const poNumber = `PO-${new Date().getFullYear()}-${String(Date.now()).slice(-6)}`;
+            let poNumber = `PO-${new Date().getFullYear()}-${String(Date.now()).slice(-6)}`;
             
-            console.log(`📋 PO NUMBER ASSIGNMENT:`);
-            console.log(`   ✅ Generating PO number: ${poNumber}`);
+            console.log(`📋 TEMPORARY PO NUMBER ASSIGNMENT:`);
+            console.log(`   ⏳ Temporary PO number: ${poNumber} (will update after extraction)`);
 
             // Handle forwarded emails 
             let effectiveSender = messageToProcess.sender;
@@ -2223,8 +2262,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
                       console.log(`🔍 OPENAI CONTACT VALIDATION: Using comprehensive contact resolution...`);
                       
                       try {
-                        // Use singleton instance to prevent conflicts
-                        const validatedContact = await contactValidatorInstance.validateContact({
+                        // Create fresh validator instance for this email to prevent race conditions
+                        const contactValidator = new OpenAIContactValidatorService();
+                        const validatedContact = await contactValidator.validateContact({
                           extractedData: extractionResult,
                           senderName: messageToProcess.senderName || extractionResult.purchaseOrder.contact?.name,
                           senderEmail: messageToProcess.sender,
@@ -2276,8 +2316,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
                     console.log(`🔍 OPENAI CONTACT VALIDATION: Using comprehensive contact resolution...`);
                     
                     try {
-                      // Use singleton instance to prevent conflicts
-                      const validatedContact = await contactValidatorInstance.validateContact({
+                      // Create fresh validator instance for this email to prevent race conditions
+                      const contactValidator = new OpenAIContactValidatorService();
+                      const validatedContact = await contactValidator.validateContact({
                         extractedData: extractionResult,
                         senderName: messageToProcess.senderName || extractionResult.purchaseOrder.contact?.name,
                         senderEmail: messageToProcess.sender,
@@ -2314,8 +2355,9 @@ totalPrice: ${item.totalPrice || 0}`;
                     
                     console.log(`   └─ Formatted ${extractionResult.lineItems.length} line items for validation`);
                     
-                    // Use singleton instance to prevent conflicts
-                    validatedItems = await skuValidatorInstance.validateLineItems(extractionResult.lineItems);
+                    // Create fresh validator instance for this email to prevent race conditions
+                    const skuValidator = new OpenAISKUValidatorService();
+                    validatedItems = await skuValidator.validateLineItems(extractionResult.lineItems);
                     console.log(`   ✅ SKU validation complete: ${validatedItems.length} items processed`);
                     
                     // Merge validated SKUs back into original line items structure

@@ -1,0 +1,40 @@
+The Core Problem:
+Your app correctly processes emails sequentially, but the validation services are designed as shared singletons. This creates a fundamental architectural conflict:
+
+1. Sequential Email Processing → Expects isolated, clean validator state for each email
+2. Singleton Validators → Share caches, state, and processing context across emails
+3. Multiple Processing Paths → Auto-processing + manual + retry all compete for validator resources
+
+Why Validators Fail:
+1. Email A starts validation, loads cache, begins processing
+2. Email B (retry/manual) accesses same validator, corrupts cache mid-process
+3. Email A continues with corrupted validator state → validation fails
+4. Email B also fails because Email A left validator in inconsistent state
+
+Conclusion
+
+The root cause of your validator failures is architectural conflict between sequential processing and shared singleton validators. The immediate fix is to use validator instances per email rather than shared singletons. This will eliminate race conditions and state pollution that are causing validation failures.
+
+🚀 Recommended Solutions
+
+Solution 1: Validator Instance Per Email (Immediate Fix)
+
+Replace singleton validators with per-email instances:
+
+
+// REMOVE these from module level
+// const skuValidatorInstance = new OpenAISKUValidatorService();
+// const contactValidatorInstance = new OpenAIContactValidatorService();
+
+// ADD to email processing function
+const processEmailWithIsolatedValidators = async (messageToProcess) => {
+  // Create fresh validator instances for this email only
+  const skuValidator = new OpenAISKUValidatorService();
+  const contactValidator = new OpenAIContactValidatorService();
+  
+  // Use email-specific validators throughout processing
+  const validatedContact = await contactValidator.validateContact({...});
+  const validatedItems = await skuValidator.validateLineItems(extractedData.lineItems);
+  
+  // Validators are garbage collected after this email completes
+};
