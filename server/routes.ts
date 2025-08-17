@@ -3,6 +3,8 @@ import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { registerCustomerRoutes } from "./routes/customers";
 import itemsRouter from "./routes/items";
+import { registerValidatorHealthRoutes } from "./routes/validator-health";
+import { validatorHealthService } from "./services/validator-health";
 import { gmailService } from "./services/gmail";
 import { aiService, type AIEngine } from "./services/ai-service";
 import { netsuiteService } from "./services/netsuite";
@@ -21,7 +23,7 @@ import { z } from "zod";
 
 // Enhanced error logging helper for comprehensive tracking
 async function logProcessingError(
-  type: 'preprocessing_failed' | 'classification_failed' | 'extraction_failed' | 'customer_lookup_failed' | 'sku_validation_failed' | 'final_step_failed' | 'gmail_labeling_failed' | 'ai_filter_failed',
+  type: 'preprocessing_failed' | 'classification_failed' | 'extraction_failed' | 'customer_lookup_failed' | 'sku_validation_failed' | 'final_step_failed' | 'gmail_labeling_failed' | 'ai_filter_failed' | 'contact_validation_failed' | 'attachment_screening_failed' | 'validator_health_alert',
   message: string,
   emailId?: string,
   poId?: string,
@@ -38,7 +40,10 @@ async function logProcessingError(
       'sku_validation_failed': 'Product validation failed. Line items could not be validated against the HCL product catalog.',
       'final_step_failed': 'Processing completion failed. An error occurred in the final stages of email processing.',
       'gmail_labeling_failed': 'Gmail organization failed. Email was processed but could not be properly labeled for tracking.',
-      'ai_filter_failed': 'Attachment screening error. AI filter may have incorrectly rejected a valid purchase order document.'
+      'ai_filter_failed': 'Attachment screening error. AI filter may have incorrectly rejected a valid purchase order document.',
+      'contact_validation_failed': 'Contact resolution failed. Unable to validate or match the contact information from the email.',
+      'attachment_screening_failed': 'Attachment analysis failed. Unable to determine which attachments contain purchase order data.',
+      'validator_health_alert': 'Validator health issue detected. One or more validation services are experiencing performance problems.'
     };
     
     const explanation = errorExplanations[type] || 'An unexpected error occurred during email processing.';
@@ -558,8 +563,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
           
           // Optionally validate against HCL contacts database
           try {
-            // Create fresh validator instance for this email to prevent race conditions
-            const contactValidator = new OpenAIContactValidatorService();
+            // Create fresh validator instance for this email to prevent race conditions with health monitoring
+            const contactValidator = await validatorHealthService.recordValidatorCall(
+              'contactValidator',
+              async () => new OpenAIContactValidatorService()
+            );
             const validatedContact = await contactValidator.validateContact({
               extractedData: extractionResult,
               senderName: extractionResult.purchaseOrder.contact?.name,
@@ -587,9 +595,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
           console.log(`   └─ Searching HCL database for: ${extractionResult.purchaseOrder.customer.company || 'Unknown'}`);
           
           try {
-            // Create fresh customer finder instance for this email to prevent race conditions
+            // Create fresh customer finder instance for this email to prevent race conditions with health monitoring
             const { OpenAICustomerFinderService } = await import('./services/openai-customer-finder');
-            const customerFinder = new OpenAICustomerFinderService();
+            const customerFinder = await validatorHealthService.recordValidatorCall(
+              'customerFinder',
+              async () => new OpenAICustomerFinderService()
+            );
             const customerMatch = await customerFinder.findCustomer({
               customerName: extractionResult.purchaseOrder.customer.company,
               customerEmail: extractionResult.purchaseOrder.customer.email,
@@ -653,7 +664,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
             console.log(`   └─ Processing ${extractionResult.lineItems.length} line items for validation`);
             
             // Validate line items with OpenAI using isolated instance
-            const skuValidator = new OpenAISKUValidatorService();
+            // Create fresh validator instance for this email to prevent race conditions with health monitoring
+            const skuValidator = await validatorHealthService.recordValidatorCall(
+              'skuValidator',
+              async () => new OpenAISKUValidatorService()
+            );
             validatedLineItems = await skuValidator.validateLineItems(extractionResult.lineItems);
             
             console.log(`   ✅ SKU validation complete: ${validatedLineItems.length} items processed`);
@@ -1025,9 +1040,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
             const customerName = purchaseOrder.extractedData?.customer?.name || purchaseOrder.customerName;
             console.log(`   └─ Searching HCL database for: ${customerName || 'No customer name'}`);
 
-            // Create fresh customer finder instance for this email to prevent race conditions
+            // Create fresh customer finder instance for this email to prevent race conditions with health monitoring
             const { OpenAICustomerFinderService } = await import('./services/openai-customer-finder');
-            const customerFinder = new OpenAICustomerFinderService();
+            const customerFinder = await validatorHealthService.recordValidatorCall(
+              'customerFinder',
+              async () => new OpenAICustomerFinderService()
+            );
             const updatedPO = await customerFinder.processPurchaseOrder(purchaseOrder.id);
             
             console.log(`   ✅ Updated purchase order ${poNumber} (Status: ${updatedPO?.status || 'unknown'})`);
@@ -1647,9 +1665,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 currentStep: "customer_validation",
               });
               try {
-                // Create fresh customer finder instance for this email to prevent race conditions
+                // Create fresh customer finder instance for this email to prevent race conditions with health monitoring
                 const { OpenAICustomerFinderService } = await import('./services/openai-customer-finder');
-                const customerFinder = new OpenAICustomerFinderService();
+                const customerFinder = await validatorHealthService.recordValidatorCall(
+                  'customerFinder',
+                  async () => new OpenAICustomerFinderService()
+                );
                 const updatedPO = await customerFinder.processPurchaseOrder(purchaseOrder.id);
                 console.log(`   ✅ Customer processing completed for PO ${poNumber} (Status: ${updatedPO?.status || purchaseOrder.status})`);
                 
@@ -1801,8 +1822,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 });
                 
                 try {
-                  // Create fresh validator instance for this email to prevent race conditions
-                  const skuValidator = new OpenAISKUValidatorService();
+                  // Create fresh validator instance for this email to prevent race conditions with health monitoring
+                  const skuValidator = await validatorHealthService.recordValidatorCall(
+                    'skuValidator',
+                    async () => new OpenAISKUValidatorService()
+                  );
                   const validatedItems = await skuValidator.validateLineItems(extractedData.lineItems);
                   console.log(`   ✅ Line items validated: ${validatedItems.length} items processed`);
                   
@@ -1842,8 +1866,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 console.log(`   ⚠️  No line items found - running empty validator for consistency`);
                 // Still run validator with empty data for deterministic behavior
                 try {
-                  // Create fresh validator instance for this email to prevent race conditions
-                  const skuValidator = new OpenAISKUValidatorService();
+                  // Create fresh validator instance for this email to prevent race conditions with health monitoring
+                  const skuValidator = await validatorHealthService.recordValidatorCall(
+                    'skuValidator',
+                    async () => new OpenAISKUValidatorService()
+                  );
                   const validatedItems = await skuValidator.validateLineItems([]);
                   console.log(`   ✅ Empty line items validation completed (deterministic)`);
                 } catch (error) {
@@ -2296,9 +2323,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
                   
                   let finalCustomerData = null;
                   if (extractionResult.purchaseOrder?.customer?.company) {
-                    // Create fresh customer finder instance for this email to prevent race conditions
+                    // Create fresh customer finder instance for this email to prevent race conditions with health monitoring
                     const { OpenAICustomerFinderService } = await import('./services/openai-customer-finder');
-                    const customerFinder = new OpenAICustomerFinderService();
+                    const customerFinder = await validatorHealthService.recordValidatorCall(
+                      'customerFinder',
+                      async () => new OpenAICustomerFinderService()
+                    );
                     const customerResult = await customerFinder.findCustomer({
                       customerName: extractionResult.purchaseOrder.customer.company,
                       customerEmail: extractionResult.purchaseOrder.customer.email || '',
@@ -2326,8 +2356,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
                     console.log(`🔍 OPENAI CONTACT VALIDATION: Using comprehensive contact resolution...`);
                     
                     try {
-                      // Create fresh validator instance for this email to prevent race conditions
-                      const contactValidator = new OpenAIContactValidatorService();
+                      // Create fresh validator instance for this email to prevent race conditions with health monitoring
+                      const contactValidator = await validatorHealthService.recordValidatorCall(
+                        'contactValidator',
+                        async () => new OpenAIContactValidatorService()
+                      );
                       const validatedContact = await contactValidator.validateContact({
                         extractedData: extractionResult,
                         senderName: messageToProcess.senderName || extractionResult.purchaseOrder.contact?.name,
@@ -2365,8 +2398,11 @@ totalPrice: ${item.totalPrice || 0}`;
                     
                     console.log(`   └─ Formatted ${extractionResult.lineItems.length} line items for validation`);
                     
-                    // Create fresh validator instance for this email to prevent race conditions
-                    const skuValidator = new OpenAISKUValidatorService();
+                    // Create fresh validator instance for this email to prevent race conditions with health monitoring
+                    const skuValidator = await validatorHealthService.recordValidatorCall(
+                      'skuValidator',
+                      async () => new OpenAISKUValidatorService()
+                    );
                     validatedItems = await skuValidator.validateLineItems(extractionResult.lineItems);
                     console.log(`   ✅ SKU validation complete: ${validatedItems.length} items processed`);
                     
@@ -2933,6 +2969,9 @@ totalPrice: ${item.totalPrice || 0}`;
     }
   });
 
+
+  // Register validator health monitoring routes
+  registerValidatorHealthRoutes(app);
 
   const httpServer = createServer(app);
 
