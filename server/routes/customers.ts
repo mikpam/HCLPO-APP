@@ -9,7 +9,7 @@ export function registerCustomerRoutes(app: Express): void {
   app.get("/api/customers", async (req, res) => {
     try {
       const page = parseInt(req.query.page as string) || 1;
-      const limit = parseInt(req.query.limit as string) || 10000; // Allow fetching all customers
+      const limit = parseInt(req.query.limit as string) || 50000; // Allow fetching all customers - increased to 50k
       const offset = (page - 1) * limit;
 
       const allCustomers = await db

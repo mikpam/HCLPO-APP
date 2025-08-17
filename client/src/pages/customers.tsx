@@ -217,7 +217,9 @@ export default function CustomersPage() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm font-medium text-gray-600">Total Customers</p>
-                <p className="text-2xl font-bold">{customers.length.toLocaleString()}</p>
+                <p className="text-2xl font-bold">
+                  {isLoading ? "..." : customers.length.toLocaleString()}
+                </p>
               </div>
               <Users className="h-8 w-8 text-blue-600" />
             </div>
@@ -230,7 +232,7 @@ export default function CustomersPage() {
               <div>
                 <p className="text-sm font-medium text-gray-600">Active Customers</p>
                 <p className="text-2xl font-bold">
-                  {customers.filter(c => c.is_active).length.toLocaleString()}
+                  {isLoading ? "..." : customers.filter(c => c.is_active).length.toLocaleString()}
                 </p>
               </div>
               <Building2 className="h-8 w-8 text-green-600" />
@@ -243,7 +245,9 @@ export default function CustomersPage() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm font-medium text-gray-600">Filtered Results</p>
-                <p className="text-2xl font-bold">{filteredCustomers.length.toLocaleString()}</p>
+                <p className="text-2xl font-bold">
+                  {isLoading ? "..." : filteredCustomers.length.toLocaleString()}
+                </p>
               </div>
               <Filter className="h-8 w-8 text-orange-600" />
             </div>
