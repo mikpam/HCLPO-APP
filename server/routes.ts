@@ -1623,10 +1623,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 }
                 
                 // Log customer lookup failures for review
-                if (updatedPO?.status === 'customer_not_found' || updatedPO?.status === 'new_customer') {
+                if (updatedPO?.status === 'new customer') {
                   await logProcessingError(
                     'customer_lookup_failed',
-                    `Customer lookup ${updatedPO.status === 'customer_not_found' ? 'failed' : 'resulted in new customer'} for PO ${poNumber}. Manual review may be required.`,
+                    `Customer lookup failed for PO ${poNumber}. Manual review may be required.`,
                     messageToProcess.id,
                     purchaseOrder.id,
                     poNumber,
@@ -2788,9 +2788,9 @@ totalPrice: ${item.totalPrice || 0}`;
       const [classification, importReady, newCustomerReview, pendingReview, customerNotFound, errors] = await Promise.all([
         storage.getEmailQueue({ status: 'pending', limit: 100 }),
         storage.getPurchaseOrders({ status: 'customer_found', limit: 100 }),
-        storage.getPurchaseOrders({ status: 'new_customer', limit: 100 }),
+        storage.getPurchaseOrders({ status: 'new customer', limit: 100 }),
         storage.getPurchaseOrders({ status: 'pending_review', limit: 100 }),
-        storage.getPurchaseOrders({ status: 'customer_not_found', limit: 100 }),
+        storage.getPurchaseOrders({ status: 'new customer', limit: 100 }),
         storage.getErrorLogs({ resolved: false, limit: 100 })
       ]);
 

@@ -381,9 +381,9 @@ Please analyze the input and return the correct customer match.`;
       } else {
         console.log(`   ⚠️  No customer match found for PO ${purchaseOrderId}`);
         
-        // Update status to indicate no customer found
+        // Update status to indicate new customer requires setup
         const updatedPO = await storage.updatePurchaseOrder(purchaseOrderId, {
-          status: 'customer_not_found'
+          status: 'new customer'
         });
         
         return updatedPO;
