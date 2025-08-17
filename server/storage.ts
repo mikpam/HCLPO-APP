@@ -16,7 +16,7 @@ import {
   systemHealth
 } from "@shared/schema";
 import { db } from "./db";
-import { eq, and, desc, count, gte, lt } from "drizzle-orm";
+import { eq, and, desc, count, gte, lt, not } from "drizzle-orm";
 import { randomUUID } from "crypto";
 
 export interface IStorage {
@@ -293,11 +293,16 @@ export class DatabaseStorage implements IStorage {
         )
       );
 
-    // Count processed POs
+    // Count all created POs (any status except 'error' or 'deleted')
     const [posResult] = await db
       .select({ count: count() })
       .from(purchaseOrders)
-      .where(eq(purchaseOrders.status, 'processed'));
+      .where(
+        and(
+          not(eq(purchaseOrders.status, 'error')),
+          not(eq(purchaseOrders.status, 'deleted'))
+        )
+      );
 
     // Count POs pending review
     const [reviewResult] = await db

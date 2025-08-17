@@ -1356,8 +1356,9 @@ totalPrice: ${item.totalPrice || 0}`;
                 const originalMessage = { ...gmailMessage };
                 originalMessage.sender = forwardedEmail.originalSender;
                 
-                // Process with original sender context
-                if (route === "TEXT_PO" || route === "TEXT_SAMPLE") {
+                // Process with original sender context  
+                const forwardedRoute = classification.recommended_route || classification.route;
+                if (forwardedRoute === "TEXT_PO" || forwardedRoute === "TEXT_SAMPLE") {
                   extractedData = await aiService.extractPODataFromText(
                     originalMessage.subject || "",
                     originalMessage.body || "",
