@@ -587,11 +587,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
               address: extractionResult.purchaseOrder.customer.address1
             });
             
-            if (customerMatch?.customer_number) {
+            // Improved reliability with status-based handling
+            if (customerMatch.status === 'found' && customerMatch.customer_number) {
               customerMeta = customerMatch;
               console.log(`   ✅ OpenAI found HCL customer: ${customerMatch.customer_name} (${customerMatch.customer_number})`);
-            } else {
+              console.log(`   └─ Method: ${customerMatch.method} (Confidence: ${Math.round((customerMatch.confidence || 0) * 100)}%)`);
+            } else if (customerMatch.status === 'not_found') {
               console.log(`   ❌ OpenAI found no confident match for: ${extractionResult.purchaseOrder.customer.company}`);
+              console.log(`   🆕 FLAGGING AS NEW CUSTOMER for CSR review`);
+            } else if (customerMatch.status === 'error') {
+              console.log(`   ⚠️  OpenAI customer finder encountered an error`);
               console.log(`   🆕 FLAGGING AS NEW CUSTOMER for CSR review`);
             }
           } catch (error) {
@@ -2245,11 +2250,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
                       address: extractionResult.purchaseOrder.customer.address1 || ''
                     });
                     
-                    if (customerResult.customer_number) {
+                    // Improved reliability with status-based handling
+                    if (customerResult.status === 'found' && customerResult.customer_number) {
                       finalCustomerData = customerResult;
                       console.log(`   ✅ OpenAI found HCL customer: ${finalCustomerData.customer_name} (${finalCustomerData.customer_number})`);
-                    } else {
-                      console.log(`   ⚠️  Customer not found in HCL database, will flag as new_customer`);
+                      console.log(`   └─ Method: ${customerResult.method} (Confidence: ${Math.round((customerResult.confidence || 0) * 100)}%)`);
+                    } else if (customerResult.status === 'not_found') {
+                      console.log(`   ❌ Customer not found in HCL database, will flag as new_customer`);
+                    } else if (customerResult.status === 'error') {
+                      console.log(`   ⚠️  Customer finder error, will flag as new_customer`);
                     }
                   }
 

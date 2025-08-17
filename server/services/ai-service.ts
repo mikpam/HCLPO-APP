@@ -75,6 +75,11 @@ class AIServiceManager {
     }
   }
 
+  // Add preProcessEmail method for backward compatibility
+  async preProcessEmail(input: EmailClassificationInput): Promise<{ response: string; score: string; shouldProceed: boolean; classification?: string }> {
+    return await openaiService.preProcessEmail(input);
+  }
+
   // Kept for backward compatibility
   async classifyEmail(input: EmailClassificationInput): Promise<ClassificationResult & { engine: AIEngine }> {
     const result = await this.processEmail(input);

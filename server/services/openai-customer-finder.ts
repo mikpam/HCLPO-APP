@@ -20,31 +20,51 @@ interface CustomerFinderInput {
 interface CustomerFinderResult {
   customer_number: string;
   customer_name: string;
+  status: 'found' | 'not_found' | 'error';
+  confidence?: number;
+  method?: string;
 }
 
 export class OpenAICustomerFinderService {
   
-  async findCustomer(input: CustomerFinderInput): Promise<CustomerFinderResult | null> {
+  async findCustomer(input: CustomerFinderInput): Promise<CustomerFinderResult> {
     console.log(`🤖 OPENAI CUSTOMER FINDER: Starting lookup with input:`, input);
     
-    // Step 1: Generate search queries using expansion strategies
-    const searchQueries = this.generateSearchQueries(input);
-    console.log(`   📋 Generated ${searchQueries.length} search queries:`, searchQueries);
-    
-    // Step 2: Retrieve top candidates from database
-    const candidates = await this.retrieveCandidates(searchQueries);
-    console.log(`   🔍 Found ${candidates.length} database candidates`);
-    
-    if (candidates.length === 0) {
-      console.log(`   ❌ No candidates found in database`);
-      return { customer_number: "", customer_name: "" };
+    try {
+      // Step 0: Check brand overrides first for reliability
+      const brandOverride = this.checkBrandOverrides(input);
+      if (brandOverride) {
+        console.log(`   ✅ Brand override found: ${brandOverride.customer_name} (${brandOverride.customer_number})`);
+        return { ...brandOverride, status: 'found', confidence: 1.0, method: 'brand_override' };
+      }
+      
+      // Step 1: Generate search queries using expansion strategies
+      const searchQueries = this.generateSearchQueries(input);
+      console.log(`   📋 Generated ${searchQueries.length} search queries:`, searchQueries);
+      
+      // Step 2: Retrieve top candidates from database
+      const candidates = await this.retrieveCandidates(searchQueries);
+      console.log(`   🔍 Found ${candidates.length} database candidates`);
+      
+      if (candidates.length === 0) {
+        console.log(`   ❌ No candidates found in database`);
+        return { customer_number: "", customer_name: "", status: 'not_found', confidence: 0, method: 'database_search' };
+      }
+      
+      // Step 3: Use OpenAI to intelligently match with sophisticated prompt
+      const result = await this.matchWithOpenAI(input, candidates);
+      console.log(`   ✅ OpenAI result:`, result);
+      
+      // Add status and confidence based on result
+      if (result.customer_number && result.customer_name) {
+        return { ...result, status: 'found', confidence: 0.95, method: 'openai_match' };
+      } else {
+        return { ...result, status: 'not_found', confidence: 0, method: 'openai_match' };
+      }
+    } catch (error) {
+      console.error(`   ❌ Customer finder error:`, error);
+      return { customer_number: "", customer_name: "", status: 'error', confidence: 0, method: 'error' };
     }
-    
-    // Step 3: Use OpenAI to intelligently match with sophisticated prompt
-    const result = await this.matchWithOpenAI(input, candidates);
-    console.log(`   ✅ OpenAI result:`, result);
-    
-    return result;
   }
   
   private generateSearchQueries(input: CustomerFinderInput): string[] {
@@ -126,7 +146,7 @@ export class OpenAICustomerFinderService {
       .trim();
   }
 
-  private checkBrandOverrides(input: CustomerFinderInput): CustomerFinderResult | null {
+  private checkBrandOverrides(input: CustomerFinderInput): { customer_number: string; customer_name: string } | null {
     const customerName = (input.customerName || '').toLowerCase();
     const customerEmail = (input.customerEmail || '').toLowerCase();
     const senderEmail = (input.senderEmail || '').toLowerCase();
@@ -209,7 +229,7 @@ export class OpenAICustomerFinderService {
     return uniqueCandidates.slice(0, 10); // Return top 10 candidates
   }
   
-  private async matchWithOpenAI(input: CustomerFinderInput, candidates: any[]): Promise<CustomerFinderResult> {
+  private async matchWithOpenAI(input: CustomerFinderInput, candidates: any[]): Promise<{ customer_number: string; customer_name: string }> {
     // First, check for brand overrides before processing candidates
     const brandOverride = this.checkBrandOverrides(input);
     if (brandOverride) {
