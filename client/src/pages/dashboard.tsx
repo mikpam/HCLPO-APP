@@ -69,6 +69,23 @@ export default function Dashboard() {
     currentStep: ""
   });
 
+  // Background processing status (for animation)
+  const { data: backgroundStatus } = useQuery({
+    queryKey: ["/api/processing/current-status"],
+    refetchInterval: 3000, // Check every 3 seconds
+    onSuccess: (data) => {
+      if (data) {
+        setProcessingState({
+          isProcessing: data.isProcessing || false,
+          currentEmail: data.currentEmail || null,
+          processedCount: data.processedCount || 0,
+          totalCount: data.totalCount || 0,
+          currentStep: data.currentStep || ""
+        });
+      }
+    }
+  });
+
   // SSE-based real-time processing
   const startRealTimeProcessing = () => {
     if (processingState.isProcessing) return;
@@ -288,11 +305,13 @@ export default function Dashboard() {
 
         {/* Email Processing Animation */}
         <EmailProcessingAnimation 
-          isProcessing={processSingleEmail.isPending || processNormalEmails.isPending}
-          processedCount={lastProcessResult?.processed || 0}
-          totalCount={lastProcessResult?.total || 0}
-          currentStep={processSingleEmail.isPending ? "Processing single email..." : 
-                      processNormalEmails.isPending ? "Processing emails normally..." : ""}
+          isProcessing={processSingleEmail.isPending || processNormalEmails.isPending || processingState.isProcessing}
+          processedCount={processingState.processedCount || lastProcessResult?.processed || 0}
+          totalCount={processingState.totalCount || lastProcessResult?.total || 0}
+          currentStep={processingState.currentStep || 
+                      (processSingleEmail.isPending ? "Processing single email..." : 
+                      processNormalEmails.isPending ? "Processing emails normally..." : "")}
+          currentEmail={processingState.currentEmail}
           finalStatus={lastProcessResult?.details?.purchaseOrder?.status || "pending"}
           onAnimationComplete={() => {
             console.log("Animation completed with status:", lastProcessResult?.details?.purchaseOrder?.status);

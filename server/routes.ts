@@ -2390,22 +2390,63 @@ totalPrice: ${item.totalPrice || 0}`;
   // Processing queue status
   app.get("/api/processing/queue-status", async (req, res) => {
     try {
-      const [classification, importReady, pendingReview, errors] = await Promise.all([
+      const [classification, importReady, newCustomerReview, pendingReview, customerNotFound, errors] = await Promise.all([
         storage.getEmailQueue({ status: 'pending', limit: 100 }),
-        storage.getPurchaseOrders({ status: 'ready for NS import', limit: 100 }),
+        storage.getPurchaseOrders({ status: 'customer_found', limit: 100 }),
+        storage.getPurchaseOrders({ status: 'new_customer', limit: 100 }),
         storage.getPurchaseOrders({ status: 'pending_review', limit: 100 }),
+        storage.getPurchaseOrders({ status: 'customer_not_found', limit: 100 }),
         storage.getErrorLogs({ resolved: false, limit: 100 })
       ]);
 
       res.json({
         classification: classification.length,
         import: importReady.length,
-        review: pendingReview.length,
+        review: pendingReview.length + newCustomerReview.length + customerNotFound.length,
         errors: errors.length
       });
     } catch (error) {
       res.status(500).json({ 
         message: error instanceof Error ? error.message : 'Failed to fetch queue status' 
+      });
+    }
+  });
+
+  // Current processing status for animation
+  app.get("/api/processing/current-status", async (req, res) => {
+    try {
+      // Check if background processing is active by looking at recent activity
+      const recentEmails = await storage.getEmailQueue({ limit: 5 });
+      const recentProcessing = recentEmails.filter(email => {
+        const timeDiff = Date.now() - new Date(email.processedAt || email.createdAt).getTime();
+        return timeDiff < 60000; // Within last minute
+      });
+      
+      const isProcessing = recentProcessing.length > 0;
+      let currentStep = "";
+      let currentEmail = null;
+
+      if (isProcessing && recentProcessing[0]) {
+        const email = recentProcessing[0];
+        currentStep = email.status === 'processed' ? 'Completed processing' : 'Processing email';
+        currentEmail = {
+          sender: email.sender,
+          subject: email.subject,
+          number: 1
+        };
+      }
+
+      res.json({
+        isProcessing,
+        currentStep,
+        currentEmail,
+        processedCount: recentProcessing.length,
+        totalCount: recentEmails.length
+      });
+    } catch (error) {
+      res.status(500).json({ 
+        isProcessing: false,
+        message: error instanceof Error ? error.message : 'Failed to get processing status' 
       });
     }
   });

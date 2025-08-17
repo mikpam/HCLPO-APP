@@ -5,10 +5,11 @@ export default function RecentProcessing() {
   const { data: recentEmails, isLoading } = useQuery<RecentEmailItem[]>({
     queryKey: ["/api/email-queue"],
     queryFn: async () => {
-      const response = await fetch("/api/email-queue?status=processed&limit=10");
+      const response = await fetch("/api/email-queue?limit=10");
       if (!response.ok) throw new Error("Failed to fetch recent emails");
       return response.json();
-    }
+    },
+    refetchInterval: 5000 // Refresh every 5 seconds to show live processing updates
   });
 
   const getStatusBadge = (status: string) => {
