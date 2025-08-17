@@ -1324,15 +1324,31 @@ totalPrice: ${item.totalPrice || 0}`;
                   let validatedItems: any[] = [];
                   if (extractionResult.line_items?.length > 0) {
                     console.log(`🤖 OPENAI SKU VALIDATOR: Processing ${extractionResult.line_items.length} extracted line items...`);
-                    const { OpenAISKUValidator } = await import('./services/openai-sku-validator');
-                    const skuValidator = new OpenAISKUValidator();
+                    const { skuValidator } = await import('./services/openai-sku-validator');
                     
-                    validatedItems = await skuValidator.validateLineItems(extractionResult.line_items);
+                    // Format line items for SKU validator (____-separated format like single email processing)
+                    const lineItemsForValidation = extractionResult.line_items
+                      .map((item: any) => {
+                        return `sku: ${item.sku || item.item_number || ''}
+description: ${item.description || item.product_name || ''}
+itemColor: ${item.color || item.item_color || ''}
+quantity: ${item.quantity || 1}
+unitPrice: ${item.unit_price || item.price || 0}
+totalPrice: ${item.total_price || (item.quantity * item.unit_price) || 0}`;
+                      })
+                      .join('\n____\n');
+                    
+                    console.log(`   └─ Formatted ${extractionResult.line_items.length} line items for validation`);
+                    
+                    validatedItems = await skuValidator.validateLineItems(lineItemsForValidation);
                     console.log(`   ✅ SKU validation complete: ${validatedItems.length} items processed`);
                     
                     // Log validation results
                     validatedItems.forEach((item: any, index: number) => {
-                      console.log(`      ${index + 1}. "${item.original_sku || item.sku}" → "${item.final_sku}"`);
+                      const original = extractionResult.line_items[index];
+                      if (original?.sku !== item.finalSKU) {
+                        console.log(`      ${index + 1}. "${original?.sku || item.sku}" → "${item.finalSKU}"`);
+                      }
                     });
                   }
 
