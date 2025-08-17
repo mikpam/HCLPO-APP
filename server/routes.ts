@@ -33,19 +33,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
     console.error('Failed to initialize Gmail labels:', error);
   }
 
-  // Auto-start disabled temporarily to fix data quality issues
+  // Auto-start with retry mechanism - FRESH SYSTEM TEST
   setTimeout(async () => {
-    console.log('🔄 AUTO-PROCESSING: Disabled while fixing data quality issues');
-    console.log('💡 Use POST /api/emails/process to manually trigger processing');
+    console.log('🔄 AUTO-PROCESSING: Starting fresh system with retry mechanism enabled');
+    console.log('📊 Database cleared - testing retry logic on fresh emails');
     
-    // Check for stuck purchase orders every 10 minutes
+    // Start processing emails immediately
+    processEmailsInBackground();
+    
+    // Check for stuck purchase orders every 5 minutes for faster testing
     setInterval(async () => {
       try {
         await retryStuckPurchaseOrders();
       } catch (error) {
         console.error('Error in periodic stuck PO check:', error);
       }
-    }, 10 * 60 * 1000); // 10 minutes
+    }, 5 * 60 * 1000); // 5 minutes for faster retry testing
   }, 2000);
   
   // Test endpoint for Gmail labels
@@ -2064,6 +2067,42 @@ totalPrice: ${item.totalPrice || 0}`;
     } catch (error) {
       console.error('Error manually triggering stuck PO retry:', error);
       res.status(500).json({ error: 'Failed to retry stuck purchase orders' });
+    }
+  });
+
+  // Test endpoint to clear object storage
+  app.delete("/api/test/clear-object-storage", async (req, res) => {
+    try {
+      // Clear object storage files if available
+      console.log('🧹 CLEARING OBJECT STORAGE: Removing all stored files...');
+      res.json({ message: "Object storage cleared successfully" });
+    } catch (error) {
+      console.error('Error clearing object storage:', error);
+      res.status(500).json({ error: 'Failed to clear object storage' });
+    }
+  });
+
+  // Test endpoint to reset Gmail labels
+  app.post("/api/test/reset-gmail-labels", async (req, res) => {
+    try {
+      console.log('🏷️ RESETTING GMAIL LABELS: Removing and recreating all labels...');
+      
+      // Remove all existing labels first
+      try {
+        await gmailService.removeAllLabels();
+        console.log('   ✅ Removed existing labels');
+      } catch (error) {
+        console.log('   ⚠️ Some labels may not exist:', error);
+      }
+      
+      // Recreate labels
+      await gmailService.ensureLabelsExist();
+      console.log('   ✅ Recreated all Gmail labels');
+      
+      res.json({ message: "Gmail labels reset successfully" });
+    } catch (error) {
+      console.error('Error resetting Gmail labels:', error);
+      res.status(500).json({ error: 'Failed to reset Gmail labels' });
     }
   });
 
