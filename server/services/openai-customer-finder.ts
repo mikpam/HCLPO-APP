@@ -191,6 +191,12 @@ export class OpenAICustomerFinderService {
       return { customer_number: "C5286", customer_name: "iPromoteu.com" };
     }
     
+    // 4AllPromos / 4 All Promos LLC
+    if (customerName.includes('4allpromos') || customerName.includes('4 all promos') ||
+        customerEmail.includes('4allpromos.com') || senderEmail.includes('4allpromos.com')) {
+      return { customer_number: "C4211", customer_name: "4 All Promos LLC" };
+    }
+    
     return null; // No brand override found
   }
 
@@ -312,6 +318,7 @@ BRAND OVERRIDES (mandatory):
 - Quality Logo Products or @qualitylogoproducts.com: {"customer_number": "C7657", "customer_name": "Quality Logo Products"}
 - Halo / Halo Branded Solutions (no qualifier): {"customer_number": "C2259", "customer_name": "Halo Branded Solutions"}
 - iPromoteU / ipromoteu.com: {"customer_number": "C5286", "customer_name": "iPromoteu.com"}
+- 4AllPromos / 4 All Promos LLC: {"customer_number": "C4211", "customer_name": "4 All Promos LLC"}
 
 OUTPUT FORMAT:
 Confident match: {"customer_number": "C#####", "customer_name": "..."}
