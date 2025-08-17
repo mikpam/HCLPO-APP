@@ -35,6 +35,7 @@ System Behavior: Automated email processing should start immediately when server
 - **Architecture**: Two-step sequential processing mirroring Make.com workflow. Emails are processed one at a time.
 - **Pre-processing**: OpenAI GPT-4o for intent classification (Purchase Order, Sample Request, Rush Order, Follow Up, None).
 - **Detailed Analysis**: Advanced 5-route classification for qualifying emails (TEXT_PO, TEXT_SAMPLE, ATTACHMENT_PO, ATTACHMENT_SAMPLE, REVIEW).
+- **Critical Routing Fix (2025-08-17)**: Fixed classification priority to ensure ATTACHMENT_PO takes precedence over TEXT_PO when legitimate attachments are present. Previously emails with both attachments and body text incorrectly routed to TEXT_PO.
 - **AI Document Filtering**: Pre-screens attachments to filter out non-PO documents before Gemini processing.
 - **Multi-Format Support**: Enhanced processing for Gemini-compatible formats (PDFs, images, Word docs, CSVs, Excel, text files).
 - **Dual Gemini Extraction Routes**: ATTACHMENT_PO for multi-format document processing with AI filtering; TEXT_PO for email text processing with structured schema extraction.
