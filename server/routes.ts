@@ -1278,8 +1278,10 @@ totalPrice: ${item.totalPrice || 0}`;
 
           let classification = null;
           if (preprocessing.shouldProceed) {
-            classification = await openaiService.classifyEmail(gmailMessage, preprocessing);
-            console.log(`   └─ Detailed route: ${classification.route || classification.recommended_route || 'Unknown'} (${Math.round((classification.confidence || classification.analysis_flags?.confidence_score || 0) * 100)}%)`);
+            classification = await openaiService.classifyEmail(gmailMessage);
+            const route = classification.recommended_route || classification.route || 'Unknown';
+            const confidence = classification.analysis_flags?.confidence_score || classification.confidence || 0;
+            console.log(`   └─ Detailed route: ${route} (${Math.round(confidence * 100)}%)`);
           } else {
             console.log(`Email filtered out: ${preprocessing.classification || preprocessing.response || 'Unknown'} (${Math.round((preprocessing.confidence || preprocessing.score || 0) * 100)}%)`);
           }
@@ -1301,27 +1303,54 @@ totalPrice: ${item.totalPrice || 0}`;
             }
 
             // AI Extraction based on classification
-            console.log(`🧠 GEMINI EXTRACTION: Processing ${classification.route}...`);
+            const route = classification.recommended_route || classification.route;
+            console.log(`🧠 GEMINI EXTRACTION: Processing ${route}...`);
             
             let extractedData = null;
-            if (classification.route === "ATTACHMENT_PO" || classification.route === "ATTACHMENT_SAMPLE") {
+            if (route === "ATTACHMENT_PO" || route === "ATTACHMENT_SAMPLE") {
               if (gmailMessage.attachments && gmailMessage.attachments.length > 0) {
                 const prioritizedAttachment = gmailMessage.attachments[0];
                 console.log(`   └─ Processing prioritized attachment: ${prioritizedAttachment.filename}`);
+                console.log(`   └─ Attachment keys available:`, Object.keys(prioritizedAttachment));
                 
                 if (prioritizedAttachment && prioritizedAttachment.data) {
-                  extractedData = await aiService.extractPOFromDocument(
+                  console.log(`   └─ Attachment data available: ${prioritizedAttachment.data.length} bytes`);
+                  extractedData = await aiService.extractPODataFromPDF(
                     prioritizedAttachment.data,
-                    prioritizedAttachment.mimeType,
                     prioritizedAttachment.filename
                   );
+                } else if (prioritizedAttachment.attachmentId) {
+                  console.log(`   └─ Loading attachment data using attachmentId: ${prioritizedAttachment.attachmentId}`);
+                  try {
+                    const attachmentBuffer = await gmailService.downloadAttachment(
+                      messageToProcess.id,
+                      prioritizedAttachment.attachmentId
+                    );
+                    if (attachmentBuffer) {
+                      console.log(`   ✅ Loaded attachment data: ${attachmentBuffer.length} bytes`);
+                      extractedData = await aiService.extractPODataFromPDF(
+                        attachmentBuffer,
+                        prioritizedAttachment.filename
+                      );
+                    } else {
+                      console.log(`   ❌ Failed to load attachment buffer`);
+                    }
+                  } catch (error) {
+                    console.log(`   ❌ Error loading attachment: ${error.message}`);
+                  }
+                } else {
+                  console.log(`   ❌ No attachment data or attachmentId available for: ${prioritizedAttachment.filename}`);
                 }
               }
-            } else if (classification.route === "TEXT_PO" || classification.route === "TEXT_SAMPLE") {
-              extractedData = await aiService.extractPOFromText(
+            } else if (route === "TEXT_PO" || route === "TEXT_SAMPLE") {
+              console.log(`   └─ Processing email text extraction`);
+              console.log(`   └─ Subject: "${gmailMessage.subject}"`);
+              console.log(`   └─ Body length: ${gmailMessage.body?.length || 0} chars`);
+              console.log(`   └─ Sender: "${gmailMessage.sender}"`);
+              extractedData = await aiService.extractPODataFromText(
+                gmailMessage.subject || "",
                 gmailMessage.body || "",
-                gmailMessage.sender,
-                gmailMessage.subject || ""
+                gmailMessage.sender
               );
             }
 
