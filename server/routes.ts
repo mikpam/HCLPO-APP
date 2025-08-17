@@ -1478,14 +1478,14 @@ totalPrice: ${item.totalPrice || 0}`;
                   // Log AI filtering as potential issue for review
                   await logProcessingError(
                     'ai_filter_failed',
-                    `AI attachment filter rejected ${attachment.filename} for email with PO ${poNumber}. This may indicate a false negative where a valid PO document was incorrectly filtered.`,
+                    `AI attachment filter rejected ${prioritizedAttachment.filename} for email with PO ${poNumber}. This may indicate a false negative where a valid PO document was incorrectly filtered.`,
                     messageToProcess.id,
                     undefined,
                     poNumber,
                     {
-                      attachmentFilename: attachment.filename,
-                      attachmentSize: attachment.size || 0,
-                      attachmentType: attachment.contentType || 'unknown',
+                      attachmentFilename: prioritizedAttachment.filename,
+                      attachmentSize: prioritizedAttachment.size || 0,
+                      attachmentType: prioritizedAttachment.contentType || 'unknown',
                       reason: 'AI determined this was not a valid PO document',
                       switchedToTextProcessing: true
                     }
