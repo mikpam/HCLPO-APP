@@ -8,7 +8,7 @@ import { openaiService } from "./services/openai";
 import { aiService, type AIEngine } from "./services/ai-service";
 import { netsuiteService } from "./services/netsuite";
 import { openaiCustomerFinderService } from "./services/openai-customer-finder";
-import { skuValidator } from "./services/openai-sku-validator";
+import { OpenAISKUValidatorService } from "./services/openai-sku-validator";
 import { ContactFinderService } from "./services/contact-finder";
 import { db } from "./db";
 import { purchaseOrders, errorLogs } from "@shared/schema";
@@ -618,24 +618,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
           console.log(`\n🤖 OPENAI SKU VALIDATOR: Processing ${extractionResult.lineItems.length} extracted line items...`);
           
           try {
-            const { skuValidator } = await import('./services/openai-sku-validator');
+            const skuValidatorService = new OpenAISKUValidatorService();
             
-            // Format line items for SKU validator (____-separated format)
-            const lineItemsForValidation = extractionResult.lineItems
-              .map((item: any) => {
-                return `sku: ${item.sku || ''}
-description: ${item.description || ''}
-itemColor: ${item.itemColor || ''}
-quantity: ${item.quantity || 1}
-unitPrice: ${item.unitPrice || 0}
-totalPrice: ${item.totalPrice || 0}`;
-              })
-              .join('\n____\n');
-            
-            console.log(`   └─ Formatted ${extractionResult.lineItems.length} line items for validation`);
+            console.log(`   └─ Processing ${extractionResult.lineItems.length} line items for validation`);
             
             // Validate line items with OpenAI
-            validatedLineItems = await skuValidator.validateLineItems(lineItemsForValidation);
+            validatedLineItems = await skuValidatorService.validateLineItems(extractionResult.lineItems);
             
             console.log(`   ✅ SKU validation complete: ${validatedLineItems.length} items processed`);
             
@@ -1604,15 +1592,14 @@ totalPrice: ${item.totalPrice || 0}`;
                 console.log(`📦 LINE ITEMS VALIDATION: Starting for ${extractedData.lineItems.length} items`);
                 
                 try {
-                  const { OpenAISKUValidator } = await import('./services/openai-sku-validator');
-                  const skuValidator = new OpenAISKUValidator();
+                  const skuValidatorService = new OpenAISKUValidatorService();
                   
                   // Create input string for validation (format expected by validator)
                   const lineItemsString = extractedData.lineItems.map((item: any) => {
                     return `SKU: ${item.sku || 'N/A'} | Description: ${item.description || 'N/A'} | Quantity: ${item.quantity || 0} | Color: ${item.itemColor || 'N/A'}`;
                   }).join(' ____ ');
                   
-                  const validatedItems = await skuValidator.validateLineItems(lineItemsString);
+                  const validatedItems = await skuValidatorService.validateLineItems(extractedData.lineItems);
                   console.log(`   ✅ Line items validated: ${validatedItems.length} items processed`);
                   
                   // Log validation results
@@ -2054,7 +2041,8 @@ totalPrice: ${item.totalPrice || 0}`;
                     
                     console.log(`   └─ Formatted ${extractionResult.lineItems.length} line items for validation`);
                     
-                    validatedItems = await skuValidator.validateLineItems(lineItemsForValidation);
+                    const skuValidatorService = new OpenAISKUValidatorService();
+                    validatedItems = await skuValidatorService.validateLineItems(extractionResult.lineItems);
                     console.log(`   ✅ SKU validation complete: ${validatedItems.length} items processed`);
                     
                     // Merge validated SKUs back into original line items structure

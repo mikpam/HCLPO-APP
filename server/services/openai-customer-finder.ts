@@ -175,15 +175,18 @@ export class OpenAICustomerFinderService {
     
     for (const query of queries.slice(0, 8)) { // Limit to top 8 queries
       try {
-        // Search in company name, alternate names, and email
+        // Sanitize query to prevent SQL injection and syntax errors
+        const sanitizedQuery = query.replace(/[<>'"$@()]/g, '').trim();
+        if (sanitizedQuery.length === 0) continue;
+        
+        // Search in company name, alternate names, and email using parameterized queries
         const results = await db
           .select()
           .from(customers)
           .where(
             or(
-              ilike(customers.companyName, `%${query}%`),
-              sql`${customers.alternateNames} @> ARRAY[${query}]::text[]`,
-              ilike(customers.email, `%${query}%`)
+              ilike(customers.companyName, sql`'%' || ${sanitizedQuery} || '%'`),
+              ilike(customers.email, sql`'%' || ${sanitizedQuery} || '%'`)
             )
           )
           .limit(10);
@@ -345,7 +348,7 @@ Please analyze the input and return the correct customer match.`;
       // Prepare input for customer finder
       const customerFinderInput: CustomerFinderInput = {
         customerEmail: customerData.email,
-        senderEmail: purchaseOrder.sender,
+        senderEmail: purchaseOrder.sender || undefined,
         customerName: customerData.company || customerData.customerName,
         asiNumber: extractedData.purchaseOrder.asiNumber,
         ppaiNumber: extractedData.purchaseOrder.ppaiNumber,

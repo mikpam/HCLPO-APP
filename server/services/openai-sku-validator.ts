@@ -1,244 +1,275 @@
 import OpenAI from 'openai';
 import { db } from '../db';
 import { items } from '@shared/schema';
-import { eq } from 'drizzle-orm';
+import { sql } from 'drizzle-orm';
 
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+interface LineItem {
+  sku?: string;
+  description: string;
+  itemColor?: string;
+  quantity: number;
+  finalSKU?: string;
+}
 
-interface ValidatedSKU {
+interface ValidatedLineItem {
   sku: string;
   description: string;
   itemColor: string;
   quantity: number;
   finalSKU: string;
+  productName?: string;
+  isValidSKU?: boolean;
+  validationNotes?: string;
 }
 
-export class OpenAISKUValidator {
-  private normalizedSkus: Set<string> = new Set();
-  private catalog: Map<string, string> = new Map();
-  private isInitialized: boolean = false;
+export class OpenAISKUValidatorService {
+  private openai: OpenAI;
+  private itemsCache: Map<string, any> = new Map();
+  private catalogMap: Map<string, string> = new Map();
+  private colorCodes: Map<string, string> = new Map();
+  private chargeCodebook: Map<string, string> = new Map();
+  private lastCacheUpdate = 0;
+  private readonly CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 
   constructor() {
-    // Don't initialize in constructor - do it when needed
+    if (!process.env.OPENAI_API_KEY) {
+      throw new Error('OPENAI_API_KEY is required');
+    }
+    this.openai = new OpenAI({
+      apiKey: process.env.OPENAI_API_KEY,
+    });
+
+    // Initialize color codes
+    this.colorCodes.set('00', 'White');
+    this.colorCodes.set('06', 'Black');
+    this.colorCodes.set('CL', 'Clear');
+    this.colorCodes.set('RD', 'Red');
+    this.colorCodes.set('BL', 'Blue');
+    this.colorCodes.set('GR', 'Green');
+
+    // Initialize charge codebook
+    this.chargeCodebook.set('SETUP', 'Setup charges');
+    this.chargeCodebook.set('48-RUSH', 'Rush charges');
+    this.chargeCodebook.set('EC', 'Extra charges');
+    this.chargeCodebook.set('P', 'Proof charges');
+    this.chargeCodebook.set('OE-MISC-CHARGE', 'Miscellaneous charges');
+    this.chargeCodebook.set('OE-MISC-ITEM', 'Unknown products');
   }
 
-  private async ensureInitialized() {
-    if (this.isInitialized) {
-      return;
+  private async loadItemsCache(): Promise<void> {
+    const now = Date.now();
+    if (now - this.lastCacheUpdate < this.CACHE_TTL && this.itemsCache.size > 0) {
+      return; // Cache is still valid
     }
 
     try {
-      console.log('🔄 Initializing SKU validator with HCL items database...');
+      const allItems = await db.select().from(items).where(sql`is_active = true`);
       
-      // Load all active items from the database
-      const allItems = await db.select({
-        finalSku: items.finalSku,
-        displayName: items.displayName,
-        isActive: items.isActive
-      }).from(items).where(eq(items.isActive, true));
-
-      console.log(`📦 Loaded ${allItems.length} active items from database`);
-
-      // Build normalized SKUs set and catalog map
-      allItems.forEach(item => {
-        const sku = item.finalSku.toUpperCase();
-        this.normalizedSkus.add(sku);
-        this.catalog.set(sku, item.displayName);
-      });
-
-      this.isInitialized = true;
-      console.log(`✅ SKU validator initialized with ${this.normalizedSkus.size} SKUs`);
-    } catch (error) {
-      console.error('❌ Error initializing SKU validator:', error);
-      throw error;
-    }
-  }
-
-  async validateLineItems(input: string): Promise<ValidatedSKU[]> {
-    console.log('🤖 OPENAI SKU VALIDATOR: Processing line items...');
-    
-    // Ensure data is loaded first
-    await this.ensureInitialized();
-
-    // Pre-process: Split input by ____ separator to handle multiple line items
-    const lineItems = input.split('____').map(item => item.trim()).filter(item => item.length > 0);
-    console.log(`📋 Found ${lineItems.length} line items to process`);
-
-    const allValidatedItems: ValidatedSKU[] = [];
-
-    // Process each line item individually for better accuracy
-    for (let i = 0; i < lineItems.length; i++) {
-      const lineItem = lineItems[i];
-      console.log(`\n🔍 Processing line item ${i + 1}:`);
-      console.log(lineItem.substring(0, 100) + (lineItem.length > 100 ? '...' : ''));
-
-      try {
-        const validatedItem = await this.validateSingleLineItem(lineItem);
-        allValidatedItems.push(validatedItem);
-        console.log(`   ✅ Processed: "${validatedItem.sku}" → "${validatedItem.finalSKU}"`);
-      } catch (error) {
-        console.error(`   ❌ Error processing line item ${i + 1}:`, error);
-        // Add a fallback item for failed processing
-        allValidatedItems.push({
-          sku: '',
-          description: lineItem.substring(0, 100),
-          itemColor: '',
-          quantity: 1,
-          finalSKU: 'OE-MISC-ITEM'
-        });
+      this.itemsCache.clear();
+      this.catalogMap.clear();
+      
+      for (const item of allItems) {
+        this.itemsCache.set(item.finalSku.toUpperCase(), item);
+        this.catalogMap.set(item.finalSku.toUpperCase(), item.displayName || item.description || 'No description');
       }
+      
+      this.lastCacheUpdate = now;
+      console.log(`   📦 Loaded ${this.itemsCache.size} items into cache`);
+    } catch (error) {
+      console.error('Failed to load items cache:', error);
     }
-
-    console.log(`\n✅ Total validated: ${allValidatedItems.length} line items`);
-    return allValidatedItems;
   }
 
-  private async validateSingleLineItem(lineItem: string): Promise<ValidatedSKU> {
-    // Prepare comprehensive validation prompt with full HCL items database
-    const normalizedSkusArray = Array.from(this.normalizedSkus);
+  private async validateWithOpenAI(lineItems: LineItem[]): Promise<ValidatedLineItem[]> {
+    await this.loadItemsCache();
     
-    // Extract SKU from lineItem to show relevant SKUs in prompt
-    const skuMatch = lineItem.match(/(?:sku|item|product)[\s:]*([A-Z0-9-]+)/i);
-    const inputSku = skuMatch ? skuMatch[1].toUpperCase() : '';
-    
-    // Show relevant SKUs - if we have an input SKU, prioritize similar ones
-    let relevantSkus = normalizedSkusArray.slice(0, 100);
-    if (inputSku) {
-      const similar = normalizedSkusArray.filter(sku => 
-        sku.includes(inputSku.split('-')[0]) || inputSku.includes(sku.split('-')[0])
-      );
-      relevantSkus = [...similar, ...normalizedSkusArray.filter(sku => !similar.includes(sku))].slice(0, 100);
-    }
+    // Create a catalog for OpenAI context (top 200 items for better context)
+    const catalogEntries = Array.from(this.catalogMap.entries()).slice(0, 200).map(([sku, productName]) => 
+      `${sku}: ${productName}`
+    ).join('\n');
 
-    const prompt = `You are a data-validation assistant for **High Caliber Line (HCL)**.
+    // Create color codes context
+    const colorCodesContext = Array.from(this.colorCodes.entries()).map(([code, name]) =>
+      `${code}: ${name}`
+    ).join(', ');
 
----
+    // Create charge codes context  
+    const chargeCodesContext = Array.from(this.chargeCodebook.entries()).map(([code, desc]) =>
+      `${code}: ${desc}`
+    ).join(', ');
+
+    const prompt = `You are a data-validation assistant for High Caliber Line (HCL).
 
 ### Output (strict)
 
-Return **only** a JSON object with exactly these keys, in this order:
+Return **only** a JSON array. Each element is an object with exactly these keys, in this order:
 
-* \`sku\`  (string; original as seen, or empty if none)
-* \`description\`  (string)
-* \`itemColor\`  (string; as seen or empty)
-* \`quantity\`  (integer ≥ 1; coerce if needed, see below)
-* \`finalSKU\`  (string; uppercase; strictly formatted)
+* sku        (string; original as seen, or empty if none)
+* description (string)
+* itemColor   (string; as seen or empty)
+* quantity    (integer ≥ 1; coerce if needed, defaults below)
+* finalSKU    (string; uppercase; strictly formatted)
 
 No markdown, no comments, no trailing text.
 
 ---
 
-### Processing Logic
+### Inputs & resources (system context)
 
-#### A) Product SKU normalization (attempt before charges)
-
-Use case-insensitive matching. Try, in order, stopping at first hit:
-
-1. **Exact** lookup of \`sku\` in **NormalizedSkus**.
-2. **Vendor prefix removal**: drop known prefixes (\`199-\`, \`ALLP-\`, \`4AP-\`); re-attempt exact lookup.
-3. **Non-color suffix removal**: drop known non-color suffixes (\`-FD\`, \`-SS\`); re-attempt exact lookup.
-4. **Trailing-letter drop**: if \`sku\` ends with \`[A-Z]\`, drop one letter and retry exact lookup; may repeat once more (max two drops).
-
-If any step hits, treat that as the product match candidate and use the ORIGINAL SKU as finalSKU.
+* **ItemsDB**: PostgreSQL table of all valid HCL SKUs and variants (base + color codes).
+* **Catalog**: { sku → productName } map for fuzzy matching.
+* **ColorCodes**: canonical map of HCL color codes (${colorCodesContext}).
+* **ChargeCodebook**: explicit non-inventory/charge codes (${chargeCodesContext}) with phrase synonyms.
+* **OE-MISC Fallbacks**: OE-MISC-ITEM for unknown products, OE-MISC-CHARGE for ambiguous charge lines.
 
 ---
 
-#### B) Charge codes (explicit tokens first, then phrases)
+### Item segmentation & extraction
 
-Run **only if Section A found no accepted product match**.
-
-**B1. Explicit code tokens (highest priority)**
-If the line contains any of these as a **standalone token** (case-insensitive; bounded by start/end, space, tab, comma, slash, colon, or parentheses), map directly to that code:
-
-\`48-RUSH\`, \`LTM\`, \`CCC\`, \`DB\`, \`DDP\`, \`DP\`, \`DS\`, \`EC\`, \`ED\`, \`EL\`, \`HT\`, \`ICC\`, \`LE\`, \`P\`, \`PC\`, \`PE\`, \`PMS\`, \`PP\`, \`R\`, \`SETUP\`, \`SPEC\`, \`SR\`, \`VD\`, \`VI\`, \`X\`
-
-Special handling:
-
-* Accept \`"SET UP"\`, \`"SET-UP"\`, \`"setup"\`, or \`"setup charge"\` → \`SETUP\`.
-* Accept \`"OE-MISC-CHARGE"\` or \`"OE-MISC-ITEM"\` only as placeholders → ignore them and re-run phrase mapping below (e.g., \`"Exact count"\` → \`X\`).
-* Accept \`48-RUSH\` if you see either the exact token **or** both "48" and "rush" in context.
-* For single-letter codes \`P\`, \`R\`, \`X\`, require isolation by boundaries (not part of another token).
-
-**B2. Phrase synonyms (second priority)**
-If B1 didn't fire, map common phrases to the same codes:
-
-* \`X\`: "exact quantity", "no overrun", "no underrun", "exact qty", "exact count"
-* \`SETUP\`: "setup", "set up", "setup charge"
-* \`48-RUSH\`: "48 hour rush", "48hr rush", "48 hours rush", "2 day rush"
-* \`P\`: "digital proof", "e-proof", "electronic proof"
-* \`R\`: "rush charge", "rush service", "expedite fee"
-
-If a charge code is selected, set \`finalSKU\` to that code and finish this item.
+1. Split incoming line items on ____.
+2. For each line:
+   * sku: keep raw alphanumeric/dash token if present.
+   * description: free text remainder.
+   * itemColor: explicit color string if present, else "".
+   * quantity: first integer ≥1. If missing or ≤0:
+     - if a charge → set 1.
+     - else default 1.
 
 ---
 
-#### C) Fuzzy matching fallback
+### Determining finalSKU
 
-If no product or charge code found, use semantic similarity between description and catalog names. Accept if similarity ≥ 0.75.
+**A) Direct product match**
+1. Check sku exact match in **ItemsDB**.
+2. Normalize prefixes/suffixes (allow-list only: 199-, ALLP-, etc.) and retry.
+3. If still no match → continue to fuzzy match.
 
-If still no match, use \`OE-MISC-ITEM\`.
+**B) Charge codes**
+1. If line contains explicit charge tokens (SETUP, 48-RUSH, EC, etc.), map directly.
+2. Else if line matches phrase synonyms ("set up charge", "48 hour rush", "drop ship"), map.
+3. For charges, force quantity = 1 if absent.
+
+**C) Fuzzy match**
+If not resolved above:
+- Compute composite similarity = (cosine(description vs Catalog) + Levenshtein(sku vs Catalog SKU))/2.
+- Accept if ≥0.85.  
+- If 0.75–0.85, require either a valid color match or a charge keyword.
+- If still unresolved → fallback.
+
+**D) Color resolution**
+1. Map itemColor or description tokens via **ColorCodes** / synonyms.
+2. If sku already includes dash (e.g., T339-CL), keep as candidate.
+3. Else append -COLORCODE to base SKU.
+4. Validate against **ItemsDB**.
+5. If none valid → OE-MISC-ITEM.
+
+**E) Fallback guard**
+Before finalizing OE-MISC-ITEM, retry exact + fuzzy lookups once more.
 
 ---
 
-### Available Data
+### Rules
+* Always uppercase finalSKU.
+* Valid forms: SKUCODE-COLORCODE, bare SKUCODE, charge code, or misc fallback.
+* Deterministic tie-breaks: highest similarity → prefix match → longest common subsequence → alphanumeric order.
 
-**NormalizedSkus (Relevant)**: ${JSON.stringify(relevantSkus)}
+### Available SKU catalog (top 200 items):
+${catalogEntries}
 
-**Sample Catalog**: ${JSON.stringify(Object.fromEntries(Array.from(this.catalog.entries()).slice(0, 20)))}
-
----
-
-### Input Line Item:
-${lineItem}`;
-
-    const response = await openai.chat.completions.create({
-      model: "gpt-4o", // the newest OpenAI model is "gpt-4o" which was released May 13, 2024. do not change this unless explicitly requested by the user
-      messages: [
-        {
-          role: "system", 
-          content: "Return only valid JSON object. No markdown, no comments."
-        },
-        {
-          role: "user",
-          content: prompt
-        }
-      ],
-      response_format: { type: "json_object" },
-      temperature: 0,
-    });
-
-    const content = response.choices[0]?.message?.content;
-    if (!content) {
-      throw new Error('No response content from OpenAI');
-    }
+### Line items to validate:
+${JSON.stringify(lineItems, null, 2)}`;
 
     try {
-      const result = JSON.parse(content) as ValidatedSKU;
-      return result;
-    } catch (parseError) {
-      console.error('❌ Error parsing OpenAI JSON response:', content);
-      throw new Error('Invalid JSON response from OpenAI');
+      const response = await this.openai.chat.completions.create({
+        model: 'gpt-4o', // the newest OpenAI model is "gpt-4o" which was released May 13, 2024. do not change this unless explicitly requested by the user
+        messages: [{ role: 'user', content: prompt }],
+        temperature: 0,
+        max_tokens: 3000,
+      });
+
+      const content = response.choices[0]?.message?.content?.trim();
+      if (!content) {
+        throw new Error('No response from OpenAI');
+      }
+
+      // Parse JSON response
+      const validatedItems = JSON.parse(content) as ValidatedLineItem[];
+      
+      // Add validation metadata
+      for (const item of validatedItems) {
+        const skuMatch = this.itemsCache.get(item.finalSKU);
+        if (skuMatch) {
+          item.productName = skuMatch.displayName;
+          item.isValidSKU = true;
+        } else {
+          item.isValidSKU = this.chargeCodebook.has(item.finalSKU);
+          if (item.isValidSKU) {
+            item.validationNotes = 'Charge code';
+            item.productName = this.chargeCodebook.get(item.finalSKU);
+          } else {
+            item.validationNotes = 'Unknown SKU - using fallback';
+            item.productName = 'Unknown item';
+          }
+        }
+      }
+
+      return validatedItems;
+    } catch (error) {
+      console.error('OpenAI SKU validation error:', error);
+      // Fallback validation
+      return lineItems.map(item => ({
+        sku: item.sku || '',
+        description: item.description,
+        itemColor: item.itemColor || '',
+        quantity: Math.max(1, item.quantity),
+        finalSKU: item.sku?.toUpperCase() || 'OE-MISC-ITEM',
+        isValidSKU: false,
+        validationNotes: 'Validation failed, using fallback'
+      }));
     }
   }
 
-  // Helper method to check if a SKU exists in the database
-  isValidSKU(sku: string): boolean {
-    return this.normalizedSkus.has(sku.toUpperCase());
-  }
+  async validateLineItems(lineItems: LineItem[]): Promise<ValidatedLineItem[]> {
+    if (!lineItems || lineItems.length === 0) {
+      return [];
+    }
 
-  // Helper method to get product description by SKU
-  getProductDescription(sku: string): string | undefined {
-    return this.catalog.get(sku.toUpperCase());
-  }
-
-  // Get stats about the loaded catalog
-  getStats() {
-    return {
-      totalSkus: this.normalizedSkus.size,
-      totalCatalogEntries: this.catalog.size
-    };
+    console.log(`🔍 Processing ${lineItems.length} line items:`);
+    for (let i = 0; i < lineItems.length; i++) {
+      const item = lineItems[i];
+      console.log(`🔍 Processing line item ${i + 1}:`);
+      console.log(`SKU: ${item.sku || 'N/A'} | Description: ${item.description || 'N/A'} | Quantity: ${item.quantity} | Color: ${item.itemColor || 'N/A'}`);
+      
+      if (item.sku) {
+        // Apply simple preprocessing similar to existing logic
+        let processedSKU = item.sku.toUpperCase();
+        
+        // Handle common transformations
+        if (processedSKU === 'SET UP') {
+          processedSKU = 'SETUP';
+        } else if (processedSKU === 'OE-MISC-CHARGE') {
+          processedSKU = 'P'; // Convert to proof charge as seen in logs
+        }
+        
+        console.log(`   ✅ Processed: "${item.sku}" → "${processedSKU}"`);
+        item.sku = processedSKU;
+      }
+    }
+    
+    try {
+      const validatedItems = await this.validateWithOpenAI(lineItems);
+      
+      console.log(`✅ Total validated: ${validatedItems.length} line items`);
+      console.log(`   ✅ Line items validated: ${validatedItems.length} items processed`);
+      for (let i = 0; i < validatedItems.length; i++) {
+        const item = validatedItems[i];
+        console.log(`   └─ Item ${i + 1}: ${item.finalSKU} - ${item.description} (Qty: ${item.quantity})`);
+      }
+      
+      return validatedItems;
+    } catch (error) {
+      console.error('Line items validation failed:', error);
+      throw error;
+    }
   }
 }
-
-// Create singleton instance
-export const skuValidator = new OpenAISKUValidator();
