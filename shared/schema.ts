@@ -179,11 +179,13 @@ export const insertItemSchema = createInsertSchema(items).omit({
   createdAt: true,
   updatedAt: true,
 });
+export const updateItemSchema = insertItemSchema.partial();
 
 export type InsertCustomer = z.infer<typeof insertCustomerSchema>;
 export type UpdateCustomer = z.infer<typeof updateCustomerSchema>;
 export type InsertContact = z.infer<typeof insertContactSchema>;
 export type InsertItem = z.infer<typeof insertItemSchema>;
+export type UpdateItem = z.infer<typeof updateItemSchema>;
 
 export type PurchaseOrder = typeof purchaseOrders.$inferSelect;
 export type InsertPurchaseOrder = z.infer<typeof insertPurchaseOrderSchema>;

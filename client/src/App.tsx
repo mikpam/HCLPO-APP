@@ -14,6 +14,7 @@ import AISettingsPage from "@/pages/ai-settings";
 import FileManagementPage from "@/pages/file-management";
 
 import CustomersPage from "@/pages/customers";
+import ItemsPage from "@/pages/items";
 import Sidebar from "@/components/layout/sidebar";
 import { SidebarProvider, useLayoutSidebar } from "@/contexts/sidebar-context";
 
@@ -36,6 +37,7 @@ function Router() {
           <Route path="/ai-settings" component={AISettingsPage} />
           <Route path="/files" component={FileManagementPage} />
           <Route path="/customers" component={CustomersPage} />
+          <Route path="/items" component={ItemsPage} />
           <Route component={NotFound} />
         </Switch>
       </main>
