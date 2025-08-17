@@ -903,11 +903,23 @@ totalPrice: ${item.totalPrice || 0}`;
                 
                 if (prioritizedAttachment) {
                   console.log(`   └─ Processing prioritized attachment: ${prioritizedAttachment.filename}`);
+                  console.log(`   └─ Attachment data available: ${!!prioritizedAttachment.data}`);
+                  console.log(`   └─ Attachment keys:`, Object.keys(prioritizedAttachment));
                   
-                  if (prioritizedAttachment.data) {
-                    const extractedData = await aiService.extractPOFromDocument(
-                      prioritizedAttachment.data,
-                      prioritizedAttachment.mimeType,
+                  // Get attachment data - either from direct data or download it
+                  let attachmentBuffer = prioritizedAttachment.data;
+                  
+                  // If no direct data, download from Gmail
+                  if (!attachmentBuffer && prioritizedAttachment.attachmentId) {
+                    console.log(`   └─ Downloading attachment from Gmail...`);
+                    attachmentBuffer = await gmailService.downloadAttachment(messageToProcess.id, prioritizedAttachment.attachmentId);
+                    console.log(`   └─ Downloaded ${attachmentBuffer?.length || 0} bytes`);
+                  }
+                  
+                  if (attachmentBuffer) {
+                    console.log(`   └─ Processing attachment data (${attachmentBuffer.length} bytes)`);
+                    const extractedData = await aiService.extractPODataFromPDF(
+                      attachmentBuffer,
                       prioritizedAttachment.filename
                     );
                     
@@ -929,10 +941,10 @@ totalPrice: ${item.totalPrice || 0}`;
             } else if (classification.route === "TEXT_PO" || classification.route === "TEXT_SAMPLE") {
               console.log(`🧠 GEMINI EXTRACTION: Processing ${classification.route}...`);
               
-              const extractedData = await aiService.extractPOFromText(
+              const extractedData = await aiService.extractPODataFromText(
+                gmailMessage.subject || "",
                 gmailMessage.body || "",
-                gmailMessage.sender,
-                gmailMessage.subject || ""
+                gmailMessage.sender
               );
               
               if (extractedData) {
