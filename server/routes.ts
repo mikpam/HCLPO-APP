@@ -9,7 +9,7 @@ import { aiService, type AIEngine } from "./services/ai-service";
 import { netsuiteService } from "./services/netsuite";
 import { openaiCustomerFinderService } from "./services/openai-customer-finder";
 import { OpenAISKUValidatorService } from "./services/openai-sku-validator";
-import { ContactFinderService } from "./services/contact-finder";
+import { OpenAIContactValidatorService } from "./services/openai-contact-validator";
 import { db } from "./db";
 import { purchaseOrders, errorLogs } from "@shared/schema";
 import { eq, desc, and, or, lt } from "drizzle-orm";
@@ -532,20 +532,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
           
           // Optionally validate against HCL contacts database
           try {
-            const { contactFinderService } = await import('./services/contact-finder');
-            const contactMatch = await contactFinderService.findContact({
-              name: extractionResult.purchaseOrder.contact.name,
-              email: extractionResult.purchaseOrder.contact.email,
-              phone: extractionResult.purchaseOrder.contact.phone,
-              jobTitle: extractionResult.purchaseOrder.contact.jobTitle
+            // Use comprehensive OpenAI contact validation
+            const contactValidator = new OpenAIContactValidatorService();
+            const validatedContact = await contactValidator.validateContact({
+              extractedData: extractionResult,
+              senderName: extractionResult.purchaseOrder.contact?.name,
+              senderEmail: messageToProcess.sender,
+              resolvedCustomerId: customerMeta?.customer_number,
+              companyId: customerMeta?.customer_number
             });
             
-            if (contactMatch) {
-              contactMeta = contactMatch;
-              console.log(`   ✅ Contact found in HCL database: ${contactMatch.name} (${contactMatch.netsuite_internal_id})`);
-            } else {
-              console.log(`   ℹ️  Contact not found in HCL database (will use extracted info)`);
-            }
+            contactMeta = validatedContact;
+            console.log(`   ✅ Contact validated: ${validatedContact.name} <${validatedContact.email}>`);
+            console.log(`   └─ Method: ${validatedContact.match_method} (Confidence: ${validatedContact.confidence})`);
+            console.log(`   └─ Role: ${validatedContact.role}`);
           } catch (error) {
             console.error(`   ⚠️  Contact lookup failed:`, error);
             // Continue with extracted contact info even if lookup fails
@@ -1287,6 +1287,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
             }
             
             if (matchedCNumber || originalSenderEmail) {
+              // CNumber lookup is different from contact validation - this is finding a customer, not a contact
+              // This functionality remains with ContactFinderService since it's specifically for NetSuite ID lookup
+              const { ContactFinderService } = await import('./services/contact-finder');
               const contactFinder = new ContactFinderService();
               let customer = null;
               
@@ -1536,21 +1539,25 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 console.log(`   └─ Contact Phone: ${extractedData.contact.phone || ''}`);
                 console.log(`   └─ Job Title: ${extractedData.contact.jobTitle || ''}`);
                 
-                if (extractedData.contact.name) {
-                  console.log(`🔍 CONTACT VALIDATION: Searching HCL database for: ${extractedData.contact.name}`);
-                  const contactFinder = new ContactFinderService();
-                  const foundContact = await contactFinder.findContact({
-                    name: extractedData.contact.name,
-                    email: extractedData.contact.email,
-                    phone: extractedData.contact.phone,
-                    jobTitle: extractedData.contact.jobTitle
+                if (extractedData.contact.name || messageToProcess.sender) {
+                  console.log(`🔍 OPENAI CONTACT VALIDATION: Using comprehensive contact resolution...`);
+                  const contactValidator = new OpenAIContactValidatorService();
+                  const validatedContact = await contactValidator.validateContact({
+                    extractedData: extractedData,
+                    senderName: messageToProcess.senderName || extractedData.contact?.name,
+                    senderEmail: messageToProcess.sender,
+                    resolvedCustomerId: purchaseOrder.customerMeta?.customer_number,
+                    companyId: purchaseOrder.customerMeta?.customer_number
                   });
                   
-                  if (foundContact) {
-                    console.log(`   ✅ Contact validated: ${foundContact.name} (NetSuite ID: ${foundContact.netsuite_internal_id})`);
-                  } else {
-                    console.log(`   ⚠️  Contact not found in HCL database: ${extractedData.contact.name}`);
-                  }
+                  console.log(`   ✅ Contact validated: ${validatedContact.name} <${validatedContact.email}>`);
+                  console.log(`   └─ Method: ${validatedContact.match_method} (Confidence: ${validatedContact.confidence})`);
+                  console.log(`   └─ Role: ${validatedContact.role}`);
+                  
+                  // Store validated contact in purchase order
+                  await storage.updatePurchaseOrder(purchaseOrder.id, {
+                    contactMeta: validatedContact
+                  });
                 }
               }
 
@@ -1972,25 +1979,24 @@ export async function registerRoutes(app: Express): Promise<Server> {
                     console.log(`   └─ Job Title: ${extractionResult.purchaseOrder.contact.jobTitle}`);
                     contactData = extractionResult.purchaseOrder.contact;
                     
-                    // Contact validation against HCL database (same as single processing)
-                    if (extractionResult.purchaseOrder.contact.name) {
-                      console.log(`🔍 CONTACT VALIDATION: Searching HCL database for: ${extractionResult.purchaseOrder.contact.name}`);
+                    // Contact validation using comprehensive OpenAI validation (same as single processing)
+                    if (extractionResult.purchaseOrder.contact.name || messageToProcess.sender) {
+                      console.log(`🔍 OPENAI CONTACT VALIDATION: Using comprehensive contact resolution...`);
                       
                       try {
-                        const contactFinderService = new ContactFinderService();
-                        const contactMatch = await contactFinderService.findContact({
-                          name: extractionResult.purchaseOrder.contact.name,
-                          email: extractionResult.purchaseOrder.contact.email || '',
-                          phone: extractionResult.purchaseOrder.contact.phone || '',
-                          jobTitle: extractionResult.purchaseOrder.contact.jobTitle || ''
+                        const contactValidator = new OpenAIContactValidatorService();
+                        const validatedContact = await contactValidator.validateContact({
+                          extractedData: extractionResult,
+                          senderName: messageToProcess.senderName || extractionResult.purchaseOrder.contact?.name,
+                          senderEmail: messageToProcess.sender,
+                          resolvedCustomerId: finalCustomerData?.customer_number,
+                          companyId: finalCustomerData?.customer_number
                         });
 
-                        if (contactMatch) {
-                          contactMeta = contactMatch;
-                          console.log(`   ✅ Contact validated: ${contactMatch.name} (NetSuite ID: ${contactMatch.netsuite_internal_id})`);
-                        } else {
-                          console.log(`   ⚠️  Contact not found in HCL database: ${extractionResult.purchaseOrder.contact.name}`);
-                        }
+                        contactMeta = validatedContact;
+                        console.log(`   ✅ Contact validated: ${validatedContact.name} <${validatedContact.email}>`);
+                        console.log(`   └─ Method: ${validatedContact.match_method} (Confidence: ${validatedContact.confidence})`);
+                        console.log(`   └─ Role: ${validatedContact.role}`);
                       } catch (error) {
                         console.error(`   ❌ Contact validation failed:`, error);
                       }

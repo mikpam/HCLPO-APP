@@ -192,8 +192,15 @@ ${JSON.stringify(lineItems, null, 2)}`;
         throw new Error('No response from OpenAI');
       }
 
-      // Parse JSON response
-      const validatedItems = JSON.parse(content) as ValidatedLineItem[];
+      // Parse JSON response - remove markdown code blocks if present
+      let cleanContent = content.trim();
+      if (cleanContent.startsWith('```json')) {
+        cleanContent = cleanContent.replace(/^```json\s*/, '').replace(/\s*```$/, '');
+      } else if (cleanContent.startsWith('```')) {
+        cleanContent = cleanContent.replace(/^```\s*/, '').replace(/\s*```$/, '');
+      }
+      
+      const validatedItems = JSON.parse(cleanContent) as ValidatedLineItem[];
       
       // Add validation metadata
       for (const item of validatedItems) {

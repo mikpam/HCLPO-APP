@@ -33,6 +33,7 @@ System Behavior: Automated email processing should start immediately when server
 
 ### Email Processing Pipeline
 - **Architecture**: Two-step processing mirroring Make.com workflow.
+- **Sequential Processing**: Emails processed one at a time sequentially for system stability, predictable debugging, and comprehensive error tracking.
 - **Pre-processing**: OpenAI GPT-4o for intent classification (Purchase Order, Sample Request, Rush Order, Follow Up, None).
 - **Detailed Analysis**: Advanced 5-route classification for qualifying emails (TEXT_PO, TEXT_SAMPLE, ATTACHMENT_PO, ATTACHMENT_SAMPLE, REVIEW).
 - **AI Document Filtering**: Pre-screens attachments to filter out non-PO documents before Gemini processing.
@@ -44,6 +45,7 @@ System Behavior: Automated email processing should start immediately when server
 - **Database Storage**: Preprocessing, classification, and extracted data stored in Neon PostgreSQL.
 - **Email Preservation**: Automatic .eml file preservation for classified emails in object storage.
 - **Customer Lookup**: High-performance customer database with NetSuite integration for precise customer attribution, including advanced matching and disambiguation.
+- **Comprehensive Contact Validation**: Advanced 7-priority OpenAI-powered contact resolution system with sophisticated matching logic (EXTRACTED_JSON → SENDER_EMAIL_EXACT → SENDER_DOMAIN → THREAD_PARTICIPANT → CUSTOMER_DEFAULT → FUZZY_NAME → SIG_PARSE).
 - **SKU Validation**: Comprehensive SKU validation system integrating with a product items database, handling charge codes and fallbacks.
 - **Admin Portal**: Comprehensive PO management interface, customer management, and item management with CRUD functionality and role-based access control.
 - **Comprehensive Error Logging**: Advanced error tracking system that captures all processing failures with detailed context:
@@ -80,6 +82,11 @@ System Behavior: Automated email processing should start immediately when server
 ## System Status & Recent Changes
 
 ### Latest Updates (August 17, 2025)
+- **✅ Comprehensive OpenAI Validators**: Implemented sophisticated AI-powered validation systems
+  - **OpenAI SKU Validator**: Complete HCL validation rules with color codes (00=White, 06=Black), charge codes (SETUP, 48-RUSH, EC, P), fuzzy matching, and intelligent fallbacks
+  - **OpenAI Contact Validator**: 7-priority contact resolution system with comprehensive matching logic and sophisticated validation rules
+  - Both validators integrate with 13,662+ HCL customer database and 5,267+ product items for accurate validation
+- **✅ Sequential Email Processing**: System processes emails one at a time for stability and comprehensive error tracking
 - **✅ Comprehensive Error Logging System**: Implemented complete error tracking across all processing stages
   - All processing failures now logged to database with detailed context and metadata
   - Customer lookup failures (not found, new customer flags) tracked for manual review
