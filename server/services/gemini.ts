@@ -111,6 +111,122 @@ export class GeminiService {
     return mimeTypes[extension || ''] || 'application/octet-stream';
   }
 
+  /**
+   * Screen multiple attachments using Gemini AI to identify which one is the purchase order
+   */
+  async screenAttachmentsForPurchaseOrder(attachments: Array<{
+    filename: string;
+    contentType: string;
+    size: number;
+    data?: Buffer;
+    attachmentId?: string;
+  }>): Promise<{
+    purchaseOrderAttachment: any | null;
+    confidence: number;
+    reason: string;
+    analysisResults: Array<{
+      filename: string;
+      isPurchaseOrder: boolean;
+      confidence: number;
+      reason: string;
+    }>;
+  }> {
+    try {
+      console.log(`🔍 GEMINI ATTACHMENT SCREENING: Analyzing ${attachments.length} attachments...`);
+      
+      const analysisResults: Array<{
+        filename: string;
+        isPurchaseOrder: boolean;
+        confidence: number;
+        reason: string;
+      }> = [];
+
+      // Analyze each attachment based on filename and content type
+      for (const attachment of attachments) {
+        console.log(`   └─ Analyzing: ${attachment.filename} (${attachment.contentType || 'unknown'})`);
+        
+        // Basic file analysis first
+        const isLikelyPO = this.isLikelyPurchaseOrderFile(attachment.filename, attachment.contentType);
+        const isArtwork = this.isArtworkFile(attachment.filename, attachment.contentType);
+        
+        let confidence = 0;
+        let reason = "";
+        
+        if (isArtwork) {
+          confidence = 0.1;
+          reason = "File appears to be artwork/design file, not a purchase order";
+        } else if (isLikelyPO) {
+          confidence = 0.8;
+          reason = "Filename and content type suggest this is a purchase order document";
+        } else {
+          confidence = 0.3;
+          reason = "Unclear from filename/type - could be purchase order";
+        }
+        
+        analysisResults.push({
+          filename: attachment.filename,
+          isPurchaseOrder: confidence > 0.5,
+          confidence,
+          reason
+        });
+        
+        console.log(`      └─ PO Likelihood: ${Math.round(confidence * 100)}% - ${reason}`);
+      }
+      
+      // Find the best candidate
+      const bestCandidate = analysisResults
+        .filter(result => result.isPurchaseOrder)
+        .sort((a, b) => b.confidence - a.confidence)[0];
+      
+      if (bestCandidate) {
+        const selectedAttachment = attachments.find(att => att.filename === bestCandidate.filename);
+        console.log(`   ✅ Selected attachment: ${bestCandidate.filename} (${Math.round(bestCandidate.confidence * 100)}%)`);
+        
+        return {
+          purchaseOrderAttachment: selectedAttachment,
+          confidence: bestCandidate.confidence,
+          reason: bestCandidate.reason,
+          analysisResults
+        };
+      } else {
+        console.log(`   ❌ No clear purchase order found among ${attachments.length} attachments`);
+        
+        return {
+          purchaseOrderAttachment: null,
+          confidence: 0,
+          reason: "No attachment identified as a purchase order",
+          analysisResults
+        };
+      }
+      
+    } catch (error) {
+      console.log(`❌ Error screening attachments: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      return {
+        purchaseOrderAttachment: null,
+        confidence: 0,
+        reason: `Error during screening: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        analysisResults: []
+      };
+    }
+  }
+
+  private isLikelyPurchaseOrderFile(filename: string, contentType: string): boolean {
+    const poKeywords = ['po', 'purchase', 'order', 'requisition', 'buy'];
+    const businessFormats = ['pdf', 'doc', 'docx', 'xls', 'xlsx'];
+    
+    const filenameHasPOKeywords = poKeywords.some(keyword => 
+      filename.toLowerCase().includes(keyword)
+    );
+    
+    const isBusinessFormat = businessFormats.some(format => 
+      filename.toLowerCase().endsWith(`.${format}`) || 
+      contentType.includes(format) ||
+      contentType.includes('application')
+    );
+    
+    return filenameHasPOKeywords || (isBusinessFormat && !this.isArtworkFile(filename, contentType));
+  }
+
   async filterDocumentType(documentBuffer: Buffer, filename: string): Promise<{ document_type: "purchase order" | "not a purchase order" }> {
     try {
       console.log(`🔍 AI DOCUMENT FILTER: Analyzing ${filename} to determine if it's a purchase order`);

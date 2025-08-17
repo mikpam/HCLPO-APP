@@ -1468,42 +1468,39 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
             if (route === "ATTACHMENT_PO" || route === "ATTACHMENT_SAMPLE") {
               if (gmailMessage.attachments && gmailMessage.attachments.length > 0) {
-                const prioritizedAttachment = gmailMessage.attachments[0];
-                console.log(`   └─ Processing prioritized attachment: ${prioritizedAttachment.filename}`);
-                console.log(`   └─ Attachment keys available:`, Object.keys(prioritizedAttachment));
+                console.log(`🔍 MULTI-ATTACHMENT SCREENING: Found ${gmailMessage.attachments.length} attachments`);
                 
-                // AI-powered attachment filtering before Gemini extraction
-                console.log(`🔍 AI ATTACHMENT FILTER: Analyzing ${prioritizedAttachment.filename}...`);
-                const attachmentAnalysis = await openaiService.analyzeAttachmentContent(
-                  prioritizedAttachment.filename,
-                  prioritizedAttachment.contentType || 'application/octet-stream'
-                );
+                // Use Gemini AI to screen all attachments and identify the purchase order
+                const screeningResult = await aiService.screenAttachmentsForPurchaseOrder(gmailMessage.attachments);
                 
-                console.log(`   └─ Analysis: PO=${attachmentAnalysis.isPurchaseOrder}, Artwork=${attachmentAnalysis.isArtwork}, Confidence=${Math.round(attachmentAnalysis.confidence * 100)}%`);
-                console.log(`   └─ Reason: ${attachmentAnalysis.reason}`);
+                console.log(`   └─ Screening Results:`);
+                screeningResult.analysisResults.forEach((result, index) => {
+                  console.log(`      ${index + 1}. ${result.filename}: ${result.isPurchaseOrder ? '✅' : '❌'} PO (${Math.round(result.confidence * 100)}%)`);
+                  console.log(`         └─ ${result.reason}`);
+                });
                 
-                // Only proceed if it's likely a PO document and not artwork
-                if (attachmentAnalysis.isPurchaseOrder && !attachmentAnalysis.isArtwork && attachmentAnalysis.confidence > 0.6) {
-                  console.log(`   ✅ Attachment passed AI filter - proceeding with Gemini extraction`);
+                if (screeningResult.purchaseOrderAttachment) {
+                  const selectedAttachment = screeningResult.purchaseOrderAttachment;
+                  console.log(`   ✅ Selected PO attachment: ${selectedAttachment.filename} (${Math.round(screeningResult.confidence * 100)}%)`);
                   
-                  if (prioritizedAttachment && prioritizedAttachment.data) {
-                    console.log(`   └─ Attachment data available: ${prioritizedAttachment.data.length} bytes`);
+                  if (selectedAttachment && selectedAttachment.data) {
+                    console.log(`   └─ Attachment data available: ${selectedAttachment.data.length} bytes`);
                     extractedData = await aiService.extractPODataFromPDF(
-                      prioritizedAttachment.data,
-                      prioritizedAttachment.filename
+                      selectedAttachment.data,
+                      selectedAttachment.filename
                     );
-                  } else if (prioritizedAttachment.attachmentId) {
-                    console.log(`   └─ Loading attachment data using attachmentId: ${prioritizedAttachment.attachmentId}`);
+                  } else if (selectedAttachment.attachmentId) {
+                    console.log(`   └─ Loading attachment data using attachmentId: ${selectedAttachment.attachmentId}`);
                     try {
                       const attachmentBuffer = await gmailService.downloadAttachment(
                         messageToProcess.id,
-                        prioritizedAttachment.attachmentId
+                        selectedAttachment.attachmentId
                       );
                       if (attachmentBuffer) {
                         console.log(`   ✅ Loaded attachment data: ${attachmentBuffer.length} bytes`);
                         extractedData = await aiService.extractPODataFromPDF(
                           attachmentBuffer,
-                          prioritizedAttachment.filename
+                          selectedAttachment.filename
                         );
                       } else {
                         console.log(`   ❌ Failed to load attachment buffer`);
@@ -1512,29 +1509,30 @@ export async function registerRoutes(app: Express): Promise<Server> {
                       console.log(`   ❌ Error loading attachment: ${error.message}`);
                     }
                   } else {
-                    console.log(`   ❌ No attachment data or attachmentId available for: ${prioritizedAttachment.filename}`);
+                    console.log(`   ❌ No attachment data or attachmentId available for: ${selectedAttachment.filename}`);
                   }
                 } else {
-                  console.log(`   ❌ Attachment filtered out by AI: Not a valid PO document`);
+                  console.log(`   ❌ No purchase order found among ${gmailMessage.attachments.length} attachments`);
+                  console.log(`   └─ Reason: ${screeningResult.reason}`);
                   console.log(`   └─ Switching to email text processing instead`);
                   
-                  // Log AI filtering as potential issue for review
+                  // Log screening failure for review
                   await logProcessingError(
-                    'ai_filter_failed',
-                    `AI attachment filter rejected ${prioritizedAttachment.filename} for email with PO ${poNumber}. This may indicate a false negative where a valid PO document was incorrectly filtered.`,
+                    'attachment_screening_failed',
+                    `Gemini attachment screening failed to identify PO among ${gmailMessage.attachments.length} attachments for email with PO ${poNumber}. Filenames: ${gmailMessage.attachments.map(a => a.filename).join(', ')}`,
                     messageToProcess.id,
                     undefined,
                     poNumber,
                     {
-                      attachmentFilename: prioritizedAttachment.filename,
-                      attachmentSize: prioritizedAttachment.size || 0,
-                      attachmentType: prioritizedAttachment.contentType || 'unknown',
-                      reason: 'AI determined this was not a valid PO document',
+                      attachmentCount: gmailMessage.attachments.length,
+                      attachmentFilenames: gmailMessage.attachments.map(a => a.filename),
+                      screeningReason: screeningResult.reason,
+                      analysisResults: screeningResult.analysisResults,
                       switchedToTextProcessing: true
                     }
                   );
                   
-                  // Fall back to text processing if attachment is filtered out
+                  // Fall back to text processing if no PO attachment identified
                   extractedData = await aiService.extractPODataFromText(
                     gmailMessage.subject || "",
                     gmailMessage.body || "",
