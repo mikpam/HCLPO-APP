@@ -1247,8 +1247,7 @@ totalPrice: ${item.totalPrice || 0}`;
               try {
                 console.log(`🧠 GEMINI EXTRACTION: Processing ${route}...`);
                 
-                const { GeminiService } = await import('./services/gemini');
-                const geminiService = new GeminiService();
+                // Use the SAME aiService as single email processing (already imported at top)
                 
                 if (route === 'ATTACHMENT_PO' && attachmentPaths.length > 0) {
                   // Apply attachment prioritization logic
@@ -1265,13 +1264,13 @@ totalPrice: ${item.totalPrice || 0}`;
                   console.log(`   └─ Processing prioritized attachment: ${prioritizedAttachment.filename}`);
                   
                   if (prioritizedAttachment.buffer) {
-                    extractionResult = await geminiService.extractPODataFromPDF(
+                    extractionResult = await aiService.extractPODataFromPDF(
                       prioritizedAttachment.buffer,
                       prioritizedAttachment.filename
                     );
                   }
                 } else if (route === 'TEXT_PO') {
-                  extractionResult = await geminiService.extractPODataFromText(
+                  extractionResult = await aiService.extractPODataFromText(
                     messageToProcess.body,
                     messageToProcess.subject,
                     messageToProcess.sender
@@ -1280,36 +1279,36 @@ totalPrice: ${item.totalPrice || 0}`;
                 
                 if (extractionResult) {
                   console.log(`   ✅ Successfully extracted PO data`);
-                  console.log(`   └─ Client PO Number: ${extractionResult.po_number || 'Not specified'}`);
-                  console.log(`   └─ Customer: ${extractionResult.customer?.name || 'Not specified'}`);
-                  console.log(`   └─ Line Items: ${extractionResult.line_items?.length || 0}`);
+                  console.log(`   └─ Client PO Number: ${extractionResult.purchaseOrder?.purchaseOrderNumber || 'Not specified'}`);
+                  console.log(`   └─ Customer: ${extractionResult.purchaseOrder?.customer?.company || 'Not specified'}`);
+                  console.log(`   └─ Line Items: ${extractionResult.lineItems?.length || 0}`);
 
                   // Extract and process contact information
                   let contactData = null;
-                  if (extractionResult.contact) {
+                  if (extractionResult.purchaseOrder?.contact) {
                     console.log(`👤 CONTACT EXTRACTION:`);
-                    console.log(`   └─ Contact Name: ${extractionResult.contact.name}`);
-                    console.log(`   └─ Contact Email: ${extractionResult.contact.email}`);
-                    console.log(`   └─ Contact Phone: ${extractionResult.contact.phone}`);
-                    console.log(`   └─ Job Title: ${extractionResult.contact.job_title}`);
-                    contactData = extractionResult.contact;
+                    console.log(`   └─ Contact Name: ${extractionResult.purchaseOrder.contact.name}`);
+                    console.log(`   └─ Contact Email: ${extractionResult.purchaseOrder.contact.email}`);
+                    console.log(`   └─ Contact Phone: ${extractionResult.purchaseOrder.contact.phone}`);
+                    console.log(`   └─ Job Title: ${extractionResult.purchaseOrder.contact.jobTitle}`);
+                    contactData = extractionResult.purchaseOrder.contact;
                   }
 
                   // Customer lookup using OpenAI customer finder
                   console.log(`🔍 OPENAI CUSTOMER LOOKUP:`);
-                  console.log(`   └─ Searching HCL database for: ${extractionResult.customer?.name || 'No customer name'}`);
+                  console.log(`   └─ Searching HCL database for: ${extractionResult.purchaseOrder?.customer?.company || 'No customer name'}`);
                   
                   let finalCustomerData = null;
-                  if (extractionResult.customer?.name) {
+                  if (extractionResult.purchaseOrder?.customer?.company) {
                     const { customerFinderService } = await import('./services/openai-customer-finder');
                     
                     const customerResult = await customerFinderService.findByExtractedData({
-                      customerName: extractionResult.customer.name,
-                      customerEmail: extractionResult.customer.email || '',
+                      customerName: extractionResult.purchaseOrder.customer.company,
+                      customerEmail: extractionResult.purchaseOrder.customer.email || '',
                       senderEmail: messageToProcess.sender,
-                      asiNumber: extractionResult.customer.asi_number || '',
-                      ppaiNumber: extractionResult.customer.ppai_number || '',
-                      address: extractionResult.customer.address || ''
+                      asiNumber: extractionResult.purchaseOrder.customer.asiNumber || '',
+                      ppaiNumber: extractionResult.purchaseOrder.customer.ppaiNumber || '',
+                      address: extractionResult.purchaseOrder.customer.address1 || ''
                     });
                     
                     if (customerResult.customer_number) {
@@ -1322,30 +1321,30 @@ totalPrice: ${item.totalPrice || 0}`;
 
                   // SKU validation with OpenAI
                   let validatedItems: any[] = [];
-                  if (extractionResult.line_items?.length > 0) {
-                    console.log(`🤖 OPENAI SKU VALIDATOR: Processing ${extractionResult.line_items.length} extracted line items...`);
+                  if (extractionResult.lineItems?.length > 0) {
+                    console.log(`🤖 OPENAI SKU VALIDATOR: Processing ${extractionResult.lineItems.length} extracted line items...`);
                     const { skuValidator } = await import('./services/openai-sku-validator');
                     
                     // Format line items for SKU validator (____-separated format like single email processing)
-                    const lineItemsForValidation = extractionResult.line_items
+                    const lineItemsForValidation = extractionResult.lineItems
                       .map((item: any) => {
-                        return `sku: ${item.sku || item.item_number || ''}
-description: ${item.description || item.product_name || ''}
-itemColor: ${item.color || item.item_color || ''}
+                        return `sku: ${item.sku || ''}
+description: ${item.description || ''}
+itemColor: ${item.itemColor || ''}
 quantity: ${item.quantity || 1}
-unitPrice: ${item.unit_price || item.price || 0}
-totalPrice: ${item.total_price || (item.quantity * item.unit_price) || 0}`;
+unitPrice: ${item.unitPrice || 0}
+totalPrice: ${item.totalPrice || 0}`;
                       })
                       .join('\n____\n');
                     
-                    console.log(`   └─ Formatted ${extractionResult.line_items.length} line items for validation`);
+                    console.log(`   └─ Formatted ${extractionResult.lineItems.length} line items for validation`);
                     
                     validatedItems = await skuValidator.validateLineItems(lineItemsForValidation);
                     console.log(`   ✅ SKU validation complete: ${validatedItems.length} items processed`);
                     
                     // Log validation results
                     validatedItems.forEach((item: any, index: number) => {
-                      const original = extractionResult.line_items[index];
+                      const original = extractionResult.lineItems[index];
                       if (original?.sku !== item.finalSKU) {
                         console.log(`      ${index + 1}. "${original?.sku || item.sku}" → "${item.finalSKU}"`);
                       }
@@ -1355,12 +1354,13 @@ totalPrice: ${item.total_price || (item.quantity * item.unit_price) || 0}`;
                   // Determine final status
                   const finalStatus = !finalCustomerData ? 'new_customer' : 'ready_for_netsuite';
 
-                  // Update purchase order with all extracted data
+                  // Update purchase order with all extracted data using same structure as single processing
                   await storage.updatePurchaseOrder(purchaseOrder.id, {
                     extractedData: extractionResult,
                     customerMeta: finalCustomerData,
                     status: finalStatus,
-                    lineItems: validatedItems
+                    lineItems: validatedItems || extractionResult?.lineItems || [],
+                    contact: extractionResult.purchaseOrder?.contact?.name || null
                   });
 
                   console.log(`   ✅ Updated purchase order ${poNumber} (Status: ${finalStatus})`);
