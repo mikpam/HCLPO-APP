@@ -176,12 +176,38 @@ export default function Dashboard() {
   };
 
   const processNormalEmails = useMutation({
-    mutationFn: startRealTimeProcessing,
-    onError: (error: any) => {
-      console.error("Failed to start real-time processing:", error);
+    mutationFn: async () => {
+      const response = await fetch("/api/emails/process", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+      });
+      
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      
+      return await response.json();
+    },
+    onSuccess: (result) => {
+      setLastProcessResult(result);
       toast({
-        title: "Failed to Start Processing",
-        description: error.message || "Could not start real-time processing",
+        title: "Normal Processing Complete",
+        description: `Processed ${result.processed} emails. ${result.remaining ? `${result.remaining} emails remaining.` : 'All emails processed!'}`,
+        duration: 8000,
+      });
+      
+      // Refresh dashboard metrics, email queue, and purchase orders
+      queryClient.invalidateQueries({ queryKey: ["/api/dashboard/metrics"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/email-queue"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/purchase-orders"] });
+    },
+    onError: (error: any) => {
+      console.error("Normal processing error:", error);
+      toast({
+        title: "Normal Processing Failed",
+        description: error.message || "Failed to process emails",
         variant: "destructive",
       });
     },
@@ -281,12 +307,11 @@ export default function Dashboard() {
 
         {/* Email Processing Animation */}
         <EmailProcessingAnimation 
-          isProcessing={processingState.isProcessing || processSingleEmail.isPending}
-          processedCount={processingState.processedCount || lastProcessResult?.processedEmails?.length || 0}
-          totalCount={processingState.totalCount || lastProcessResult?.total || 0}
-          currentStep={processingState.currentStep || 
-                      (processSingleEmail.isPending ? "Processing single email..." : "")}
-          currentEmail={processingState.currentEmail}
+          isProcessing={processSingleEmail.isPending || processNormalEmails.isPending}
+          processedCount={lastProcessResult?.processed || 0}
+          totalCount={lastProcessResult?.total || 0}
+          currentStep={processSingleEmail.isPending ? "Processing single email..." : 
+                      processNormalEmails.isPending ? "Processing emails normally..." : ""}
           finalStatus={lastProcessResult?.details?.purchaseOrder?.status || "pending"}
           onAnimationComplete={() => {
             console.log("Animation completed with status:", lastProcessResult?.details?.purchaseOrder?.status);

@@ -672,8 +672,8 @@ totalPrice: ${item.totalPrice || 0}`;
     }
   });
 
-  // SSE endpoint for real-time processing updates
-  app.get("/api/emails/process/stream", async (req, res) => {
+  // SSE endpoint for real-time processing updates - DISABLED FOR NOW
+  app.get("/api/emails/process/stream_disabled", async (req, res) => {
     res.setHeader('Content-Type', 'text/event-stream');
     res.setHeader('Cache-Control', 'no-cache');
     res.setHeader('Connection', 'keep-alive');
