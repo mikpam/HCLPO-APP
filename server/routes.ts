@@ -1420,42 +1420,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
             }
             
             if (matchedCNumber || originalSenderEmail) {
-              // CNumber lookup is different from contact validation - this is finding a customer, not a contact
-              // This functionality remains with ContactFinderService since it's specifically for NetSuite ID lookup
-              const { ContactFinderService } = await import('./services/contact-finder');
-              const contactFinder = new ContactFinderService();
-              let customer = null;
-              
-              // Try to find customer by CNumber first
-              if (matchedCNumber) {
-                try {
-                  customer = await contactFinder.findContact({
-                    netsuiteInternalId: matchedCNumber
-                  });
-                  if (customer) {
-                    console.log(`   ✅ Customer found by CNumber: ${customer.name} (${customer.netsuite_internal_id})`);
-                  }
-                } catch (error) {
-                  console.log(`   ⚠️  Failed to lookup CNumber ${matchedCNumber}: ${error.message}`);
-                }
-              }
-              
+              // Simple forwarded email detection - let OpenAI services handle all lookups later
               forwardedEmail = {
                 cNumber: matchedCNumber,
                 originalSender: originalSenderEmail || messageToProcess.sender,
                 hclForwarder: messageToProcess.sender,
-                isForwarded: true,
-                extractedCustomer: customer ? {
-                  customer_name: customer.name,
-                  customer_number: customer.netsuite_internal_id
-                } : null
+                isForwarded: true
               };
               
               console.log(`   ✅ FORWARDED EMAIL PROCESSED:`);
               console.log(`      └─ CNumber: ${matchedCNumber || 'Not found'}`);
               console.log(`      └─ Original Sender: ${originalSenderEmail || 'Not found'}`);
               console.log(`      └─ HCL Forwarder: ${messageToProcess.sender}`);
-              console.log(`      └─ Customer: ${customer?.name || 'Not found'}`);
+              console.log(`      └─ Customer: Will be resolved by OpenAI validation`);
             } else {
               console.log('   └─ No CNumber or forwarded sender found in email content');
             }
