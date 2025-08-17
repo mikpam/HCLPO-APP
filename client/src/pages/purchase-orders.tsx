@@ -412,7 +412,7 @@ export default function PurchaseOrdersPage() {
                         <ArrowUpDown className="ml-2 h-3 w-3" />
                       </Button>
                     </TableHead>
-                    <TableHead className="w-[120px]">Customer Email</TableHead>
+                    <TableHead className="w-[80px]">Email</TableHead>
                     <TableHead className="w-[160px]">Contact</TableHead>
                     <TableHead className="w-[140px]">
                       <Button 
@@ -497,8 +497,8 @@ export default function PurchaseOrdersPage() {
                             </div>
                           </div>
                         </TableCell>
-                        <TableCell>
-                          <span className="text-sm text-gray-600 truncate max-w-[100px]">
+                        <TableCell className="max-w-[80px]">
+                          <span className="text-xs text-gray-600 truncate block max-w-[70px]" title={customer.email}>
                             {customer.email}
                           </span>
                         </TableCell>
