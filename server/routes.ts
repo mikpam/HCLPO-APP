@@ -1301,10 +1301,9 @@ totalPrice: ${item.totalPrice || 0}`;
                   
                   let finalCustomerData = null;
                   if (extractionResult.customer?.name) {
-                    const { CustomerFinderService } = await import('./services/customer-finder');
-                    const customerFinderService = new CustomerFinderService();
+                    const { customerFinderService } = await import('./services/openai-customer-finder');
                     
-                    const customerResult = await customerFinderService.findCustomer({
+                    const customerResult = await customerFinderService.findByExtractedData({
                       customerName: extractionResult.customer.name,
                       customerEmail: extractionResult.customer.email || '',
                       senderEmail: messageToProcess.sender,
