@@ -580,6 +580,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
             console.log(`   ✅ Contact validated: ${validatedContact.name} <${validatedContact.email}>`);
             console.log(`   └─ Method: ${validatedContact.match_method} (Confidence: ${validatedContact.confidence})`);
             console.log(`   └─ Role: ${validatedContact.role}`);
+            
+            // STEP 2 COMPLETION: Update database immediately with contact validation results
+            try {
+              const tempPO = await storage.getPurchaseOrderByNumber(poNumber);
+              if (tempPO) {
+                await storage.updatePurchaseOrder(tempPO.id, {
+                  contactMeta: contactMeta,
+                  contact: validatedContact.email
+                });
+                console.log(`   ✅ STEP 2 COMPLETED: Contact data stored in database`);
+              }
+            } catch (stepError) {
+              console.error(`   ❌ STEP 2 FAILED: Could not store contact data:`, stepError);
+            }
           } catch (error) {
             console.error(`   ⚠️  Contact lookup failed:`, error);
             // Continue with extracted contact info even if lookup fails
@@ -615,6 +629,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
               customerMeta = customerMatch;
               console.log(`   ✅ OpenAI found HCL customer: ${customerMatch.customer_name} (${customerMatch.customer_number})`);
               console.log(`   └─ Method: ${customerMatch.method} (Confidence: ${Math.round((customerMatch.confidence || 0) * 100)}%)`);
+              
+              // STEP 1 COMPLETION: Update database immediately with customer validation results
+              try {
+                const tempPO = await storage.getPurchaseOrderByNumber(poNumber);
+                if (tempPO) {
+                  await storage.updatePurchaseOrder(tempPO.id, {
+                    customerMeta: customerMeta,
+                    status: 'customer_found'
+                  });
+                  console.log(`   ✅ STEP 1 COMPLETED: Customer data stored in database`);
+                }
+              } catch (stepError) {
+                console.error(`   ❌ STEP 1 FAILED: Could not store customer data:`, stepError);
+              }
             } else {
               console.log(`   ❌ Customer lookup failed (Status: ${customerMatch.status})`);
               console.log(`   └─ Input: ${extractionResult.purchaseOrder.customer.company}`);
@@ -636,6 +664,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
               if (customerMatch?.customer_number) {
                 customerMeta = customerMatch;
                 console.log(`   ✅ Fallback found HCL customer: ${customerMatch.customer_name} (${customerMatch.customer_number})`);
+                
+                // STEP 1 COMPLETION: Update database immediately with fallback customer validation results
+                try {
+                  const tempPO = await storage.getPurchaseOrderByNumber(poNumber);
+                  if (tempPO) {
+                    await storage.updatePurchaseOrder(tempPO.id, {
+                      customerMeta: customerMeta,
+                      status: 'customer_found'
+                    });
+                    console.log(`   ✅ STEP 1 COMPLETED: Fallback customer data stored in database`);
+                  }
+                } catch (stepError) {
+                  console.error(`   ❌ STEP 1 FAILED: Could not store fallback customer data:`, stepError);
+                }
               }
             } catch (fallbackError) {
               console.error(`   ❌ Fallback customer lookup also failed:`, fallbackError);
@@ -687,6 +729,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
                   }
                 }
               });
+              
+              // STEP 3 COMPLETION: Update database immediately with line items validation results
+              try {
+                const tempPO = await storage.getPurchaseOrderByNumber(poNumber);
+                if (tempPO) {
+                  await storage.updatePurchaseOrder(tempPO.id, {
+                    lineItems: extractionResult.lineItems,
+                    extractedData: {
+                      ...extractionResult,
+                      validatedLineItems: validatedLineItems
+                    }
+                  });
+                  console.log(`   ✅ STEP 3 COMPLETED: Line items data stored in database`);
+                }
+              } catch (stepError) {
+                console.error(`   ❌ STEP 3 FAILED: Could not store line items data:`, stepError);
+              }
             }
             
           } catch (error) {
