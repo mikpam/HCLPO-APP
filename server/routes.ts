@@ -2027,7 +2027,31 @@ export async function registerRoutes(app: Express): Promise<Server> {
                     }
                   }
 
-                  // SKU validation with OpenAI
+                  // Contact validation using comprehensive OpenAI validation (step 3 of sequence)
+                  let contactMeta = null;
+                  if (extractionResult.purchaseOrder?.contact || messageToProcess.sender) {
+                    console.log(`🔍 OPENAI CONTACT VALIDATION: Using comprehensive contact resolution...`);
+                    
+                    try {
+                      const contactValidator = new OpenAIContactValidatorService();
+                      const validatedContact = await contactValidator.validateContact({
+                        extractedData: extractionResult,
+                        senderName: messageToProcess.senderName || extractionResult.purchaseOrder.contact?.name,
+                        senderEmail: messageToProcess.sender,
+                        resolvedCustomerId: finalCustomerData?.customer_number,
+                        companyId: finalCustomerData?.customer_number
+                      });
+
+                      contactMeta = validatedContact;
+                      console.log(`   ✅ Contact validated: ${validatedContact.name} <${validatedContact.email}>`);
+                      console.log(`   └─ Method: ${validatedContact.match_method} (Confidence: ${validatedContact.confidence})`);
+                      console.log(`   └─ Role: ${validatedContact.role}`);
+                    } catch (error) {
+                      console.error(`   ❌ Contact validation failed:`, error);
+                    }
+                  }
+
+                  // SKU validation with OpenAI (step 4 of sequence)
                   let validatedItems: any[] = [];
                   if (extractionResult.lineItems?.length > 0) {
                     console.log(`🤖 OPENAI SKU VALIDATOR: Processing ${extractionResult.lineItems.length} extracted line items...`);
