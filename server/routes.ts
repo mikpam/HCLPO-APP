@@ -7,6 +7,8 @@ import { gmailService } from "./services/gmail";
 import { openaiService } from "./services/openai";
 import { aiService, type AIEngine } from "./services/ai-service";
 import { netsuiteService } from "./services/netsuite";
+import { openaiCustomerFinderService } from "./services/openai-customer-finder";
+import { skuValidator } from "./services/openai-sku-validator";
 
 import { insertPurchaseOrderSchema, insertErrorLogSchema, classificationResultSchema } from "@shared/schema";
 import { z } from "zod";
@@ -1300,9 +1302,8 @@ totalPrice: ${item.totalPrice || 0}`;
                   
                   let finalCustomerData = null;
                   if (extractionResult.purchaseOrder?.customer?.company) {
-                    const { customerFinderService } = await import('./services/openai-customer-finder');
-                    
-                    const customerResult = await customerFinderService.findByExtractedData({
+                    // Use SAME service and method as single email processing
+                    const customerResult = await openaiCustomerFinderService.findCustomer({
                       customerName: extractionResult.purchaseOrder.customer.company,
                       customerEmail: extractionResult.purchaseOrder.customer.email || '',
                       senderEmail: messageToProcess.sender,
@@ -1323,7 +1324,7 @@ totalPrice: ${item.totalPrice || 0}`;
                   let validatedItems: any[] = [];
                   if (extractionResult.lineItems?.length > 0) {
                     console.log(`🤖 OPENAI SKU VALIDATOR: Processing ${extractionResult.lineItems.length} extracted line items...`);
-                    const { skuValidator } = await import('./services/openai-sku-validator');
+                    // Use imported skuValidator (no dynamic import needed)
                     
                     // Format line items for SKU validator (____-separated format like single email processing)
                     const lineItemsForValidation = extractionResult.lineItems
