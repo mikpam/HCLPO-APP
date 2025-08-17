@@ -457,28 +457,49 @@ export async function registerRoutes(app: Express): Promise<Server> {
           console.log(`   ⚠️  No contact information extracted from purchase order`);
         }
 
-        // Lookup customer in HCL database for all purchase orders
+        // Lookup customer in HCL database for all purchase orders using OpenAI-powered matching
         if (extractionResult?.purchaseOrder?.customer) {
-          console.log(`\n🔍 CUSTOMER LOOKUP:`);
+          console.log(`\n🔍 OPENAI CUSTOMER LOOKUP:`);
           console.log(`   └─ Searching HCL database for: ${extractionResult.purchaseOrder.customer.company || 'Unknown'}`);
           
           try {
-            const { customerFinderService } = await import('./services/customer-finder');
-            const customerMatch = await customerFinderService.findCustomer({
+            const { openaiCustomerFinderService } = await import('./services/openai-customer-finder');
+            const customerMatch = await openaiCustomerFinderService.findCustomer({
               customerName: extractionResult.purchaseOrder.customer.company,
               customerEmail: extractionResult.purchaseOrder.customer.email,
-              senderEmail: messageToProcess.sender
+              senderEmail: messageToProcess.sender,
+              asiNumber: extractionResult.purchaseOrder.asiNumber,
+              ppaiNumber: extractionResult.purchaseOrder.ppaiNumber,
+              address: extractionResult.purchaseOrder.customer.address1
             });
             
             if (customerMatch?.customer_number) {
               customerMeta = customerMatch;
-              console.log(`   ✅ Found HCL customer: ${customerMatch.customer_name} (${customerMatch.customer_number})`);
+              console.log(`   ✅ OpenAI found HCL customer: ${customerMatch.customer_name} (${customerMatch.customer_number})`);
             } else {
-              console.log(`   ❌ No HCL customer match found for: ${extractionResult.purchaseOrder.customer.company}`);
+              console.log(`   ❌ OpenAI found no confident match for: ${extractionResult.purchaseOrder.customer.company}`);
               console.log(`   🆕 FLAGGING AS NEW CUSTOMER for CSR review`);
             }
           } catch (error) {
-            console.error(`   ❌ Customer lookup failed:`, error);
+            console.error(`   ❌ OpenAI customer lookup failed:`, error);
+            console.log(`   🔄 Falling back to basic customer finder...`);
+            
+            // Fallback to original customer finder
+            try {
+              const { customerFinderService } = await import('./services/customer-finder');
+              const customerMatch = await customerFinderService.findCustomer({
+                customerName: extractionResult.purchaseOrder.customer.company,
+                customerEmail: extractionResult.purchaseOrder.customer.email,
+                senderEmail: messageToProcess.sender
+              });
+              
+              if (customerMatch?.customer_number) {
+                customerMeta = customerMatch;
+                console.log(`   ✅ Fallback found HCL customer: ${customerMatch.customer_name} (${customerMatch.customer_number})`);
+              }
+            } catch (fallbackError) {
+              console.error(`   ❌ Fallback customer lookup also failed:`, fallbackError);
+            }
           }
         }
         
