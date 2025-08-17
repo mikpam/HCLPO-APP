@@ -1469,9 +1469,17 @@ ${messageToProcess.body || ''}`;
             for (const attachment of messageToProcess.attachments) {
               try {
                 if (attachment.data) {
-                  console.log(`   └─ ${attachment.filename}: ${attachment.mimeType} (${attachment.data.length} bytes) [Has ID]`);
-                  await objectStorage.storeAttachment(emailId, attachment);
-                  console.log(`      ✅ Stored attachment: ${attachment.filename} at /objects/pdfs/${emailId}_${attachment.filename.replace(/[^a-zA-Z0-9._-]/g, '_')}`);
+                  console.log(`   └─ ${attachment.filename}: ${attachment.contentType} (${attachment.data.length} bytes) [Has ID]`);
+                  
+                  // Store attachment using the correct function signature
+                  const cleanFilename = attachment.filename.replace(/[^a-zA-Z0-9._-]/g, '_');
+                  const objectPath = await objectStorage.storeAttachment(
+                    attachment.data,
+                    `${emailId}_${cleanFilename}`,
+                    attachment.contentType
+                  );
+                  
+                  console.log(`      ✅ Stored attachment: ${attachment.filename} at ${objectPath}`);
                 }
               } catch (error) {
                 console.error(`      ❌ Failed to store attachment ${attachment.filename}:`, error);
@@ -1479,13 +1487,7 @@ ${messageToProcess.body || ''}`;
             }
           }
 
-          // Email preservation (skip for auto-processing to avoid errors)
-          try {
-            // Note: Skipping email preservation in auto-processing to avoid function errors
-            console.log(`   ✅ Skipped email preservation for auto-processing`);
-          } catch (error) {
-            console.error(`   ❌ Failed to preserve email:`, error);
-          }
+
 
           // Two-step AI processing
           console.log('🤖 AI PROCESSING: Starting two-step analysis...');
@@ -1503,6 +1505,34 @@ ${messageToProcess.body || ''}`;
             console.log(`   └─ Detailed route: ${route} (${Math.round(confidence * 100)}%)`);
           } else {
             console.log(`Email filtered out: ${preprocessing.classification || preprocessing.response || 'Unknown'} (${Math.round((preprocessing.confidence || preprocessing.score || 0) * 100)}%)`);
+          }
+
+          // Email preservation for classified emails (after preprocessing)
+          try {
+            if (preprocessing.shouldProceed) {
+              const { ObjectStorageService } = await import("./objectStorage");
+              const objectStorage = new ObjectStorageService();
+              
+              // Create email content in .eml format
+              const emlContent = `From: ${messageToProcess.sender}
+To: ${messageToProcess.to || 'N/A'}
+Subject: ${messageToProcess.subject}
+Date: ${new Date().toISOString()}
+
+${messageToProcess.body || ''}`;
+              
+              const emailPath = await objectStorage.storeEmailFile(
+                emailId,
+                messageToProcess.subject || 'No Subject',
+                emlContent
+              );
+              
+              console.log(`   ✅ Email preserved: ${emailPath}`);
+            } else {
+              console.log(`   ✅ Skipped email preservation for filtered email`);
+            }
+          } catch (error) {
+            console.error(`   ❌ Failed to preserve email:`, error);
           }
 
           // Process if it passed preprocessing
@@ -1591,6 +1621,24 @@ ${messageToProcess.body || ''}`;
                       );
                       if (attachmentBuffer) {
                         console.log(`   ✅ Loaded attachment data: ${attachmentBuffer.length} bytes`);
+                        
+                        // Store attachment to object storage
+                        try {
+                          const { ObjectStorageService } = await import('./objectStorage');
+                          const objectStorageService = new ObjectStorageService();
+                          
+                          const cleanFilename = selectedAttachment.filename.replace(/[^a-zA-Z0-9._-]/g, '_');
+                          const storagePath = await objectStorageService.storeAttachment(
+                            attachmentBuffer,
+                            `${messageToProcess.id}_${cleanFilename}`,
+                            selectedAttachment.contentType || 'application/octet-stream'
+                          );
+                          
+                          console.log(`      ✅ Stored attachment: ${selectedAttachment.filename} at ${storagePath}`);
+                        } catch (error) {
+                          console.error(`      ❌ Failed to store attachment ${selectedAttachment.filename}:`, error);
+                        }
+                        
                         extractedData = await aiService.extractPODataFromPDF(
                           attachmentBuffer,
                           selectedAttachment.filename

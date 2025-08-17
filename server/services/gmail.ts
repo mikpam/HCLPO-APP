@@ -464,11 +464,15 @@ export class GmailService {
           const { ObjectStorageService } = await import('../objectStorage');
           const objectStorageService = new ObjectStorageService();
           
-          const storagePath = await objectStorageService.storePdfAttachment(
-            messageId,
-            attachment.filename,
-            attachmentData
+          // Store attachment using the correct function
+          const cleanFilename = attachment.filename.replace(/[^a-zA-Z0-9._-]/g, '_');
+          const storagePath = await objectStorageService.storeAttachment(
+            attachmentData,
+            `${messageId}_${cleanFilename}`,
+            attachment.contentType
           );
+          
+          console.log(`      ✅ Stored attachment: ${attachment.filename} at ${storagePath}`);
           
           storedAttachments.push({
             filename: attachment.filename,
