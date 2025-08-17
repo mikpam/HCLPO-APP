@@ -512,9 +512,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
         // Use extracted PO number if available, otherwise generate synthetic one
         console.log(`\n🆔 PO NUMBER ASSIGNMENT:`);
         let poNumber;
-        if (extractionResult?.purchaseOrder?.purchaseOrderNumber) {
+        
+        // Try multiple extraction paths for PO number
+        const extractedPONumber = extractionResult?.purchaseOrder?.purchaseOrderNumber || 
+                                  extractionResult?.purchaseOrderNumber ||
+                                  extractionResult?.clientPONumber;
+        
+        if (extractedPONumber && extractedPONumber.trim()) {
+          // Clean up the PO number (remove extra spaces, prefixes like "PO:", etc.)
+          let cleanPONumber = extractedPONumber.trim().replace(/^(PO:?|Purchase Order:?)\s*/i, '');
+          
           // Check if this PO number already exists and append suffix if needed
-          poNumber = extractionResult.purchaseOrder.purchaseOrderNumber;
+          poNumber = cleanPONumber;
           let originalPoNumber = poNumber;
           let suffix = 1;
           
@@ -526,11 +535,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
           if (suffix > 1) {
             console.log(`   ⚠️  PO number ${originalPoNumber} already exists, using: ${poNumber}`);
           } else {
-            console.log(`   ✅ Using client PO number: ${poNumber}`);
+            console.log(`   ✅ Using extracted PO number: ${poNumber}`);
           }
         } else {
           poNumber = `PO-${new Date().getFullYear()}-${String(Date.now()).slice(-6)}`;
-          console.log(`   ⚠️  Generated synthetic PO number: ${poNumber}`);
+          console.log(`   ⚠️  No PO number found in extraction, generated synthetic: ${poNumber}`);
+          console.log(`   └─ Extraction structure check: purchaseOrder=${!!extractionResult?.purchaseOrder}, purchaseOrderNumber=${extractionResult?.purchaseOrder?.purchaseOrderNumber}`);
         }
         
         // Determine effective sender and customer for forwarded emails

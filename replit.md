@@ -82,6 +82,11 @@ System Behavior: Automated email processing should start immediately when server
 ## System Status & Recent Changes
 
 ### Latest Updates (August 17, 2025)
+- **✅ PO NUMBER DISPLAY FIX**: Fixed PO number assignment to use actual extracted numbers instead of synthetic ones
+  - **Issue Resolved**: System was storing synthetic numbers like "PO-2025-485475" instead of extracted numbers like "1800267"
+  - **Enhanced Logic**: Multiple extraction paths and PO number cleanup for better accuracy
+  - **User Experience**: PO tab now displays meaningful customer PO numbers from documents
+  - **Gemini Upgrade**: All extraction upgraded to Gemini 2.5 Pro for better accuracy and JSON compliance
 - **✅ COMPLETE SYSTEM SUCCESS - ALL VALIDATORS OPERATIONAL**: Full deterministic processing achieved
   - **Final Update Logic**: Robust final update system that reliably stores ALL validator results to main database columns
   - **Customer Validation**: Successfully finding customers (e.g., "Brand Makers (C49864)", "BNT Promotional Products (22087)")
