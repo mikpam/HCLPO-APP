@@ -17,6 +17,42 @@ import { eq, desc, and, or, lt } from "drizzle-orm";
 import { insertPurchaseOrderSchema, insertErrorLogSchema, classificationResultSchema } from "@shared/schema";
 import { z } from "zod";
 
+// Enhanced error logging helper for comprehensive tracking
+async function logProcessingError(
+  type: 'preprocessing_failed' | 'classification_failed' | 'extraction_failed' | 'customer_lookup_failed' | 'sku_validation_failed' | 'final_step_failed' | 'gmail_labeling_failed' | 'ai_filter_failed',
+  message: string,
+  emailId?: string,
+  poId?: string,
+  poNumber?: string,
+  additionalData?: any
+) {
+  try {
+    const errorLog = await storage.createErrorLog({
+      type,
+      message,
+      relatedPoId: poId || null,
+      relatedPoNumber: poNumber || null,
+      resolved: false,
+      metadata: {
+        emailId,
+        timestamp: new Date().toISOString(),
+        step: type.replace('_failed', ''),
+        additionalData: additionalData || null
+      }
+    });
+    
+    console.error(`🚨 ERROR LOGGED [${type}]: ${message}`);
+    console.error(`   └─ Error ID: ${errorLog.id}`);
+    console.error(`   └─ Email ID: ${emailId || 'N/A'}`);
+    console.error(`   └─ PO Number: ${poNumber || 'N/A'}`);
+    
+    return errorLog;
+  } catch (logError) {
+    console.error('❌ Failed to log processing error to database:', logError);
+    console.error('   └─ Original error:', message);
+  }
+}
+
 export async function registerRoutes(app: Express): Promise<Server> {
   // Register customer routes
   registerCustomerRoutes(app);
@@ -990,6 +1026,20 @@ totalPrice: ${item.totalPrice || 0}`;
             console.log(`   ✅ Successfully updated Gmail labels`);
           } catch (error) {
             console.error(`   ❌ Failed to update Gmail labels:`, error);
+            await logProcessingError(
+              'gmail_labeling_failed',
+              `Failed to update Gmail labels during SSE processing: ${error instanceof Error ? error.message : 'Unknown error'}`,
+              messageToProcess.id,
+              purchaseOrder?.id,
+              purchaseOrder?.poNumber,
+              {
+                error: error instanceof Error ? error.message : error,
+                sender: messageToProcess.sender,
+                subject: messageToProcess.subject,
+                classification: preprocessing.response || 'unknown',
+                step: 'sse_processing'
+              }
+            );
           }
 
           // Update email queue status
@@ -1425,6 +1475,22 @@ totalPrice: ${item.totalPrice || 0}`;
                   console.log(`   ❌ Attachment filtered out by AI: Not a valid PO document`);
                   console.log(`   └─ Switching to email text processing instead`);
                   
+                  // Log AI filtering as potential issue for review
+                  await logProcessingError(
+                    'ai_filter_failed',
+                    `AI attachment filter rejected ${attachment.filename} for email with PO ${poNumber}. This may indicate a false negative where a valid PO document was incorrectly filtered.`,
+                    messageToProcess.id,
+                    undefined,
+                    poNumber,
+                    {
+                      attachmentFilename: attachment.filename,
+                      attachmentSize: attachment.size || 0,
+                      attachmentType: attachment.contentType || 'unknown',
+                      reason: 'AI determined this was not a valid PO document',
+                      switchedToTextProcessing: true
+                    }
+                  );
+                  
                   // Fall back to text processing if attachment is filtered out
                   extractedData = await aiService.extractPODataFromText(
                     gmailMessage.subject || "",
@@ -1502,8 +1568,36 @@ totalPrice: ${item.totalPrice || 0}`;
 
               // Customer lookup and processing
               console.log(`🔍 CUSTOMER LOOKUP: Starting for PO ${purchaseOrder.id}`);
-              const updatedPO = await openaiCustomerFinderService.processPurchaseOrder(purchaseOrder.id);
-              console.log(`   ✅ Customer processing completed for PO ${poNumber} (Status: ${updatedPO?.status || purchaseOrder.status})`);
+              try {
+                const updatedPO = await openaiCustomerFinderService.processPurchaseOrder(purchaseOrder.id);
+                console.log(`   ✅ Customer processing completed for PO ${poNumber} (Status: ${updatedPO?.status || purchaseOrder.status})`);
+                
+                // Log customer lookup failures for review
+                if (updatedPO?.status === 'customer_not_found' || updatedPO?.status === 'new_customer') {
+                  await logProcessingError(
+                    'customer_lookup_failed',
+                    `Customer lookup ${updatedPO.status === 'customer_not_found' ? 'failed' : 'resulted in new customer'} for PO ${poNumber}. Manual review may be required.`,
+                    messageToProcess.id,
+                    purchaseOrder.id,
+                    poNumber,
+                    {
+                      customerStatus: updatedPO.status,
+                      extractedCustomerInfo: extractedData?.customer || null,
+                      sender: messageToProcess.sender
+                    }
+                  );
+                }
+              } catch (customerError) {
+                console.error(`❌ Customer lookup failed for PO ${poNumber}:`, customerError);
+                await logProcessingError(
+                  'customer_lookup_failed',
+                  `Critical error during customer lookup for PO ${poNumber}: ${customerError instanceof Error ? customerError.message : 'Unknown error'}`,
+                  messageToProcess.id,
+                  purchaseOrder.id,
+                  poNumber,
+                  { error: customerError instanceof Error ? customerError.message : customerError }
+                );
+              }
 
               // Line items validation using OpenAI SKU validator
               if (extractedData.lineItems && extractedData.lineItems.length > 0) {
@@ -1541,12 +1635,49 @@ totalPrice: ${item.totalPrice || 0}`;
                   
                 } catch (error) {
                   console.error(`   ❌ Line items validation failed:`, error);
+                  await logProcessingError(
+                    'sku_validation_failed',
+                    `SKU validation failed for PO ${poNumber}: ${error instanceof Error ? error.message : 'Unknown error'}`,
+                    messageToProcess.id,
+                    purchaseOrder.id,
+                    poNumber,
+                    { 
+                      error: error instanceof Error ? error.message : error,
+                      lineItemCount: extractedData?.lineItems?.length || 0
+                    }
+                  );
                 }
               } else {
                 console.log(`   ⚠️  No line items found for validation`);
+                await logProcessingError(
+                  'sku_validation_failed',
+                  `No line items found for PO ${poNumber}. Email processing completed but no products were extracted for validation.`,
+                  messageToProcess.id,
+                  purchaseOrder.id,
+                  poNumber,
+                  { 
+                    extractionRoute: classification?.route || 'unknown',
+                    hasExtractedData: !!extractedData,
+                    extractedDataKeys: extractedData ? Object.keys(extractedData) : []
+                  }
+                );
               }
             } else {
-              console.log(`   ❌ No data extracted from ${classification.route}`);
+              console.log(`   ❌ No data extracted from ${classification.route || 'unknown route'}`);
+              await logProcessingError(
+                'extraction_failed',
+                `Failed to extract any data from email using route ${classification?.route || 'unknown'}. Email was classified for processing but extraction yielded no results.`,
+                messageToProcess.id,
+                undefined,
+                poNumber,
+                {
+                  classificationRoute: classification?.route || 'unknown',
+                  classificationConfidence: classification?.confidence || 0,
+                  sender: messageToProcess.sender,
+                  subject: messageToProcess.subject,
+                  attachmentCount: messageToProcess.attachments?.length || 0
+                }
+              );
             }
           }
 
@@ -1568,6 +1699,20 @@ totalPrice: ${item.totalPrice || 0}`;
             console.log(`   ✅ Successfully updated Gmail labels`);
           } catch (error) {
             console.error(`   ❌ Failed to update Gmail labels:`, error);
+            await logProcessingError(
+              'gmail_labeling_failed',
+              `Failed to update Gmail labels during auto processing: ${error instanceof Error ? error.message : 'Unknown error'}`,
+              messageToProcess.id,
+              undefined,
+              undefined,
+              {
+                error: error instanceof Error ? error.message : error,
+                sender: messageToProcess.sender,
+                subject: messageToProcess.subject,
+                classification: preprocessing.response || 'unknown',
+                step: 'auto_processing'
+              }
+            );
           }
 
           console.log(`   ✅ Completed processing email ${processedCount + 1}`);
