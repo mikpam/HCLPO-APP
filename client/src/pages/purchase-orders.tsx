@@ -8,7 +8,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useState, useMemo } from "react";
-import { Eye, ExternalLink, FileText, Search, Filter, ArrowUpDown, MoreHorizontal, MapPin, Calendar, User, Mail, Hash, CheckCircle, XCircle, Clock } from "lucide-react";
+import { Eye, ExternalLink, FileText, Search, Filter, ArrowUpDown, MoreHorizontal, MapPin, Calendar, User, Users, Mail, Hash, CheckCircle, XCircle, Clock } from "lucide-react";
 
 export default function PurchaseOrdersPage() {
   const [selectedOrder, setSelectedOrder] = useState<PurchaseOrder | null>(null);
@@ -106,6 +106,50 @@ export default function PurchaseOrdersPage() {
       address: fullAddress || 'No address',
       customerNumber: customer.customerNumber || 'N/A',
       isForwarded: false
+    };
+  };
+
+  // Helper function to get contact information for NetSuite
+  const getContactInfo = (order: any) => {
+    const extractedData = order.extractedData;
+    const contactMeta = order.contactMeta;
+    const contact = extractedData?.purchaseOrder?.contact;
+    
+    if (contactMeta) {
+      // Use validated contact from HCL database
+      return {
+        name: contactMeta.name || 'N/A',
+        email: contactMeta.email || 'N/A',
+        phone: contactMeta.phone || 'N/A',
+        jobTitle: contactMeta.job_title || 'N/A',
+        isValidated: true
+      };
+    } else if (contact) {
+      // Use extracted contact information
+      return {
+        name: contact.name || 'N/A',
+        email: contact.email || 'N/A', 
+        phone: contact.phone || 'N/A',
+        jobTitle: contact.jobTitle || 'N/A',
+        isValidated: false
+      };
+    } else if (order.contact) {
+      // Use simple contact name field
+      return {
+        name: order.contact,
+        email: 'N/A',
+        phone: 'N/A',
+        jobTitle: 'N/A',
+        isValidated: false
+      };
+    }
+    
+    return {
+      name: 'Not provided',
+      email: 'N/A',
+      phone: 'N/A', 
+      jobTitle: 'N/A',
+      isValidated: false
     };
   };
 
@@ -369,6 +413,7 @@ export default function PurchaseOrdersPage() {
                       </Button>
                     </TableHead>
                     <TableHead className="w-[200px]">Customer Email</TableHead>
+                    <TableHead className="w-[160px]">Contact</TableHead>
                     <TableHead className="w-[140px]">
                       <Button 
                         variant="ghost" 
@@ -391,6 +436,7 @@ export default function PurchaseOrdersPage() {
                   {filteredAndSortedOrders.map((order) => {
                     const statusBadge = getStatusBadge(order.status);
                     const customer = getCustomerInfo(order);
+                    const contact = getContactInfo(order);
                     const lineItemsCount = getLineItemsCount(order);
                     const StatusIcon = statusBadge.icon;
                     
@@ -455,6 +501,24 @@ export default function PurchaseOrdersPage() {
                           <span className="text-sm text-gray-600 truncate max-w-[150px]">
                             {customer.email}
                           </span>
+                        </TableCell>
+                        <TableCell>
+                          <div className="space-y-1">
+                            <div className="flex items-center space-x-2">
+                              <Users className="w-4 h-4 text-gray-400" />
+                              <span className="font-medium text-sm">{contact.name}</span>
+                              {contact.isValidated && (
+                                <Badge variant="secondary" className="text-xs px-1 py-0.5">
+                                  Verified
+                                </Badge>
+                              )}
+                            </div>
+                            {contact.jobTitle !== 'N/A' && (
+                              <div className="text-xs text-gray-500 pl-6">
+                                {contact.jobTitle}
+                              </div>
+                            )}
+                          </div>
                         </TableCell>
                         <TableCell>
                           <Badge className={`${statusBadge.class} text-xs`}>
@@ -543,6 +607,7 @@ export default function PurchaseOrdersPage() {
               {filteredAndSortedOrders.map((order) => {
                 const statusBadge = getStatusBadge(order.status);
                 const customer = getCustomerInfo(order);
+                const contact = getContactInfo(order);
                 const lineItemsCount = getLineItemsCount(order);
                 const StatusIcon = statusBadge.icon;
                 
@@ -587,6 +652,22 @@ export default function PurchaseOrdersPage() {
                             <span className="text-sm text-blue-600 font-mono">
                               HCL: C{customer.cNumber}
                             </span>
+                          </div>
+                        )}
+                        
+                        <div className="flex items-center space-x-2">
+                          <Users className="w-4 h-4 text-gray-400" />
+                          <span className="font-medium text-sm">{contact.name}</span>
+                          {contact.isValidated && (
+                            <Badge variant="secondary" className="text-xs px-1 py-0.5">
+                              Verified
+                            </Badge>
+                          )}
+                        </div>
+                        
+                        {contact.jobTitle !== 'N/A' && (
+                          <div className="text-xs text-gray-500 pl-6">
+                            {contact.jobTitle}
                           </div>
                         )}
                         
@@ -710,6 +791,49 @@ export default function PurchaseOrdersPage() {
                         {selectedOrder.createdAt ? new Date(selectedOrder.createdAt).toLocaleDateString() : 'N/A'}
                       </span>
                     </div>
+                  </div>
+                </div>
+
+                {/* Contact Information */}
+                <div>
+                  <h3 className="font-semibold text-sm text-gray-700 mb-2">Contact Information</h3>
+                  <div className="space-y-2 text-sm">
+                    {(() => {
+                      const contact = getContactInfo(selectedOrder);
+                      return (
+                        <>
+                          <div className="flex justify-between">
+                            <span className="text-gray-600">Contact Name:</span>
+                            <div className="flex items-center space-x-2">
+                              <span className="font-medium">{contact.name}</span>
+                              {contact.isValidated && (
+                                <Badge variant="secondary" className="text-xs px-1 py-0.5">
+                                  Verified
+                                </Badge>
+                              )}
+                            </div>
+                          </div>
+                          {contact.email !== 'N/A' && (
+                            <div className="flex justify-between">
+                              <span className="text-gray-600">Contact Email:</span>
+                              <span className="font-medium">{contact.email}</span>
+                            </div>
+                          )}
+                          {contact.phone !== 'N/A' && (
+                            <div className="flex justify-between">
+                              <span className="text-gray-600">Contact Phone:</span>
+                              <span className="font-medium">{contact.phone}</span>
+                            </div>
+                          )}
+                          {contact.jobTitle !== 'N/A' && (
+                            <div className="flex justify-between">
+                              <span className="text-gray-600">Job Title:</span>
+                              <span className="font-medium">{contact.jobTitle}</span>
+                            </div>
+                          )}
+                        </>
+                      );
+                    })()}
                   </div>
                 </div>
 

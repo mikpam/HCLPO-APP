@@ -16,6 +16,7 @@ export const purchaseOrders = pgTable("purchase_orders", {
   poNumber: text("po_number").notNull().unique(),
   customerMeta: jsonb("customer_meta"),
   contactMeta: jsonb("contact_meta"), // Contact information extracted and validated
+  contact: text("contact"), // Contact person name for NetSuite (required field)
   shippingCarrier: text("shipping_carrier"),
   shippingMethod: text("shipping_method"),
   originalJson: jsonb("original_json"),

@@ -424,6 +424,39 @@ export async function registerRoutes(app: Express): Promise<Server> {
         let customerMeta = null;
         let contactMeta = null;
         
+        // Extract contact information for NetSuite (required field)
+        if (extractionResult?.purchaseOrder?.contact) {
+          console.log(`\n👤 CONTACT EXTRACTION:`);
+          console.log(`   └─ Contact Name: ${extractionResult.purchaseOrder.contact.name || 'Not provided'}`);
+          console.log(`   └─ Contact Email: ${extractionResult.purchaseOrder.contact.email || 'Not provided'}`);
+          console.log(`   └─ Contact Phone: ${extractionResult.purchaseOrder.contact.phone || 'Not provided'}`);
+          console.log(`   └─ Job Title: ${extractionResult.purchaseOrder.contact.jobTitle || 'Not provided'}`);
+          
+          // Optionally validate against HCL contacts database
+          try {
+            const { contactFinderService } = await import('./services/contact-finder');
+            const contactMatch = await contactFinderService.findContact({
+              name: extractionResult.purchaseOrder.contact.name,
+              email: extractionResult.purchaseOrder.contact.email,
+              phone: extractionResult.purchaseOrder.contact.phone,
+              jobTitle: extractionResult.purchaseOrder.contact.jobTitle
+            });
+            
+            if (contactMatch) {
+              contactMeta = contactMatch;
+              console.log(`   ✅ Contact found in HCL database: ${contactMatch.name} (${contactMatch.netsuite_internal_id})`);
+            } else {
+              console.log(`   ℹ️  Contact not found in HCL database (will use extracted info)`);
+            }
+          } catch (error) {
+            console.error(`   ⚠️  Contact lookup failed:`, error);
+            // Continue with extracted contact info even if lookup fails
+          }
+        } else {
+          console.log(`\n👤 CONTACT EXTRACTION:`);
+          console.log(`   ⚠️  No contact information extracted from purchase order`);
+        }
+
         // Lookup customer in HCL database for all purchase orders
         if (extractionResult?.purchaseOrder?.customer) {
           console.log(`\n🔍 CUSTOMER LOOKUP:`);
@@ -480,7 +513,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
               extractedCustomer: customerInfo || hclCustomerLookup // Use Gemini extraction first, fallback to HCL lookup
             } : undefined
           },
-          customerMeta: customerMeta // Include HCL customer lookup result
+          customerMeta: customerMeta, // Include HCL customer lookup result
+          contactMeta: contactMeta, // Include HCL contact lookup result  
+          contact: extractionResult?.purchaseOrder?.contact?.name || null // Store contact name for NetSuite
         });
       }
 
