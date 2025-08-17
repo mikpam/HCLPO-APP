@@ -1610,6 +1610,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
               // Contact validation using OpenAI contact validator
               console.log(`📞 CONTACT VALIDATION: Starting contact resolution...`);
+              console.log(`   └─ Debug: extractedData?.customer:`, !!extractedData?.customer);
+              console.log(`   └─ Debug: extractedData?.contact:`, !!extractedData?.contact);
+              console.log(`   └─ Debug: messageToProcess.sender:`, !!messageToProcess.sender);
               
               // Update status for contact validation
               updateProcessingStatus({
