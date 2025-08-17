@@ -198,6 +198,9 @@ export default function Dashboard() {
           currentStep={processSingleEmail.isPending ? "Processing single email..." : 
                       processNormalEmails.isPending ? "Processing emails normally..." : ""}
           finalStatus={lastProcessResult?.details?.purchaseOrder?.status || "pending"}
+          onAnimationComplete={() => {
+            console.log("Animation completed with status:", lastProcessResult?.details?.purchaseOrder?.status);
+          }}
         />
 
         {/* Development Processing Result Display */}

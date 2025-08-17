@@ -20,6 +20,13 @@ function EmailProcessingAnimation({
   finalStatus = "pending",
   onAnimationComplete
 }: EmailProcessingAnimationProps) {
+  
+  // Debug logging
+  console.log("Animation props:", {
+    isProcessing,
+    finalStatus,
+    currentStep
+  });
   const [currentStepIndex, setCurrentStepIndex] = useState(0);
   const [animationKey, setAnimationKey] = useState(0);
   const [internalProcessing, setInternalProcessing] = useState(false);
