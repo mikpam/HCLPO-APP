@@ -263,6 +263,12 @@ ${JSON.stringify(lineItems, null, 2)}`;
         console.log(`   ✅ Processed: "${item.sku}" → "${processedSKU}"`);
         item.sku = processedSKU;
       }
+      
+      // FALLBACK: If finalSKU is empty/null, use the processed SKU as fallback
+      if (!item.finalSKU && item.sku) {
+        item.finalSKU = item.sku;
+        console.log(`   🔧 Fallback: Using SKU "${item.sku}" as finalSKU (Gemini returned empty finalSKU)`);
+      }
     }
     
     try {
