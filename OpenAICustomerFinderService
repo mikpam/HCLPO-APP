@@ -1,0 +1,385 @@
+// src/services/openai-customer-finder.ts
+import { db } from "../db";
+import { customers } from "@shared/schema";
+import { and, eq, ilike, or, sql } from "drizzle-orm";
+
+// Optional OpenAI fallback (will be skipped if not installed or no API key)
+let openai: any = null;
+try {
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const OpenAI = require("openai").default || require("openai");
+  openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+} catch {
+  // ignore
+}
+
+type FindInput = {
+  customerNumber?: string | null;
+  customerName?: string | null;
+  customerEmail?: string | null;
+  senderEmail?: string | null;
+  asiNumber?: string | null;   // reserved for future (if DB has these)
+  ppaiNumber?: string | null;  // reserved for future (if DB has these)
+  address?: unknown;
+};
+
+type CustomerRow = typeof customers.$inferSelect;
+
+export type FinderResult = {
+  status: "found" | "ambiguous" | "not_found";
+  reason: string;
+  confidence: number; // 0..1
+  chosen?: (CustomerRow & { score?: number; rationale?: string }) | null;
+  candidates?: Array<CustomerRow & { score: number; rationale: string }>;
+  needs_review?: boolean;
+  debug?: {
+    topScore?: number;
+    nextScore?: number;
+  };
+};
+
+/** Tunables */
+const THRESHOLDS = {
+  CLEAR_WINNER: 0.92,          // score >= this and margin ≥ 0.08 → accept
+  CLEAR_MARGIN: 0.08,
+  GOOD_WINNER: 0.86,           // score >= this and margin ≥ 0.05 → accept
+  GOOD_MARGIN: 0.05,
+  LLM_FLOOR: 0.75,             // if top ≥ this but close to next, try LLM if available
+  FUZZY_HIGH: 0.85,
+  FUZZY_MED: 0.75,
+  FUZZY_LOW: 0.60,
+};
+
+const STOP_WORDS = new Set([
+  "inc","inc.","llc","l.l.c.","ltd","ltd.","co","co.","company","corp","corp.",
+  "corporation","the","powered","by","pwr","dba","division","of","group",
+  "gmbh","srl","s.a.","sa","pte","plc","limited","llp"
+]);
+
+/** -------------------------
+ * String helpers
+ * ------------------------*/
+function s(x?: string | null) { return (x ?? "").trim(); }
+function lower(x?: string | null) { return s(x).toLowerCase(); }
+
+function emailDomain(e?: string | null) {
+  const v = lower(e);
+  const at = v.lastIndexOf("@");
+  return at === -1 ? "" : v.slice(at + 1);
+}
+
+function tokenize(name: string) {
+  return name
+    .toLowerCase()
+    .replace(/[&/|,.-]/g, " ")
+    .split(/\s+/)
+    .map(t => t.trim())
+    .filter(t => t && !STOP_WORDS.has(t));
+}
+
+// strip “powered by …”, “pwr by …”, and any suffix after colon (e.g. “PROFORMA : …”)
+function rootBrand(name?: string | null) {
+  let v = s(name);
+  v = v.replace(/powered\s+by.*$/i, "")
+       .replace(/\bpwr\s+by.*$/i, "")
+       .replace(/:.*$/g, "")
+       .replace(/\s+/g, " ")
+       .trim();
+  return tokenize(v).join(" ");
+}
+
+function jaccard(a: string[], b: string[]) {
+  const A = new Set(a);
+  const B = new Set(b);
+  const inter = [...A].filter(x => B.has(x)).length;
+  const uni = new Set([...A, ...B]).size;
+  return uni ? inter / uni : 0;
+}
+
+function cheapTrigramSimilarity(a: string, b: string) {
+  function trigrams(str: string) {
+    const t = new Set<string>();
+    const ss = `  ${str.toLowerCase()}  `;
+    for (let i = 0; i < ss.length - 2; i++) t.add(ss.slice(i, i + 3));
+    return t;
+  }
+  const A = trigrams(a);
+  const B = trigrams(b);
+  const inter = [...A].filter(x => B.has(x)).length;
+  const uni = new Set([...A, ...B]).size;
+  return uni ? inter / uni : 0;
+}
+
+function scoreCompanySimilarity(queryName: string, candidateName: string, candidateAlt: string[] = []) {
+  const qTokens = tokenize(queryName);
+  const cTokens = tokenize(candidateName);
+  const j = jaccard(qTokens, cTokens);
+  const tri = cheapTrigramSimilarity(queryName, candidateName);
+
+  // small boost if an alt-name is close
+  let altBoost = 0;
+  for (const alt of candidateAlt) {
+    const triAlt = cheapTrigramSimilarity(queryName, alt);
+    altBoost = Math.max(altBoost, triAlt * 0.15);
+  }
+
+  return Math.max(j * 0.6 + tri * 0.4 + altBoost, 0);
+}
+
+/** -------------------------
+ * DB helpers
+ * ------------------------*/
+async function fetchCandidatePool(input: FindInput): Promise<CustomerRow[]> {
+  const name = s(input.customerName);
+  const email = lower(input.customerEmail);
+  const sender = lower(input.senderEmail);
+  const domain = emailDomain(email) || emailDomain(sender);
+  const custNo = s(input.customerNumber);
+
+  const clauses: any[] = [eq(customers.isActive, true)];
+
+  if (custNo) {
+    clauses.push(eq(customers.customerNumber, custNo));
+  }
+  if (name) {
+    const term = `%${name}%`;
+    clauses.push(
+      or(
+        ilike(customers.companyName, term),
+        sql`${customers.alternateNames}::text ILIKE ${term}`
+      )
+    );
+  }
+  if (email) {
+    clauses.push(ilike(customers.email, `%${email}%`));
+  }
+  if (domain) {
+    clauses.push(ilike(customers.email, `%@${domain}`));
+  }
+
+  // If only isActive, we still need a limit
+  const whereExpr = clauses.length > 1 ? and(...clauses) : eq(customers.isActive, true);
+
+  return await db
+    .select()
+    .from(customers)
+    .where(whereExpr)
+    .limit(500);
+}
+
+function dedupeById<T extends { id: string }>(rows: T[]) {
+  const seen = new Set<string>();
+  const out: T[] = [];
+  for (const r of rows) {
+    if (!seen.has(r.id)) { seen.add(r.id); out.push(r); }
+  }
+  return out;
+}
+
+/** -------------------------
+ * Scoring
+ * ------------------------*/
+function deterministicScore(input: FindInput, row: CustomerRow) {
+  const qNumber = s(input.customerNumber);
+  const qName = s(input.customerName);
+  const qEmail = lower(input.customerEmail);
+  const qSender = lower(input.senderEmail);
+
+  const qDomain = emailDomain(qEmail) || emailDomain(qSender);
+
+  const rowEmail = lower(row.email);
+  const rowDomain = emailDomain(row.email);
+  const rowAlt = Array.isArray(row.alternateNames) ? row.alternateNames.filter(Boolean) as string[] : [];
+
+  // 1) Exact customerNumber
+  if (qNumber && row.customerNumber && qNumber === s(row.customerNumber)) {
+    return { score: 1.0, rationale: "Exact customerNumber match" };
+  }
+
+  // 2) Exact email
+  if (qEmail && rowEmail && qEmail === rowEmail) {
+    return { score: 0.98, rationale: "Exact email match" };
+  }
+
+  // 3) Domain match
+  if (qDomain && rowDomain && qDomain === rowDomain) {
+    return { score: 0.92, rationale: "Email domain match" };
+  }
+
+  // 4) Exact company or alt-name (case-insensitive)
+  if (qName) {
+    const exactName = row.companyName?.toLowerCase() === qName.toLowerCase();
+    const exactAlt = rowAlt.some(a => a.toLowerCase() === qName.toLowerCase());
+    if (exactName || exactAlt) {
+      return { score: 0.90, rationale: exactName ? "Exact company match" : "Exact alt-name match" };
+    }
+
+    // 5) Root-brand match
+    const qRoot = rootBrand(qName);
+    const rRoot = rootBrand(row.companyName);
+    const altRootHit = rowAlt.some(a => rootBrand(a) === qRoot);
+    if (qRoot && (qRoot === rRoot || altRootHit)) {
+      return { score: 0.86, rationale: "Root brand match" };
+    }
+
+    // 6) Fuzzy company match
+    const fuzzy = scoreCompanySimilarity(qName, row.companyName ?? "", rowAlt);
+    if (fuzzy >= THRESHOLDS.FUZZY_HIGH) return { score: 0.85, rationale: "Fuzzy company match (high)" };
+    if (fuzzy >= THRESHOLDS.FUZZY_MED)  return { score: 0.78, rationale: "Fuzzy company match (med)" };
+    if (fuzzy >= THRESHOLDS.FUZZY_LOW)  return { score: 0.66, rationale: "Fuzzy company match (low)" };
+  }
+
+  return { score: 0.0, rationale: "No strong signals" };
+}
+
+/** -------------------------
+ * OpenAI disambiguation (optional)
+ * ------------------------*/
+async function llmDisambiguate(
+  input: FindInput,
+  candidates: Array<CustomerRow & { score: number; rationale: string }>
+): Promise<{ id: string; reason: string } | null> {
+  if (!openai || !process.env.OPENAI_API_KEY) return null;
+
+  try {
+    const sys = [
+      "You are a customer-disambiguation assistant for a promotional products supplier.",
+      "Choose the single best match or return NONE if uncertain.",
+      "Priority order: (1) exact email or email-domain, (2) ASI/PPAI (if present),",
+      "(3) exact company/alt-name, (4) root-brand, (5) fuzzy similarity.",
+      "Respond with a short reason."
+    ].join(" ");
+
+    const payload = {
+      query: {
+        customerNumber: s(input.customerNumber) || null,
+        customerName: s(input.customerName) || null,
+        customerEmail: lower(input.customerEmail) || null,
+        senderEmail: lower(input.senderEmail) || null,
+        asiNumber: s(input.asiNumber) || null,
+        ppaiNumber: s(input.ppaiNumber) || null,
+        address: input.address ?? null
+      },
+      candidates: candidates.map(c => ({
+        id: c.id,
+        customerNumber: c.customerNumber,
+        companyName: c.companyName,
+        alternateNames: c.alternateNames,
+        email: c.email,
+        phone: c.phone,
+        score: c.score,
+        rationale: c.rationale
+      }))
+    };
+
+    const completion = await openai.chat.completions.create({
+      model: process.env.OPENAI_MODEL || "gpt-4o-mini",
+      temperature: 0,
+      response_format: { type: "json_object" },
+      messages: [
+        { role: "system", content: sys },
+        { role: "user", content:
+`Query & candidates (JSON):
+${JSON.stringify(payload, null, 2)}
+
+Respond strictly as JSON:
+{"choiceId":"<ID or NONE>","reason":"<short>"}`
+        }
+      ]
+    });
+
+    const content = completion.choices?.[0]?.message?.content || "{}";
+    const parsed = JSON.parse(content);
+    if (parsed?.choiceId && parsed.choiceId !== "NONE") {
+      return { id: String(parsed.choiceId), reason: String(parsed.reason || "LLM disambiguation") };
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+/** -------------------------
+ * Service
+ * ------------------------*/
+export class OpenAICustomerFinderService {
+  /**
+   * Deterministic matching first; consult OpenAI only if needed.
+   */
+  async findCustomer(input: FindInput): Promise<FinderResult> {
+    const pool = dedupeById(await fetchCandidatePool(input));
+
+    if (pool.length === 0) {
+      return {
+        status: "not_found",
+        reason: "No candidates found",
+        confidence: 0,
+        needs_review: true
+      };
+    }
+
+    const scored = pool
+      .map(row => {
+        const { score, rationale } = deterministicScore(input, row);
+        return { ...row, score, rationale };
+      })
+      .sort((a, b) => (b.score - a.score));
+
+    const top = scored[0];
+    const second = scored[1];
+    const margin = second ? (top.score - second.score) : top.score;
+
+    // Clear deterministic winner
+    if (top.score >= THRESHOLDS.CLEAR_WINNER && margin >= THRESHOLDS.CLEAR_MARGIN) {
+      return {
+        status: "found",
+        reason: top.rationale || "Deterministic clear winner",
+        confidence: Math.min(1, top.score),
+        chosen: top,
+        candidates: scored.slice(0, 10),
+        debug: { topScore: top.score, nextScore: second?.score }
+      };
+    }
+
+    // If close but decent, try LLM
+    if (top.score >= THRESHOLDS.LLM_FLOOR && second && margin < THRESHOLDS.CLEAR_MARGIN) {
+      const shortlist = scored.slice(0, 5);
+      const llmPick = await llmDisambiguate(input, shortlist);
+      if (llmPick) {
+        const chosen = shortlist.find(c => c.id === llmPick.id);
+        if (chosen) {
+          return {
+            status: "found",
+            reason: `LLM disambiguated: ${llmPick.reason}`,
+            confidence: Math.max(chosen.score ?? 0.9, 0.9),
+            chosen,
+            candidates: shortlist,
+            debug: { topScore: top.score, nextScore: second?.score }
+          };
+        }
+      }
+    }
+
+    // Good deterministic winner without LLM or LLM not available
+    if (top.score >= THRESHOLDS.GOOD_WINNER && (!second || margin >= THRESHOLDS.GOOD_MARGIN)) {
+      return {
+        status: "found",
+        reason: top.rationale || "Deterministic winner",
+        confidence: top.score,
+        chosen: top,
+        candidates: scored.slice(0, 10),
+        debug: { topScore: top.score, nextScore: second?.score }
+      };
+    }
+
+    // Ambiguous → CSR review
+    return {
+      status: "ambiguous",
+      reason: "Multiple plausible matches or low confidence",
+      confidence: top?.score ?? 0,
+      candidates: scored.slice(0, 10),
+      needs_review: true,
+      debug: { topScore: top?.score, nextScore: second?.score }
+    };
+  }
+}

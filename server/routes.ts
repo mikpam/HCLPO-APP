@@ -1942,8 +1942,12 @@ ${messageToProcess.body || ''}`;
                   
                   // Update purchase order with validated line items
                   if (validatedItems.length > 0) {
+                    // CRITICAL FIX: Get current PO data to preserve customer_lookup that was added by customer finder
+                    const currentPO = await storage.getPurchaseOrder(purchaseOrder.id);
+                    const currentExtractedData = currentPO?.extractedData || extractedData;
+                    
                     const updatedDataWithSKUs = {
-                      ...extractedData,
+                      ...currentExtractedData,  // This preserves customer_lookup data
                       validatedLineItems: validatedItems,
                       skuValidationCompleted: true
                     };
@@ -2018,6 +2022,9 @@ ${messageToProcess.body || ''}`;
                     customer_number: customerLookup.customer_number
                   };
                   finalUpdateData.customerMeta = customerMeta;
+                  // CRITICAL FIX: Also set the main customer fields that the API returns
+                  finalUpdateData.customerNumber = customerMeta.customer_number;
+                  finalUpdateData.customer = customerMeta.customer_name;
                   console.log(`   ✅ Storing customer data from lookup: ${customerMeta.customer_name} (${customerMeta.customer_number})`);
                 } else if (currentPO?.status === 'customer_found' && currentPO?.extractedData?.purchaseOrder?.customer?.customerNumber) {
                   // Fallback: Check original extraction data location
@@ -2027,6 +2034,9 @@ ${messageToProcess.body || ''}`;
                     customer_number: customerData.customerNumber
                   };
                   finalUpdateData.customerMeta = customerMeta;
+                  // CRITICAL FIX: Also set the main customer fields that the API returns
+                  finalUpdateData.customerNumber = customerMeta.customer_number;
+                  finalUpdateData.customer = customerMeta.customer_name;
                   console.log(`   ✅ Storing customer data from extraction: ${customerMeta.customer_name} (${customerMeta.customer_number})`);
                 } else if (currentPO?.status === 'customer_found') {
                   console.log(`   ⚠️  Customer found but data structure missing`);
