@@ -1215,14 +1215,19 @@ totalPrice: ${item.totalPrice || 0}`;
               console.log(`   ✅ Found CNumber: ${cNumber}`);
               
               const contactFinder = new ContactFinderService();
-              const customer = await contactFinder.findCustomerByCNumber(cNumber);
+              const customer = await contactFinder.findContact({
+                netsuiteInternalId: cNumber
+              });
               
               if (customer) {
-                console.log(`   ✅ HCL Customer found: ${customer.customer_name} (${customer.customer_number})`);
+                console.log(`   ✅ HCL Customer found: ${customer.name} (${customer.netsuite_internal_id})`);
                 forwardedEmail = {
                   cNumber,
                   originalSender: messageToProcess.sender,
-                  extractedCustomer: customer
+                  extractedCustomer: {
+                    customer_name: customer.name,
+                    customer_number: customer.netsuite_internal_id
+                  }
                 };
               }
             } else {
