@@ -27,9 +27,24 @@ async function logProcessingError(
   additionalData?: any
 ) {
   try {
+    // Add user-friendly explanations for each error type
+    const errorExplanations: Record<string, string> = {
+      'preprocessing_failed': 'Initial email analysis failed. The AI could not determine if this email contains a purchase order or sample request.',
+      'classification_failed': 'Email classification failed. Unable to determine the correct processing route (TEXT_PO, ATTACHMENT_PO, etc.).',
+      'extraction_failed': 'Data extraction failed. Unable to extract purchase order information from email text or attachments.',
+      'customer_lookup_failed': 'Customer matching failed. Could not find this customer in the HCL database - may need manual customer setup.',
+      'sku_validation_failed': 'Product validation failed. Line items could not be validated against the HCL product catalog.',
+      'final_step_failed': 'Processing completion failed. An error occurred in the final stages of email processing.',
+      'gmail_labeling_failed': 'Gmail organization failed. Email was processed but could not be properly labeled for tracking.',
+      'ai_filter_failed': 'Attachment screening error. AI filter may have incorrectly rejected a valid purchase order document.'
+    };
+    
+    const explanation = errorExplanations[type] || 'An unexpected error occurred during email processing.';
+    
     const errorLog = await storage.createErrorLog({
       type,
       message,
+      explanation, // Add explanation to the database
       relatedPoId: poId || null,
       relatedPoNumber: poNumber || null,
       resolved: false,
@@ -45,6 +60,7 @@ async function logProcessingError(
     console.error(`   └─ Error ID: ${errorLog.id}`);
     console.error(`   └─ Email ID: ${emailId || 'N/A'}`);
     console.error(`   └─ PO Number: ${poNumber || 'N/A'}`);
+    console.error(`   └─ What this means: ${explanation}`);
     
     return errorLog;
   } catch (logError) {

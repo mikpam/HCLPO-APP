@@ -45,6 +45,7 @@ export const errorLogs = pgTable("error_logs", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   type: text("type").notNull(),
   message: text("message").notNull(),
+  explanation: text("explanation"), // User-friendly explanation of what the error means
   relatedPoId: varchar("related_po_id").references(() => purchaseOrders.id),
   relatedPoNumber: text("related_po_number"),
   resolved: boolean("resolved").notNull().default(false),
