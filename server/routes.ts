@@ -131,8 +131,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Process single email for development
   app.post("/api/emails/process-single", async (req, res) => {
     try {
-      // Fetch emails from Gmail
-      const messages = await gmailService.getMessages();
+      // Fetch unlabeled emails from Gmail
+      const messages = await gmailService.getMessages('in:inbox -label:processed -label:filtered');
       console.log(`Found ${messages.length} messages in inbox`);
 
       if (messages.length === 0) {
@@ -721,8 +721,8 @@ totalPrice: ${item.totalPrice || 0}`;
     try {
       console.log(`🔄 SSE PROCESSING: Starting real-time sequential email processing...`);
       
-      // First, count how many unprocessed emails exist
-      const allMessages = await gmailService.getMessages();
+      // First, count how many unprocessed emails exist - fetch only unlabeled emails
+      const allMessages = await gmailService.getMessages('in:inbox -label:processed -label:filtered');
       let unprocessedCount = 0;
       for (const message of allMessages) {
         const existingQueue = await storage.getEmailQueueByGmailId(message.id);
@@ -748,8 +748,8 @@ totalPrice: ${item.totalPrice || 0}`;
       
       // Process emails one at a time until no more unprocessed emails
       while (processedCount < maxEmails) {
-        // Fetch one unprocessed email
-        const messages = await gmailService.getMessages();
+        // Fetch unlabeled emails only
+        const messages = await gmailService.getMessages('in:inbox -label:processed -label:filtered');
         
         // Find first unprocessed email
         let messageToProcess = null;
@@ -1158,8 +1158,8 @@ totalPrice: ${item.totalPrice || 0}`;
   // Background processing function for auto-start - FULL PIPELINE
   async function processEmailsInBackground() {
     try {
-      // First, count how many unprocessed emails exist
-      const allMessages = await gmailService.getMessages();
+      // First, count how many unprocessed emails exist - fetch only unlabeled emails
+      const allMessages = await gmailService.getMessages('in:inbox -label:processed -label:filtered');
       let unprocessedCount = 0;
       for (const message of allMessages) {
         const hasProcessedLabel = message.labelIds?.includes('processed');
@@ -1175,8 +1175,8 @@ totalPrice: ${item.totalPrice || 0}`;
 
       // Process emails one at a time until no more unprocessed emails
       while (processedCount < maxEmails) {
-        // Fetch one unprocessed email
-        const messages = await gmailService.getMessages();
+        // Fetch unlabeled emails only
+        const messages = await gmailService.getMessages('in:inbox -label:processed -label:filtered');
         
         // Find first unprocessed email
         let messageToProcess = null;
@@ -1422,8 +1422,8 @@ totalPrice: ${item.totalPrice || 0}`;
     try {
       console.log(`🔄 NORMAL PROCESSING: Starting sequential email processing...`);
       
-      // First, count how many unprocessed emails exist
-      const allMessages = await gmailService.getMessages();
+      // First, count how many unprocessed emails exist - fetch only unlabeled emails
+      const allMessages = await gmailService.getMessages('in:inbox -label:processed -label:filtered');
       let unprocessedCount = 0;
       for (const message of allMessages) {
         const existingQueue = await storage.getEmailQueueByGmailId(message.id);
@@ -1441,8 +1441,8 @@ totalPrice: ${item.totalPrice || 0}`;
       
       // Process emails one at a time until no more unprocessed emails
       while (processedCount < maxEmails) {
-        // Fetch one unprocessed email
-        const messages = await gmailService.getMessages();
+        // Fetch unlabeled emails only
+        const messages = await gmailService.getMessages('in:inbox -label:processed -label:filtered');
         totalMessages = messages.length;
         
         // Find first unprocessed email
@@ -1827,7 +1827,7 @@ totalPrice: ${item.totalPrice || 0}`;
       }
 
       // Check if there are more unprocessed emails remaining
-      const finalMessages = await gmailService.getMessages();
+      const finalMessages = await gmailService.getMessages('in:inbox -label:processed -label:filtered');
       let remainingUnprocessed = 0;
       for (const message of finalMessages) {
         const existingQueue = await storage.getEmailQueueByGmailId(message.id);
