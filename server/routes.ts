@@ -9,6 +9,7 @@ import { aiService, type AIEngine } from "./services/ai-service";
 import { netsuiteService } from "./services/netsuite";
 import { openaiCustomerFinderService } from "./services/openai-customer-finder";
 import { skuValidator } from "./services/openai-sku-validator";
+import { ContactFinderService } from "./services/contact-finder";
 
 import { insertPurchaseOrderSchema, insertErrorLogSchema, classificationResultSchema } from "@shared/schema";
 import { z } from "zod";
@@ -1285,8 +1286,9 @@ totalPrice: ${item.totalPrice || 0}`;
                   console.log(`   └─ Customer: ${extractionResult.purchaseOrder?.customer?.company || 'Not specified'}`);
                   console.log(`   └─ Line Items: ${extractionResult.lineItems?.length || 0}`);
 
-                  // Extract and process contact information
+                  // Extract and validate contact information against HCL database
                   let contactData = null;
+                  let contactMeta = null;
                   if (extractionResult.purchaseOrder?.contact) {
                     console.log(`👤 CONTACT EXTRACTION:`);
                     console.log(`   └─ Contact Name: ${extractionResult.purchaseOrder.contact.name}`);
@@ -1294,6 +1296,30 @@ totalPrice: ${item.totalPrice || 0}`;
                     console.log(`   └─ Contact Phone: ${extractionResult.purchaseOrder.contact.phone}`);
                     console.log(`   └─ Job Title: ${extractionResult.purchaseOrder.contact.jobTitle}`);
                     contactData = extractionResult.purchaseOrder.contact;
+                    
+                    // Contact validation against HCL database (same as single processing)
+                    if (extractionResult.purchaseOrder.contact.name) {
+                      console.log(`🔍 CONTACT VALIDATION: Searching HCL database for: ${extractionResult.purchaseOrder.contact.name}`);
+                      
+                      try {
+                        const contactFinderService = new ContactFinderService();
+                        const contactMatch = await contactFinderService.findContact({
+                          name: extractionResult.purchaseOrder.contact.name,
+                          email: extractionResult.purchaseOrder.contact.email || '',
+                          phone: extractionResult.purchaseOrder.contact.phone || '',
+                          jobTitle: extractionResult.purchaseOrder.contact.jobTitle || ''
+                        });
+
+                        if (contactMatch) {
+                          contactMeta = contactMatch;
+                          console.log(`   ✅ Contact validated: ${contactMatch.name} (NetSuite ID: ${contactMatch.netsuite_internal_id})`);
+                        } else {
+                          console.log(`   ⚠️  Contact not found in HCL database: ${extractionResult.purchaseOrder.contact.name}`);
+                        }
+                      } catch (error) {
+                        console.error(`   ❌ Contact validation failed:`, error);
+                      }
+                    }
                   }
 
                   // Customer lookup using OpenAI customer finder
@@ -1359,6 +1385,7 @@ totalPrice: ${item.totalPrice || 0}`;
                   await storage.updatePurchaseOrder(purchaseOrder.id, {
                     extractedData: extractionResult,
                     customerMeta: finalCustomerData,
+                    contactMeta: contactMeta, // Include HCL contact validation result
                     status: finalStatus,
                     lineItems: validatedItems || extractionResult?.lineItems || [],
                     contact: extractionResult.purchaseOrder?.contact?.name || null
