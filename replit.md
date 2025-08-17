@@ -29,6 +29,7 @@ System Behavior: Automated email processing should start immediately when server
 - **Key Tables**: Users, Purchase Orders, Error Logs, Email Queue, System Health, Customers.
 - **Schema Features**: UUIDs, JSONB, timestamps, status enums, full-text search, array columns.
 - **Customer Indexing**: Multi-strategy lookup with database indexes, in-memory caching, and fuzzy matching.
+- **Error Tracking**: Comprehensive error logging system with detailed metadata, step tracking, and resolution status.
 
 ### Email Processing Pipeline
 - **Architecture**: Two-step processing mirroring Make.com workflow.
@@ -45,6 +46,14 @@ System Behavior: Automated email processing should start immediately when server
 - **Customer Lookup**: High-performance customer database with NetSuite integration for precise customer attribution, including advanced matching and disambiguation.
 - **SKU Validation**: Comprehensive SKU validation system integrating with a product items database, handling charge codes and fallbacks.
 - **Admin Portal**: Comprehensive PO management interface, customer management, and item management with CRUD functionality and role-based access control.
+- **Comprehensive Error Logging**: Advanced error tracking system that captures all processing failures with detailed context:
+    - **Pre-processing Failures**: Classification errors and filtering issues
+    - **Customer Lookup Failures**: Failed customer matches and new customer flags requiring review
+    - **SKU Validation Failures**: Missing line items and product validation errors
+    - **AI Extraction Failures**: Failed data extraction from emails and documents
+    - **AI Filter Failures**: Potential false negatives in attachment screening
+    - **Gmail Labeling Failures**: Email labeling and organization errors
+    - **Error Metadata**: Detailed context including email IDs, PO numbers, processing steps, and troubleshooting data
 
 ### Authentication & Authorization
 - **Strategy**: Session-based authentication with role-based access control.
@@ -67,3 +76,30 @@ System Behavior: Automated email processing should start immediately when server
 
 ### ERP Integration
 - **NetSuite REST API**: For sales order creation, including customer lookup/creation, shipping method mapping, and line item matching.
+
+## System Status & Recent Changes
+
+### Latest Updates (August 17, 2025)
+- **✅ Comprehensive Error Logging System**: Implemented complete error tracking across all processing stages
+  - All processing failures now logged to database with detailed context and metadata
+  - Customer lookup failures (not found, new customer flags) tracked for manual review
+  - SKU validation issues logged (missing line items, validation failures)
+  - AI extraction failures captured (no data extracted, route failures)
+  - AI attachment filtering logged for potential false negatives
+  - Gmail labeling failures tracked across SSE and auto-processing modes
+  - Error resolution workflow integrated with admin interface
+
+### System Performance
+- **Email Processing**: Automated background processing with 61+ POs processed successfully
+- **Customer Database**: 13,662+ HCL customer records with advanced matching algorithms
+- **SKU Validation**: 5,267+ product items with comprehensive fuzzy matching
+- **Real-time Dashboard**: Live processing visualization with synchronized animations
+- **Error Tracking**: Comprehensive logging ensures no failed items are lost
+
+### Architecture Highlights
+- **Dual AI Processing**: OpenAI for classification, Gemini for extraction
+- **Multi-format Support**: PDF, images, Word docs, Excel, CSV processing
+- **Intelligent Routing**: 5-route classification system (TEXT_PO, ATTACHMENT_PO, etc.)
+- **Forwarded Email Handling**: Advanced CNumber extraction from @highcaliberline.com domains
+- **Real-time Updates**: Dashboard polling with 3-second intervals for live status
+- **Mobile Responsive**: Complete mobile optimization across all interfaces
