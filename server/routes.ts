@@ -518,6 +518,46 @@ export async function registerRoutes(app: Express): Promise<Server> {
           effectiveSenderForPO = customerInfo.email || messageToProcess.sender;
         }
 
+        // SKU Validation for extracted line items
+        let validatedLineItems = null;
+        if (extractionResult?.lineItems?.length > 0) {
+          console.log(`\n🤖 OPENAI SKU VALIDATOR: Processing ${extractionResult.lineItems.length} extracted line items...`);
+          
+          try {
+            const { skuValidator } = await import('./services/openai-sku-validator');
+            
+            // Format line items for SKU validator (____-separated format)
+            const lineItemsForValidation = extractionResult.lineItems
+              .map(item => {
+                return `sku: ${item.sku || ''}
+description: ${item.description || ''}
+itemColor: ${item.itemColor || ''}
+quantity: ${item.quantity || 1}
+unitPrice: ${item.unitPrice || 0}
+totalPrice: ${item.totalPrice || 0}`;
+              })
+              .join('\n____\n');
+            
+            console.log(`   └─ Formatted ${extractionResult.lineItems.length} line items for validation`);
+            
+            // Validate line items with OpenAI
+            validatedLineItems = await skuValidator.validateLineItems(lineItemsForValidation);
+            
+            console.log(`   ✅ SKU validation complete: ${validatedLineItems.length} items processed`);
+            validatedLineItems.forEach((item, index) => {
+              const original = extractionResult.lineItems[index];
+              if (original?.sku !== item.finalSKU) {
+                console.log(`      ${index + 1}. "${original?.sku || item.sku}" → "${item.finalSKU}"`);
+              }
+            });
+            
+          } catch (error) {
+            console.error(`   ❌ SKU validation failed:`, error);
+            console.log(`   └─ Continuing with original line items`);
+            // Continue without validation rather than failing the entire process
+          }
+        }
+
         purchaseOrder = await storage.createPurchaseOrder({
           poNumber,
           emailId: messageToProcess.id,
@@ -531,6 +571,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
           originalJson: processingResult.classification,
           extractedData: {
             ...extractionResult,
+            // Override line items with validated ones if available
+            lineItems: validatedLineItems || extractionResult?.lineItems || [],
             forwardedEmail: isForwardedEmail ? {
               originalSender: messageToProcess.sender,
               cNumber: extractedCNumber,
@@ -538,6 +580,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
               extractedCustomer: customerInfo || hclCustomerLookup // Use Gemini extraction first, fallback to HCL lookup
             } : undefined
           },
+          lineItems: validatedLineItems || extractionResult?.lineItems || [], // Store validated line items in main lineItems field
           customerMeta: customerMeta, // Include HCL customer lookup result
           contactMeta: contactMeta, // Include HCL contact lookup result  
           contact: extractionResult?.purchaseOrder?.contact?.name || null // Store contact name for NetSuite
