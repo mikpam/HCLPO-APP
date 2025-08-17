@@ -1608,6 +1608,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 );
               }
 
+              console.log(`🚀 IMMEDIATE DEBUG: Just finished customer catch block - execution continues...`);
+
+              console.log(`🔍 FLOW DEBUG: Finished customer processing, about to start contact validation...`);
+              console.log(`🔍 FLOW DEBUG: extractedData exists:`, !!extractedData);
+              console.log(`🔍 FLOW DEBUG: purchaseOrder exists:`, !!purchaseOrder);
+
               // Contact validation using OpenAI contact validator
               console.log(`📞 CONTACT VALIDATION: Starting contact resolution...`);
               console.log(`   └─ Debug: extractedData?.customer:`, !!extractedData?.customer);
