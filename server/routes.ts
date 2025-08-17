@@ -1399,9 +1399,51 @@ totalPrice: ${item.totalPrice || 0}`;
                 }
               }
 
-              // Customer lookup and processing - temporarily disabled due to method resolution
-              // const updatedPO = await openaiCustomerFinderService.processCustomer(purchaseOrder.id);
-              console.log(`   ✅ Created purchase order ${poNumber} (Status: ${purchaseOrder.status})`);
+              // Customer lookup and processing
+              console.log(`🔍 CUSTOMER LOOKUP: Starting for PO ${purchaseOrder.id}`);
+              const updatedPO = await openaiCustomerFinderService.processPurchaseOrder(purchaseOrder.id);
+              console.log(`   ✅ Customer processing completed for PO ${poNumber} (Status: ${updatedPO?.status || purchaseOrder.status})`);
+
+              // Line items validation using OpenAI SKU validator
+              if (extractedData.lineItems && extractedData.lineItems.length > 0) {
+                console.log(`📦 LINE ITEMS VALIDATION: Starting for ${extractedData.lineItems.length} items`);
+                
+                try {
+                  const { OpenAISKUValidator } = await import('./services/openai-sku-validator');
+                  const skuValidator = new OpenAISKUValidator();
+                  
+                  // Create input string for validation (format expected by validator)
+                  const lineItemsString = extractedData.lineItems.map((item: any) => {
+                    return `SKU: ${item.sku || 'N/A'} | Description: ${item.description || 'N/A'} | Quantity: ${item.quantity || 0} | Color: ${item.itemColor || 'N/A'}`;
+                  }).join(' ____ ');
+                  
+                  const validatedItems = await skuValidator.validateLineItems(lineItemsString);
+                  console.log(`   ✅ Line items validated: ${validatedItems.length} items processed`);
+                  
+                  // Log validation results
+                  validatedItems.forEach((item: any, index: number) => {
+                    console.log(`   └─ Item ${index + 1}: ${item.finalSKU} - ${item.description} (Qty: ${item.quantity})`);
+                  });
+                  
+                  // Update purchase order with validated line items
+                  if (validatedItems.length > 0) {
+                    const updatedDataWithSKUs = {
+                      ...extractedData,
+                      validatedLineItems: validatedItems,
+                      skuValidationCompleted: true
+                    };
+                    
+                    await storage.updatePurchaseOrder(purchaseOrder.id, {
+                      extractedData: updatedDataWithSKUs
+                    });
+                  }
+                  
+                } catch (error) {
+                  console.error(`   ❌ Line items validation failed:`, error);
+                }
+              } else {
+                console.log(`   ⚠️  No line items found for validation`);
+              }
             } else {
               console.log(`   ❌ No data extracted from ${classification.route}`);
             }

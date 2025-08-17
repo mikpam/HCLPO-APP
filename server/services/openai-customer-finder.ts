@@ -151,7 +151,7 @@ export class OpenAICustomerFinderService {
     
     // Remove duplicates by customer_number
     const uniqueCandidates = allCandidates.reduce((acc, current) => {
-      const existing = acc.find(item => item.customerNumber === current.customerNumber);
+      const existing = acc.find((item: any) => item.customerNumber === current.customerNumber);
       if (!existing) {
         acc.push(current);
       }
@@ -319,6 +319,81 @@ Please analyze the input and return the correct customer match.`;
     } catch (error) {
       console.error(`   ❌ OpenAI API error:`, error);
       return { customer_number: "", customer_name: "" };
+    }
+  }
+  
+  // Process a purchase order by updating it with customer information
+  async processPurchaseOrder(purchaseOrderId: string): Promise<any> {
+    console.log(`🤖 CUSTOMER PROCESSING: Starting for PO ${purchaseOrderId}`);
+    
+    try {
+      // Get the purchase order
+      const purchaseOrder = await storage.getPurchaseOrder(purchaseOrderId);
+      if (!purchaseOrder) {
+        console.log(`   ❌ Purchase order not found: ${purchaseOrderId}`);
+        return null;
+      }
+      
+      // Extract customer information from the extracted data
+      const extractedData = purchaseOrder.extractedData as any;
+      if (!extractedData || !extractedData.purchaseOrder) {
+        console.log(`   ❌ No extracted data found for PO ${purchaseOrderId}`);
+        return purchaseOrder;
+      }
+      
+      const customerData = extractedData.purchaseOrder.customer;
+      if (!customerData) {
+        console.log(`   ❌ No customer data found in PO ${purchaseOrderId}`);
+        return purchaseOrder;
+      }
+      
+      // Prepare input for customer finder
+      const customerFinderInput: CustomerFinderInput = {
+        customerEmail: customerData.email,
+        senderEmail: purchaseOrder.sender,
+        customerName: customerData.company || customerData.customerName,
+        asiNumber: extractedData.purchaseOrder.asiNumber,
+        ppaiNumber: extractedData.purchaseOrder.ppaiNumber,
+        address: `${customerData.address1 || ''} ${customerData.city || ''} ${customerData.state || ''}`.trim()
+      };
+      
+      // Find the customer
+      const foundCustomer = await this.findCustomer(customerFinderInput);
+      
+      if (foundCustomer && foundCustomer.customer_number) {
+        console.log(`   ✅ Customer found: ${foundCustomer.customer_name} (${foundCustomer.customer_number})`);
+        
+        // Update the purchase order with customer information
+        const updatedData = {
+          ...extractedData,
+          customer_lookup: {
+            customer_number: foundCustomer.customer_number,
+            customer_name: foundCustomer.customer_name,
+            matched_at: new Date().toISOString()
+          }
+        };
+        
+        // Update the purchase order
+        const updatedPO = await storage.updatePurchaseOrder(purchaseOrderId, {
+          extractedData: updatedData,
+          status: 'customer_found'
+        });
+        
+        return updatedPO;
+      } else {
+        console.log(`   ⚠️  No customer match found for PO ${purchaseOrderId}`);
+        
+        // Update status to indicate no customer found
+        const updatedPO = await storage.updatePurchaseOrder(purchaseOrderId, {
+          status: 'customer_not_found'
+        });
+        
+        return updatedPO;
+      }
+      
+    } catch (error) {
+      console.error(`   ❌ Error processing customer for PO ${purchaseOrderId}:`, error);
+      return null;
     }
   }
 }
