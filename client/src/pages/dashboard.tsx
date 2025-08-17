@@ -60,39 +60,128 @@ export default function Dashboard() {
 
 
 
-  const processNormalEmails = useMutation({
-    mutationFn: async () => {
-      const response = await fetch("/api/emails/process", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-      });
-      
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
+  // Real-time processing state
+  const [processingState, setProcessingState] = useState({
+    isProcessing: false,
+    currentEmail: null as { sender?: string; subject?: string; number?: number } | null,
+    processedCount: 0,
+    totalCount: 0,
+    currentStep: ""
+  });
+
+  // SSE-based real-time processing
+  const startRealTimeProcessing = () => {
+    if (processingState.isProcessing) return;
+
+    setProcessingState(prev => ({ ...prev, isProcessing: true, currentStep: "Connecting..." }));
+
+    const eventSource = new EventSource("/api/emails/process/stream");
+
+    eventSource.onopen = () => {
+      console.log("SSE connection opened");
+      setProcessingState(prev => ({ ...prev, currentStep: "Connected - Starting processing..." }));
+    };
+
+    eventSource.addEventListener("progress", (event) => {
+      const data = JSON.parse(event.data);
+      console.log("SSE Progress:", data);
+
+      switch (data.type) {
+        case "started":
+          setProcessingState(prev => ({
+            ...prev,
+            totalCount: data.totalUnprocessed,
+            currentStep: data.message
+          }));
+          break;
+
+        case "processing_email":
+          setProcessingState(prev => ({
+            ...prev,
+            currentEmail: data.currentEmail,
+            processedCount: data.processedCount,
+            currentStep: `Processing: ${data.currentEmail.subject}`
+          }));
+          break;
+
+        case "email_completed":
+          setProcessingState(prev => ({
+            ...prev,
+            processedCount: data.processedCount,
+            currentStep: `Completed: ${data.currentEmail.subject}`
+          }));
+          // Reset current email after a short delay
+          setTimeout(() => {
+            setProcessingState(prev => ({ ...prev, currentEmail: null }));
+          }, 1000);
+          break;
+
+        case "completed":
+          setProcessingState(prev => ({
+            ...prev,
+            isProcessing: false,
+            currentStep: data.message,
+            currentEmail: null
+          }));
+          toast({
+            title: "Real-time Processing Complete",
+            description: `Processed ${data.processedCount} emails`,
+            duration: 8000,
+          });
+          // Refresh data
+          queryClient.invalidateQueries({ queryKey: ["/api/dashboard/metrics"] });
+          queryClient.invalidateQueries({ queryKey: ["/api/email-queue"] });
+          queryClient.invalidateQueries({ queryKey: ["/api/purchase-orders"] });
+          break;
+
+        case "no_more_emails":
+          setProcessingState(prev => ({
+            ...prev,
+            isProcessing: false,
+            currentStep: "No more emails to process",
+            currentEmail: null
+          }));
+          break;
       }
-      
-      return await response.json();
-    },
-    onSuccess: (result) => {
-      setLastProcessResult(result);
+    });
+
+    eventSource.addEventListener("error", (event) => {
+      const data = JSON.parse((event as any).data);
+      console.error("SSE Error:", data);
       toast({
-        title: "Normal Processing Complete",
-        description: `Processed ${result.processedEmails?.length || 0} emails`,
-        duration: 8000,
+        title: "Processing Error",
+        description: data.message || "Processing failed",
+        variant: "destructive",
       });
-      
-      // Refresh dashboard metrics, email queue, and purchase orders
-      queryClient.invalidateQueries({ queryKey: ["/api/dashboard/metrics"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/email-queue"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/purchase-orders"] });
-    },
-    onError: (error: any) => {
-      console.error("Normal processing error:", error);
+      setProcessingState(prev => ({ ...prev, isProcessing: false, currentEmail: null }));
+      eventSource.close();
+    });
+
+    eventSource.addEventListener("close", (event) => {
+      console.log("SSE closed:", event);
+      eventSource.close();
+      setProcessingState(prev => ({ ...prev, isProcessing: false, currentEmail: null }));
+    });
+
+    eventSource.onerror = (error) => {
+      console.error("SSE connection error:", error);
+      eventSource.close();
+      setProcessingState(prev => ({ ...prev, isProcessing: false, currentEmail: null }));
       toast({
-        title: "Normal Processing Failed",
-        description: error.message || "Failed to process emails",
+        title: "Connection Error",
+        description: "Lost connection to processing stream",
+        variant: "destructive",
+      });
+    };
+  };
+
+  const processNormalEmails = useMutation({
+    mutationFn: startRealTimeProcessing,
+    onError: (error: any) => {
+      console.error("Failed to start real-time processing:", error);
+      toast({
+        title: "Failed to Start Processing",
+        description: error.message || "Could not start real-time processing",
         variant: "destructive",
       });
     },
@@ -192,11 +281,12 @@ export default function Dashboard() {
 
         {/* Email Processing Animation */}
         <EmailProcessingAnimation 
-          isProcessing={processSingleEmail.isPending || processNormalEmails.isPending}
-          processedCount={lastProcessResult?.processedEmails?.length || 0}
-          totalCount={lastProcessResult?.total || 0}
-          currentStep={processSingleEmail.isPending ? "Processing single email..." : 
-                      processNormalEmails.isPending ? "Processing emails normally..." : ""}
+          isProcessing={processingState.isProcessing || processSingleEmail.isPending}
+          processedCount={processingState.processedCount || lastProcessResult?.processedEmails?.length || 0}
+          totalCount={processingState.totalCount || lastProcessResult?.total || 0}
+          currentStep={processingState.currentStep || 
+                      (processSingleEmail.isPending ? "Processing single email..." : "")}
+          currentEmail={processingState.currentEmail}
           finalStatus={lastProcessResult?.details?.purchaseOrder?.status || "pending"}
           onAnimationComplete={() => {
             console.log("Animation completed with status:", lastProcessResult?.details?.purchaseOrder?.status);

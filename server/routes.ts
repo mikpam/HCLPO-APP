@@ -672,6 +672,377 @@ totalPrice: ${item.totalPrice || 0}`;
     }
   });
 
+  // SSE endpoint for real-time processing updates
+  app.get("/api/emails/process/stream", async (req, res) => {
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection', 'keep-alive');
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Headers', 'Cache-Control');
+
+    const sendEvent = (event: string, data: any) => {
+      res.write(`event: ${event}\n`);
+      res.write(`data: ${JSON.stringify(data)}\n\n`);
+    };
+
+    try {
+      console.log(`🔄 SSE PROCESSING: Starting real-time sequential email processing...`);
+      
+      // First, count how many unprocessed emails exist
+      const allMessages = await gmailService.getMessages();
+      let unprocessedCount = 0;
+      for (const message of allMessages) {
+        const existingQueue = await storage.getEmailQueueByGmailId(message.id);
+        if (!existingQueue) {
+          unprocessedCount++;
+        }
+      }
+      
+      console.log(`📊 SSE PROCESSING: Found ${unprocessedCount} unprocessed emails out of ${allMessages.length} total emails`);
+      
+      // Send initial status
+      sendEvent('progress', {
+        type: 'started',
+        totalUnprocessed: unprocessedCount,
+        totalEmails: allMessages.length,
+        message: `Found ${unprocessedCount} unprocessed emails to process`
+      });
+
+      let processedCount = 0;
+      let totalMessages = allMessages.length;
+      const processedEmails = [];
+      const maxEmails = Math.max(100, unprocessedCount); // Process all unprocessed emails, with minimum safety limit
+      
+      // Process emails one at a time until no more unprocessed emails
+      while (processedCount < maxEmails) {
+        // Fetch one unprocessed email
+        const messages = await gmailService.getMessages();
+        
+        // Find first unprocessed email
+        let messageToProcess = null;
+        for (const message of messages) {
+          const existingQueue = await storage.getEmailQueueByGmailId(message.id);
+          if (!existingQueue) {
+            messageToProcess = message;
+            break;
+          }
+        }
+        
+        // No more unprocessed emails
+        if (!messageToProcess) {
+          console.log(`📧 SSE PROCESSING: No more unprocessed emails found`);
+          sendEvent('progress', {
+            type: 'no_more_emails',
+            processedCount,
+            message: 'No more unprocessed emails found'
+          });
+          break;
+        }
+
+        // Send current email update
+        sendEvent('progress', {
+          type: 'processing_email',
+          currentEmail: {
+            number: processedCount + 1,
+            sender: messageToProcess.sender,
+            subject: messageToProcess.subject
+          },
+          processedCount,
+          totalUnprocessed: unprocessedCount,
+          message: `Processing email ${processedCount + 1}: ${messageToProcess.subject}`
+        });
+
+        console.log(`\n📧 SSE PROCESSING EMAIL ${processedCount + 1}: "${messageToProcess.subject}"`);
+        console.log(`   └─ From: ${messageToProcess.sender}`);
+
+        try {
+          // Process this email with full pipeline (copy from regular processing)
+          const gmailMessage = await gmailService.getMessageDetails(messageToProcess.id);
+          
+          if (!gmailMessage) {
+            console.error(`❌ Could not fetch Gmail message details for ${messageToProcess.id}`);
+            throw new Error("Failed to fetch message details");
+          }
+
+          console.log(`   └─ Attachments: ${gmailMessage.attachments?.length || 0}`);
+
+          // Create email queue entry with processing status
+          const emailQueue = await storage.createEmailQueue({
+            gmailId: messageToProcess.id,
+            sender: gmailMessage.sender,
+            recipient: gmailMessage.recipient || "",
+            subject: gmailMessage.subject || "",
+            body: gmailMessage.body || "",
+            receivedAt: gmailMessage.receivedAt,
+            status: "processing",
+            classification: null,
+            extractedData: null,
+            processingSteps: null,
+            attachments: gmailMessage.attachments || []
+          });
+
+          // Store attachments first
+          if (gmailMessage.attachments && gmailMessage.attachments.length > 0) {
+            console.log(`📎 ATTACHMENT ANALYSIS: Found ${gmailMessage.attachments.length} total attachments`);
+            
+            for (const attachment of gmailMessage.attachments) {
+              try {
+                if (attachment.data) {
+                  const objectStorageService = new ObjectStorageService();
+                  
+                  // Store attachment
+                  const cleanFilename = sanitizeFilename(attachment.filename);
+                  const objectPath = await objectStorageService.storeAttachment(
+                    attachment.data,
+                    `${messageToProcess.id}_${cleanFilename}`,
+                    attachment.mimeType
+                  );
+                  
+                  // Update attachment with object path
+                  attachment.objectPath = objectPath;
+                  
+                  console.log(`   └─ ${attachment.filename}: ${attachment.mimeType} (${attachment.data.length} bytes) [Has ID]`);
+                  console.log(`      ✅ Stored attachment: ${attachment.filename} at ${objectPath}`);
+                } else {
+                  console.log(`   └─ ${attachment.filename}: ${attachment.mimeType} (no data) [Missing Data]`);
+                }
+              } catch (error) {
+                console.error(`   └─ ❌ Failed to store attachment ${attachment.filename}:`, error);
+              }
+            }
+          }
+
+          // Try to preserve email as .eml file
+          try {
+            await gmailService.preserveEmail(messageToProcess.id, gmailMessage);
+          } catch (error) {
+            console.error("   ❌ Failed to preserve email:", error);
+          }
+
+          // Send processing step update
+          sendEvent('progress', {
+            type: 'processing_step',
+            currentEmail: {
+              number: processedCount + 1,
+              sender: messageToProcess.sender,
+              subject: messageToProcess.subject
+            },
+            step: 'AI Classification',
+            message: `Running AI classification for email ${processedCount + 1}`
+          });
+
+          // AI Processing Pipeline
+          console.log(`🤖 AI PROCESSING: Starting two-step analysis...`);
+          
+          // Step 1: Pre-processing
+          const preprocessing = await openaiService.preprocessEmail(gmailMessage);
+          console.log(`📊 EMAIL SIZE: Original body ${gmailMessage.body?.length || 0} chars, truncated to ${preprocessing.emailBody?.length || 0} chars`);
+          console.log(`   └─ Pre-processing: ${preprocessing.classification} (Continue: ${preprocessing.shouldProceed})`);
+
+          // Step 2: If pre-processing says proceed, do detailed analysis
+          let classification = null;
+          if (preprocessing.shouldProceed) {
+            classification = await openaiService.classifyEmailDetails(gmailMessage, preprocessing);
+            console.log(`   └─ Detailed route: ${classification.route} (${Math.round(classification.confidence)}%)`);
+          }
+
+          // Generate PO number
+          console.log(`📋 PO NUMBER ASSIGNMENT:`);
+          const poNumber = generatePONumber();
+          console.log(`   ✅ Generating PO number: ${poNumber}`);
+
+          let purchaseOrder = null;
+          if (preprocessing.shouldProceed && classification) {
+            // Send extraction step update
+            sendEvent('progress', {
+              type: 'processing_step',
+              currentEmail: {
+                number: processedCount + 1,
+                sender: messageToProcess.sender,
+                subject: messageToProcess.subject
+              },
+              step: 'Data Extraction',
+              message: `Extracting purchase order data from email ${processedCount + 1}`
+            });
+
+            // Process based on classification route
+            if (classification.route === "ATTACHMENT_PO" || classification.route === "ATTACHMENT_SAMPLE") {
+              console.log(`🧠 GEMINI EXTRACTION: Processing ${classification.route}...`);
+              
+              if (gmailMessage.attachments && gmailMessage.attachments.length > 0) {
+                const prioritizedAttachment = prioritizeAttachments(gmailMessage.attachments)[0];
+                
+                if (prioritizedAttachment) {
+                  console.log(`   └─ Processing prioritized attachment: ${prioritizedAttachment.filename}`);
+                  
+                  if (prioritizedAttachment.data) {
+                    const extractedData = await geminiService.extractPOFromDocument(
+                      prioritizedAttachment.data,
+                      prioritizedAttachment.mimeType,
+                      prioritizedAttachment.filename
+                    );
+                    
+                    if (extractedData) {
+                      purchaseOrder = await storage.createPurchaseOrder({
+                        poNumber,
+                        clientPONumber: extractedData.client_po_number || null,
+                        customerName: extractedData.customer?.name || null,
+                        status: "pending_review",
+                        extractedData: extractedData,
+                        emailQueueId: emailQueue.id,
+                        createdAt: new Date(),
+                        updatedAt: new Date()
+                      });
+                    }
+                  }
+                }
+              }
+            } else if (classification.route === "TEXT_PO" || classification.route === "TEXT_SAMPLE") {
+              console.log(`🧠 GEMINI EXTRACTION: Processing ${classification.route}...`);
+              
+              const extractedData = await geminiService.extractPOFromText(
+                gmailMessage.body || "",
+                gmailMessage.sender,
+                gmailMessage.subject || ""
+              );
+              
+              if (extractedData) {
+                purchaseOrder = await storage.createPurchaseOrder({
+                  poNumber,
+                  clientPONumber: extractedData.client_po_number || null,
+                  customerName: extractedData.customer?.name || null,
+                  status: "pending_review",
+                  extractedData: extractedData,
+                  emailQueueId: emailQueue.id,
+                  createdAt: new Date(),
+                  updatedAt: new Date()
+                });
+              }
+            }
+          }
+
+          // Customer lookup and SKU validation
+          if (purchaseOrder) {
+            // Send customer lookup step update
+            sendEvent('progress', {
+              type: 'processing_step',
+              currentEmail: {
+                number: processedCount + 1,
+                sender: messageToProcess.sender,
+                subject: messageToProcess.subject
+              },
+              step: 'Customer Lookup',
+              message: `Looking up customer information for email ${processedCount + 1}`
+            });
+
+            console.log(`🔍 OPENAI CUSTOMER LOOKUP:`);
+            const customerName = purchaseOrder.extractedData?.customer?.name || purchaseOrder.customerName;
+            console.log(`   └─ Searching HCL database for: ${customerName || 'No customer name'}`);
+
+            const updatedPO = await openaiCustomerFinder.processPurchaseOrder(purchaseOrder.id);
+            
+            console.log(`   ✅ Updated purchase order ${poNumber} (Status: ${updatedPO?.status || 'unknown'})`);
+          }
+
+          // Update Gmail labels
+          console.log(`Updating Gmail labels for message ${messageToProcess.id}`);
+          
+          const classificationLabel = preprocessing.classification.toLowerCase().replace(/\s+/g, '-');
+          const aiLabelName = `ai-${classificationLabel}`;
+          
+          console.log(`   └─ Adding '${aiLabelName}' label (AI classification: ${preprocessing.classification})`);
+          console.log(`   └─ Adding 'processed' label (passed preprocessing: ${preprocessing.classification})`);
+          
+          try {
+            await gmailService.updateLabels(messageToProcess.id, [aiLabelName, 'processed']);
+            console.log(`   ✅ Successfully updated Gmail labels`);
+          } catch (error) {
+            console.error(`   ❌ Failed to update Gmail labels:`, error);
+          }
+
+          // Update email queue status
+          await storage.updateEmailQueue(emailQueue.id, {
+            status: "completed",
+            classification: preprocessing.classification,
+            extractedData: purchaseOrder?.extractedData || null,
+            processingSteps: {
+              preprocessing,
+              classification,
+              purchaseOrder: purchaseOrder ? {
+                id: purchaseOrder.id,
+                poNumber: purchaseOrder.poNumber,
+                status: purchaseOrder.status
+              } : null
+            }
+          });
+
+          console.log(`   ✅ Completed processing email ${processedCount + 1}`);
+          
+          // Send completion update for this email
+          sendEvent('progress', {
+            type: 'email_completed',
+            currentEmail: {
+              number: processedCount + 1,
+              sender: messageToProcess.sender,
+              subject: messageToProcess.subject
+            },
+            processedCount: processedCount + 1,
+            purchaseOrder: purchaseOrder ? {
+              poNumber: purchaseOrder.poNumber,
+              status: purchaseOrder.status
+            } : null,
+            message: `Completed processing email ${processedCount + 1}`
+          });
+
+          processedEmails.push({
+            id: messageToProcess.id,
+            sender: messageToProcess.sender,
+            subject: messageToProcess.subject,
+            classification: preprocessing.classification,
+            poNumber: purchaseOrder?.poNumber || null,
+            status: purchaseOrder?.status || "no_po_created"
+          });
+
+          processedCount++;
+          
+        } catch (error) {
+          console.error(`❌ SSE Error processing email ${messageToProcess?.id}:`, error);
+          
+          sendEvent('progress', {
+            type: 'email_error',
+            currentEmail: {
+              number: processedCount + 1,
+              sender: messageToProcess.sender,
+              subject: messageToProcess.subject
+            },
+            error: error instanceof Error ? error.message : 'Unknown error',
+            message: `Error processing email ${processedCount + 1}`
+          });
+          
+          processedCount++; // Still count to avoid infinite loop
+        }
+      }
+
+      // Send final completion
+      sendEvent('progress', {
+        type: 'completed',
+        processedCount,
+        totalEmails: totalMessages,
+        message: `Completed processing ${processedCount} emails`
+      });
+
+      sendEvent('close', { message: 'Processing complete' });
+      
+    } catch (error) {
+      console.error('SSE Processing error:', error);
+      sendEvent('error', { 
+        message: error instanceof Error ? error.message : 'Processing failed' 
+      });
+    }
+
+    res.end();
+  });
+
   // Email processing - Sequential processing like single email but iterate through all
   app.post("/api/emails/process", async (req, res) => {
     try {

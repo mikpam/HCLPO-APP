@@ -8,6 +8,11 @@ interface EmailProcessingAnimationProps {
   processedCount?: number;
   totalCount?: number;
   currentStep?: string;
+  currentEmail?: {
+    sender?: string;
+    subject?: string;
+    number?: number;
+  };
   finalStatus?: "ready_for_netsuite" | "new_customer" | "pending_review" | "ready_for_extraction" | "pending";
   onAnimationComplete?: () => void;
 }
@@ -17,6 +22,7 @@ function EmailProcessingAnimation({
   processedCount = 0, 
   totalCount = 0,
   currentStep = "",
+  currentEmail,
   finalStatus = "pending",
   onAnimationComplete
 }: EmailProcessingAnimationProps) {
@@ -250,7 +256,7 @@ function EmailProcessingAnimation({
           Email Processing Pipeline
           {(isProcessing || internalProcessing) && (
             <Badge variant="secondary" className="animate-pulse">
-              Processing {processedCount}/{totalCount}
+              {currentEmail ? `Processing Email ${currentEmail.number || processedCount + 1}` : `Processing ${processedCount}/${totalCount}`}
             </Badge>
           )}
           {showCompleted && (
@@ -262,6 +268,26 @@ function EmailProcessingAnimation({
       </CardHeader>
       <CardContent>
         <div className="space-y-4">
+          {/* Current Email Display */}
+          {(isProcessing || internalProcessing) && currentEmail && (
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+              <div className="flex items-center gap-2 text-sm">
+                <Mail className="h-4 w-4 text-blue-600" />
+                <span className="font-medium text-blue-900">Currently Processing:</span>
+              </div>
+              <div className="mt-1 ml-6">
+                <div className="text-sm text-blue-800">
+                  <strong>From:</strong> {currentEmail.sender}
+                </div>
+                {currentEmail.subject && (
+                  <div className="text-sm text-blue-700 mt-1 truncate">
+                    <strong>Subject:</strong> {currentEmail.subject}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+          
           {/* Processing Steps */}
           <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 xl:grid-cols-9 gap-3">
             {steps.map((step, index) => {
