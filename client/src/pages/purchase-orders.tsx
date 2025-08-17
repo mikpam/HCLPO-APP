@@ -511,8 +511,12 @@ export default function PurchaseOrdersPage() {
                             </div>
                           </div>
                         </TableCell>
-                        <TableCell className="max-w-[80px]">
-                          <div className="flex items-center space-x-1">
+                        <TableCell className={(() => {
+                          const emailCellId = `email-${order.id}`;
+                          const isExpanded = expandedCells.has(emailCellId);
+                          return isExpanded ? 'min-w-[180px] max-w-[200px]' : 'max-w-[80px]';
+                        })()}>
+                          <div className="flex items-start space-x-1">
                             {(() => {
                               const emailCellId = `email-${order.id}`;
                               const isExpanded = expandedCells.has(emailCellId);
@@ -521,7 +525,7 @@ export default function PurchaseOrdersPage() {
                               return (
                                 <>
                                   <span 
-                                    className={`text-xs text-gray-600 ${isExpanded ? '' : 'truncate'} block ${isExpanded ? 'max-w-none' : 'max-w-[50px]'}`}
+                                    className={`text-xs text-gray-600 ${isExpanded ? 'break-all' : 'truncate'} block ${isExpanded ? 'max-w-[160px]' : 'max-w-[50px]'}`}
                                     title={customer.email}
                                   >
                                     {customer.email}
@@ -531,7 +535,7 @@ export default function PurchaseOrdersPage() {
                                       variant="ghost"
                                       size="sm"
                                       onClick={() => toggleCellExpansion(emailCellId)}
-                                      className="h-4 w-4 p-0 flex-shrink-0 text-gray-400 hover:text-gray-600"
+                                      className="h-4 w-4 p-0 flex-shrink-0 text-gray-400 hover:text-gray-600 mt-0"
                                     >
                                       {isExpanded ? <Minus className="h-3 w-3" /> : <Plus className="h-3 w-3" />}
                                     </Button>
