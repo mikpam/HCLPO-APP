@@ -157,7 +157,10 @@ export class OpenAICustomerFinderService {
     
     // Adventures In Advertising / AIA
     if (customerName.includes('adventures in advertising') || customerName.includes('aia') ||
-        customerEmail.includes('adventures') || senderEmail.includes('adventures')) {
+        customerEmail.includes('adventures') || senderEmail.includes('adventures') ||
+        customerName.includes('kmoa') || input.customerName?.toLowerCase().includes('kmoa') ||
+        customerEmail.includes('aiacorporation') || senderEmail.includes('aiacorporation') ||
+        customerEmail.includes('mypromooffice') || senderEmail.includes('mypromooffice')) {
       return { customer_number: "C12808", customer_name: "Adventures In Advertising" };
     }
     
@@ -312,7 +315,7 @@ When several candidates share the same root brand but differ by qualifiers:
 - When in doubt, choose the root account
 
 BRAND OVERRIDES (mandatory):
-- Adventures In Advertising / AIA: {"customer_number": "C12808", "customer_name": "Adventures In Advertising"}
+- Adventures In Advertising / AIA / KMOA / @mypromooffice.com: {"customer_number": "C12808", "customer_name": "Adventures In Advertising"}
 - Staples (no Canada qualifier & not .ca): {"customer_number": "C1967", "customer_name": "Staples"}
 - Staples with Canada qualifier or .ca email: {"customer_number": "C136577", "customer_name": "Staples / Canada"}
 - Quality Logo Products or @qualitylogoproducts.com: {"customer_number": "C7657", "customer_name": "Quality Logo Products"}
