@@ -61,13 +61,21 @@ export default function ItemsPage() {
 
   // Fetch items with pagination and search
   const { data: itemsData, isLoading } = useQuery<ItemsResponse>({
-    queryKey: ["/api/items", { 
-      page: currentPage, 
-      search: searchTerm, 
-      sortBy, 
-      sortOrder,
-      limit: 50000 // Large limit to show all items like customers
-    }],
+    queryKey: ["/api/items", currentPage, searchTerm, sortBy, sortOrder],
+    queryFn: async () => {
+      const params = new URLSearchParams({
+        page: currentPage.toString(),
+        limit: "50000",
+        search: searchTerm,
+        sortBy,
+        sortOrder,
+      });
+      const response = await fetch(`/api/items?${params}`);
+      if (!response.ok) {
+        throw new Error("Failed to fetch items");
+      }
+      return response.json();
+    },
     refetchInterval: 30000, // Refresh every 30 seconds
   });
 
