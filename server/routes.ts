@@ -1261,10 +1261,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
           const gmailMessage = messageToProcess;
           const emailId = messageToProcess.id;
 
-          // Declare validator variables at the start of each email processing cycle
-          let customerMeta = null;
-          let contactMeta = null;
-          let validationCompleted = false;
+          // MICROSERVICE-STYLE VALIDATION CONTEXT: Eliminates race conditions with encapsulated state
+          const validationContext = {
+            customerMeta: null as any,
+            contactMeta: null as any,
+            lineItemsMeta: null as any,
+            validationCompleted: false,
+            processingId: `email-${Date.now()}-${processedCount + 1}`,
+            timestamp: new Date().toISOString(),
+            currentPO: null as any,
+            dataStructure: 'v2' // Track data structure version for consistency
+          };
 
           // Enhanced forwarded email detection from HCL
           let forwardedEmail = null;
@@ -1596,18 +1603,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
                   
                   // Try to get customer data from extractedData first
                   if (currentPO?.extractedData?.purchaseOrder?.customer?.customerNumber) {
-                    customerMeta = {
+                    validationContext.customerMeta = {
                       customer_name: currentPO.extractedData.purchaseOrder.customer.company || 'Unknown',
                       customer_number: currentPO.extractedData.purchaseOrder.customer.customerNumber
                     };
-                    console.log(`   ✅ Captured customer data from extractedData: ${customerMeta.customer_name} (${customerMeta.customer_number})`);
+                    console.log(`   ✅ Captured customer data from extractedData: ${validationContext.customerMeta.customer_name} (${validationContext.customerMeta.customer_number})`);
                   } else if (currentPO?.extractedData?.customer) {
-                    // Fallback to older structure
-                    customerMeta = {
+                    // Fallback to older structure  
+                    validationContext.customerMeta = {
                       customer_name: currentPO.extractedData.customer.company || 'Unknown',
                       customer_number: currentPO.extractedData.customer.customerNumber || currentPO.extractedData.customer.customernumber || 'Unknown'
                     };
-                    console.log(`   ✅ Captured customer data from legacy extractedData: ${customerMeta.customer_name} (${customerMeta.customer_number})`);
+                    console.log(`   ✅ Captured customer data from legacy extractedData: ${validationContext.customerMeta.customer_name} (${validationContext.customerMeta.customer_number})`);
                   } else {
                     console.log(`   ⚠️  Customer found but data not in expected extractedData structure`);
                   }
@@ -1687,7 +1694,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
                   console.log(`   🔍 DEBUG: messageToProcess.sender: "${messageToProcess.sender}"`);
                   
                   const contactValidator = new OpenAIContactValidatorService();
-                  contactMeta = await contactValidator.validateContact({
+                  validationContext.contactMeta = await contactValidator.validateContact({
                     extractedData: extractedData,
                     senderName: senderName,
                     senderEmail: messageToProcess.sender,
@@ -1695,15 +1702,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
                     companyId: extractedData?.customer?.customernumber
                   });
                   
-                  console.log(`   ✅ Contact validated: ${contactMeta.name} <${contactMeta.email}>`);
-                  console.log(`   └─ Method: ${contactMeta.match_method} (Confidence: ${contactMeta.confidence})`);
-                  console.log(`   └─ Role: ${contactMeta.role}`);
+                  console.log(`   ✅ Contact validated: ${validationContext.contactMeta.name} <${validationContext.contactMeta.email}>`);
+                  console.log(`   └─ Method: ${validationContext.contactMeta.match_method} (Confidence: ${validationContext.contactMeta.confidence})`);
+                  console.log(`   └─ Role: ${validationContext.contactMeta.role}`);
                   
                   // Update purchase order with validated contact info
                   await storage.updatePurchaseOrder(purchaseOrder.id, {
                     extractedData: {
                       ...extractedData,
-                      validatedContact: contactMeta,
+                      validatedContact: validationContext.contactMeta,
                       contactValidationCompleted: true
                     }
                   });
@@ -1803,13 +1810,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 );
               }
 
-              // Mark that ALL validation is complete
-              validationCompleted = true;
+              // Mark that ALL validation is complete in context
+              validationContext.validationCompleted = true;
+              validationContext.currentPO = purchaseOrder;
               console.log(`🏁 VALIDATION COMPLETED: All validators finished for PO ${poNumber}`);
 
               // CRITICAL: Final deterministic update with ALL validator results (ONLY for validated emails)
-              if (validationCompleted) {
-                console.log(`🔍 FINAL UPDATE CHECK: validationCompleted=${validationCompleted}`);
+              if (validationContext.validationCompleted) {
+                console.log(`🔍 FINAL UPDATE CHECK: validationCompleted=${validationContext.validationCompleted}, processingId=${validationContext.processingId}`);
                 console.log(`🔄 FINAL UPDATE: Storing all validator results to main database fields`);
                 
                 // Get latest purchase order data to ensure we have all validator results
@@ -1831,11 +1839,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
                   console.log(`   ⚠️  Customer not found, status: ${currentPO?.status || 'unknown'}`);
                 }
                 
-                // CONTACT DATA: Already captured by contact validator  
-                if (contactMeta) {
-                  console.log(`   ✅ Storing contact data: ${contactMeta.name} <${contactMeta.email}>`);
-                  finalUpdateData.contact = contactMeta.email || null;
-                  finalUpdateData.contactMeta = contactMeta;
+                // CONTACT DATA: Already captured by contact validator in context
+                if (validationContext.contactMeta) {
+                  console.log(`   ✅ Storing contact data: ${validationContext.contactMeta.name} <${validationContext.contactMeta.email}>`);
+                  finalUpdateData.contact = validationContext.contactMeta.email || null;
+                  finalUpdateData.contactMeta = validationContext.contactMeta;
                 } else {
                   console.log(`   ⚠️  No contact data captured`);
                 }
