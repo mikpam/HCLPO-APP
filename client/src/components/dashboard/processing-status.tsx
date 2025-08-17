@@ -124,21 +124,7 @@ export default function ProcessingStatus() {
         </div>
       </div>
 
-      {/* Progress Bar */}
-      {status.totalEmails > 0 && (
-        <div className="mb-3">
-          <div className="flex justify-between text-sm text-gray-500 mb-1">
-            <span>Progress</span>
-            <span>{Math.round((status.emailNumber / status.totalEmails) * 100)}%</span>
-          </div>
-          <div className="w-full bg-gray-200 rounded-full h-2">
-            <div 
-              className="bg-blue-600 h-2 rounded-full transition-all duration-500"
-              style={{ width: `${Math.min((status.emailNumber / status.totalEmails) * 100, 100)}%` }}
-            ></div>
-          </div>
-        </div>
-      )}
+
 
       {/* Current Email */}
       {status.currentEmail && (
