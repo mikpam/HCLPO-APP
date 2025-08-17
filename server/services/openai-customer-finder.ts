@@ -382,8 +382,16 @@ Please analyze the input and return the correct customer match.`;
         
         const result = JSON.parse(jsonContent);
         
-        // Validate the response format
+        // Validate the response format and customer number format
         if (typeof result.customer_number === 'string' && typeof result.customer_name === 'string') {
+          // Validate customer number format: must be empty OR start with "C" followed by digits
+          const isValidCustomerNumber = result.customer_number === '' || /^C\d+$/.test(result.customer_number);
+          
+          if (!isValidCustomerNumber) {
+            console.log(`   ❌ Invalid customer number format from OpenAI: "${result.customer_number}" - must be empty or start with "C" followed by digits`);
+            return { customer_number: "", customer_name: "" };
+          }
+          
           console.log(`   ✅ Successfully parsed OpenAI response: ${result.customer_name} (${result.customer_number})`);
           return result;
         } else {
