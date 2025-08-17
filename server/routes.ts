@@ -983,8 +983,8 @@ totalPrice: ${item.totalPrice || 0}`;
           console.log(`   └─ Adding 'processed' label (passed preprocessing: ${preprocessing.classification})`);
           
           try {
-            await gmailService.addLabelToMessage(messageToProcess.id, aiLabelName);
-            await gmailService.addLabelToMessage(messageToProcess.id, 'processed');
+            await gmailService.addLabelToEmail(messageToProcess.id, aiLabelName);
+            await gmailService.addLabelToEmail(messageToProcess.id, 'processed');
             console.log(`   ✅ Successfully updated Gmail labels`);
           } catch (error) {
             console.error(`   ❌ Failed to update Gmail labels:`, error);
@@ -1384,14 +1384,14 @@ totalPrice: ${item.totalPrice || 0}`;
             const classificationName = preprocessing.classification || preprocessing.response || 'none-of-these';
             const aiLabelName = `ai-${classificationName.toLowerCase().replace(/\s+/g, '-')}`;
             console.log(`   └─ Adding '${aiLabelName}' label (AI classification: ${classificationName})`);
-            await gmailService.addLabelToMessage(messageToProcess.id, aiLabelName);
+            await gmailService.addLabelToEmail(messageToProcess.id, aiLabelName);
             
             if (preprocessing.shouldProceed) {
               console.log(`   └─ Adding 'processed' label (passed preprocessing: ${classificationName})`);
-              await gmailService.addLabelToMessage(messageToProcess.id, 'processed');
+              await gmailService.addLabelToEmail(messageToProcess.id, 'processed');
             } else {
               console.log(`   └─ Adding 'filtered' label (blocked by preprocessing: ${classificationName})`);  
-              await gmailService.addLabelToMessage(messageToProcess.id, 'filtered');
+              await gmailService.addLabelToEmail(messageToProcess.id, 'filtered');
             }
             console.log(`   ✅ Successfully updated Gmail labels`);
           } catch (error) {
