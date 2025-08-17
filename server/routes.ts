@@ -1568,35 +1568,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 }
               });
 
-              // Contact validation and customer lookup
-              if (purchaseOrder && extractedData.contact) {
-                console.log('👤 CONTACT EXTRACTION:');
-                console.log(`   └─ Contact Name: ${extractedData.contact.name || ''}`);
-                console.log(`   └─ Contact Email: ${extractedData.contact.email || ''}`);
-                console.log(`   └─ Contact Phone: ${extractedData.contact.phone || ''}`);
-                console.log(`   └─ Job Title: ${extractedData.contact.jobTitle || ''}`);
-                
-                if (extractedData.contact.name || messageToProcess.sender) {
-                  console.log(`🔍 OPENAI CONTACT VALIDATION: Using comprehensive contact resolution...`);
-                  const contactValidator = new OpenAIContactValidatorService();
-                  const validatedContact = await contactValidator.validateContact({
-                    extractedData: extractedData,
-                    senderName: messageToProcess.senderName || extractedData.contact?.name,
-                    senderEmail: messageToProcess.sender,
-                    resolvedCustomerId: purchaseOrder.customerMeta?.customer_number,
-                    companyId: purchaseOrder.customerMeta?.customer_number
-                  });
-                  
-                  console.log(`   ✅ Contact validated: ${validatedContact.name} <${validatedContact.email}>`);
-                  console.log(`   └─ Method: ${validatedContact.match_method} (Confidence: ${validatedContact.confidence})`);
-                  console.log(`   └─ Role: ${validatedContact.role}`);
-                  
-                  // Store validated contact in purchase order
-                  await storage.updatePurchaseOrder(purchaseOrder.id, {
-                    contactMeta: validatedContact
-                  });
-                }
-              }
+
 
               // Customer lookup and processing
               console.log(`🔍 CUSTOMER LOOKUP: Starting for PO ${purchaseOrder.id}`);
@@ -1634,6 +1606,62 @@ export async function registerRoutes(app: Express): Promise<Server> {
                   poNumber,
                   { error: customerError instanceof Error ? customerError.message : customerError }
                 );
+              }
+
+              // Contact validation using OpenAI contact validator
+              console.log(`📞 CONTACT VALIDATION: Starting contact resolution...`);
+              
+              // Update status for contact validation
+              updateProcessingStatus({
+                currentStep: "contact_validation",
+                currentPO: poNumber,
+              });
+              
+              let contactMeta = null;
+              if (extractedData?.customer || extractedData?.contact || messageToProcess.sender) {
+                try {
+                  const contactValidator = new OpenAIContactValidatorService();
+                  const validatedContact = await contactValidator.validateContact({
+                    extractedData: extractedData,
+                    senderName: extractedData?.customer?.firstName && extractedData?.customer?.lastName 
+                      ? `${extractedData.customer.firstName} ${extractedData.customer.lastName}`
+                      : extractedData?.contact?.name || messageToProcess.senderName,
+                    senderEmail: messageToProcess.sender,
+                    resolvedCustomerId: extractedData?.customer?.customernumber,
+                    companyId: extractedData?.customer?.customernumber
+                  });
+                  
+                  contactMeta = validatedContact;
+                  console.log(`   ✅ Contact validated: ${validatedContact.name} <${validatedContact.email}>`);
+                  console.log(`   └─ Method: ${validatedContact.match_method} (Confidence: ${validatedContact.confidence})`);
+                  console.log(`   └─ Role: ${validatedContact.role}`);
+                  
+                  // Update purchase order with validated contact info
+                  await storage.updatePurchaseOrder(purchaseOrder.id, {
+                    extractedData: {
+                      ...extractedData,
+                      validatedContact: validatedContact,
+                      contactValidationCompleted: true
+                    }
+                  });
+                  
+                } catch (error) {
+                  console.error(`   ❌ Contact validation failed:`, error);
+                  await logProcessingError(
+                    'contact_validation_failed',
+                    `Contact validation failed for PO ${poNumber}: ${error instanceof Error ? error.message : 'Unknown error'}`,
+                    messageToProcess.id,
+                    purchaseOrder.id,
+                    poNumber,
+                    { 
+                      error: error instanceof Error ? error.message : error,
+                      hasCustomerData: !!extractedData?.customer,
+                      senderEmail: messageToProcess.sender
+                    }
+                  );
+                }
+              } else {
+                console.log(`   ⚠️  No contact information available for validation`);
               }
 
               // Line items validation using OpenAI SKU validator

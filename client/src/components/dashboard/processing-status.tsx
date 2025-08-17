@@ -25,6 +25,8 @@ export default function ProcessingStatus() {
         return "Extracting Data";
       case "customer_validation":
         return "Validating Customer";
+      case "contact_validation":
+        return "Validating Contact";
       case "line_item_validation":
         return "Validating Items";
       case "completed":
@@ -44,6 +46,8 @@ export default function ProcessingStatus() {
         return "fas fa-magic";
       case "customer_validation":
         return "fas fa-user-check";
+      case "contact_validation":
+        return "fas fa-address-card";
       case "line_item_validation":
         return "fas fa-tasks";
       case "completed":
