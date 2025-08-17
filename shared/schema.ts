@@ -100,6 +100,23 @@ export const contacts = pgTable("contacts", {
   updatedAt: timestamp("updated_at").defaultNow(),
 });
 
+// HCL Items table for SKU validation and product information
+export const items = pgTable("items", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  netsuiteId: text("netsuite_id").notNull().unique(), // NetSuite Internal ID
+  finalSku: text("final_sku").notNull(),
+  displayName: text("display_name").notNull(),
+  subType: text("sub_type"),
+  description: text("description"),
+  basePrice: text("base_price"), // Keep as text since some might be empty
+  taxSchedule: text("tax_schedule"),
+  planner: text("planner"),
+  isActive: boolean("is_active").default(true),
+  searchVector: text("search_vector"), // For full-text search
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
 export const systemHealth = pgTable("system_health", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   service: text("service").notNull().unique(),
@@ -148,7 +165,17 @@ export const insertContactSchema = createInsertSchema(contacts).omit({
   createdAt: true,
   updatedAt: true,
 });
+
+export type Item = typeof items.$inferSelect;
+export const insertItemSchema = createInsertSchema(items).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
 export type InsertCustomer = z.infer<typeof insertCustomerSchema>;
+export type InsertContact = z.infer<typeof insertContactSchema>;
+export type InsertItem = z.infer<typeof insertItemSchema>;
 
 export type PurchaseOrder = typeof purchaseOrders.$inferSelect;
 export type InsertPurchaseOrder = z.infer<typeof insertPurchaseOrderSchema>;
