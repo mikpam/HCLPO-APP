@@ -579,28 +579,29 @@ export default function PurchaseOrdersPage() {
                               
                               if (lineItems.length === 0) return <span className="text-gray-400 text-sm">No items</span>;
                               
-                              // Filter items with valid FinalSkus and show only FinalSku + quantity
-                              const validatedItems = lineItems.filter((item: any) => item.finalSKU && item.finalSKU.trim() !== '');
-                              
-                              if (validatedItems.length === 0) {
-                                return <span className="text-gray-400 text-sm">No validated SKUs</span>;
-                              }
-
-                              const displayItems = isExpanded ? validatedItems : validatedItems.slice(0, 2);
-                              const hasMore = validatedItems.length > 2;
+                              // Show all processed line items - validated and unvalidated
+                              const displayItems = isExpanded ? lineItems : lineItems.slice(0, 2);
+                              const hasMore = lineItems.length > 2;
                               
                               return (
                                 <div className="space-y-1">
-                                  {displayItems.map((item: any, index: number) => (
-                                    <div key={index} className="flex items-center justify-between text-xs bg-blue-50 rounded px-2 py-1">
-                                      <span className="font-mono font-medium text-blue-700">{item.finalSKU}</span>
-                                      <span className="text-gray-600 ml-2 flex-shrink-0">Qty: {item.quantity || 0}</span>
-                                    </div>
-                                  ))}
+                                  {displayItems.map((item: any, index: number) => {
+                                    const hasValidSKU = item.finalSKU && item.finalSKU.trim() !== '';
+                                    const displaySKU = hasValidSKU ? item.finalSKU : item.sku;
+                                    const bgColor = hasValidSKU ? 'bg-blue-50' : 'bg-orange-50';
+                                    const textColor = hasValidSKU ? 'text-blue-700' : 'text-orange-700';
+                                    
+                                    return (
+                                      <div key={index} className={`flex items-center justify-between text-xs ${bgColor} rounded px-2 py-1`}>
+                                        <span className={`font-mono font-medium ${textColor}`}>{displaySKU}</span>
+                                        <span className="text-gray-600 ml-2 flex-shrink-0">Qty: {item.quantity || 0}</span>
+                                      </div>
+                                    );
+                                  })}
                                   {hasMore && (
                                     <div className="flex items-center space-x-1">
                                       {!isExpanded && (
-                                        <span className="text-xs text-gray-500">+{validatedItems.length - 2} more</span>
+                                        <span className="text-xs text-gray-500">+{lineItems.length - 2} more</span>
                                       )}
                                       <Button
                                         variant="ghost"
@@ -767,28 +768,29 @@ export default function PurchaseOrdersPage() {
                               
                               if (lineItems.length === 0) return <span className="text-gray-400 text-xs">No items</span>;
                               
-                              // Filter items with valid FinalSkus and show only FinalSku + quantity
-                              const validatedItems = lineItems.filter((item: any) => item.finalSKU && item.finalSKU.trim() !== '');
-                              
-                              if (validatedItems.length === 0) {
-                                return <span className="text-gray-400 text-xs">No validated SKUs</span>;
-                              }
-
-                              const displayItems = isExpanded ? validatedItems : validatedItems.slice(0, 2);
-                              const hasMore = validatedItems.length > 2;
+                              // Show all processed line items - validated and unvalidated
+                              const displayItems = isExpanded ? lineItems : lineItems.slice(0, 2);
+                              const hasMore = lineItems.length > 2;
                               
                               return (
                                 <div className="space-y-1">
-                                  {displayItems.map((item: any, index: number) => (
-                                    <div key={index} className="flex items-center justify-between text-xs bg-blue-50 rounded px-2 py-1">
-                                      <span className="font-mono font-medium text-blue-700">{item.finalSKU}</span>
-                                      <span className="text-gray-600 ml-2 flex-shrink-0">Qty: {item.quantity || 0}</span>
-                                    </div>
-                                  ))}
+                                  {displayItems.map((item: any, index: number) => {
+                                    const hasValidSKU = item.finalSKU && item.finalSKU.trim() !== '';
+                                    const displaySKU = hasValidSKU ? item.finalSKU : item.sku;
+                                    const bgColor = hasValidSKU ? 'bg-blue-50' : 'bg-orange-50';
+                                    const textColor = hasValidSKU ? 'text-blue-700' : 'text-orange-700';
+                                    
+                                    return (
+                                      <div key={index} className={`flex items-center justify-between text-xs ${bgColor} rounded px-2 py-1`}>
+                                        <span className={`font-mono font-medium ${textColor}`}>{displaySKU}</span>
+                                        <span className="text-gray-600 ml-2 flex-shrink-0">Qty: {item.quantity || 0}</span>
+                                      </div>
+                                    );
+                                  })}
                                   {hasMore && (
                                     <div className="flex items-center space-x-1">
                                       {!isExpanded && (
-                                        <span className="text-xs text-gray-500">+{validatedItems.length - 2} more</span>
+                                        <span className="text-xs text-gray-500">+{lineItems.length - 2} more</span>
                                       )}
                                       <Button
                                         variant="ghost"
