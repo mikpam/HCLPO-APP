@@ -31,15 +31,19 @@ export class OpenAICustomerFinderService {
     console.log(`🤖 OPENAI CUSTOMER FINDER: Starting lookup with input:`, input);
     
     try {
+      // Clean and validate input data
+      const cleanedInput = this.cleanInputData(input);
+      console.log(`   🧹 Cleaned input:`, cleanedInput);
+      
       // Step 0: Check brand overrides first for reliability
-      const brandOverride = this.checkBrandOverrides(input);
+      const brandOverride = this.checkBrandOverrides(cleanedInput);
       if (brandOverride) {
         console.log(`   ✅ Brand override found: ${brandOverride.customer_name} (${brandOverride.customer_number})`);
         return { ...brandOverride, status: 'found', confidence: 1.0, method: 'brand_override' };
       }
       
       // Step 1: Generate search queries using expansion strategies
-      const searchQueries = this.generateSearchQueries(input);
+      const searchQueries = this.generateSearchQueries(cleanedInput);
       console.log(`   📋 Generated ${searchQueries.length} search queries:`, searchQueries);
       
       // Step 2: Retrieve top candidates from database
@@ -52,7 +56,7 @@ export class OpenAICustomerFinderService {
       }
       
       // Step 3: Use OpenAI to intelligently match with sophisticated prompt
-      const result = await this.matchWithOpenAI(input, candidates);
+      const result = await this.matchWithOpenAI(cleanedInput, candidates);
       console.log(`   ✅ OpenAI result:`, result);
       
       // Add status and confidence based on result
@@ -189,6 +193,37 @@ export class OpenAICustomerFinderService {
     
     return null; // No brand override found
   }
+
+  private cleanInputData(input: CustomerFinderInput): CustomerFinderInput {
+    return {
+      customerName: input.customerName?.trim(),
+      customerEmail: this.cleanEmail(input.customerEmail),
+      senderEmail: this.cleanEmail(input.senderEmail),
+      asiNumber: input.asiNumber?.trim(),
+      ppaiNumber: input.ppaiNumber?.trim(),
+      address: input.address?.trim()
+    };
+  }
+
+  private cleanEmail(email?: string): string | undefined {
+    if (!email) return undefined;
+    
+    // Remove nested quotes and angle brackets
+    let cleaned = email.trim();
+    
+    // Handle malformed emails like: "Name" <"Name" <email@domain.com>>
+    const emailMatch = cleaned.match(/<([^<>]+@[^<>]+)>/);
+    if (emailMatch) {
+      return emailMatch[1];
+    }
+    
+    // Handle simple email addresses
+    if (cleaned.includes('@')) {
+      return cleaned;
+    }
+    
+    return cleaned;
+  }
   
   private async retrieveCandidates(queries: string[]): Promise<any[]> {
     const allCandidates: any[] = [];
@@ -301,7 +336,7 @@ Please analyze the input and return the correct customer match.`;
         messages: [
           {
             role: "system",
-            content: "You are a customer matching assistant. Follow the prompt instructions exactly. Return only valid JSON with no markdown formatting."
+            content: "You are a customer matching assistant. Follow the prompt instructions exactly. Return ONLY raw JSON without any markdown code blocks, backticks, or formatting. Do not wrap your response in ```json or any other markers."
           },
           {
             role: "user",
@@ -318,12 +353,28 @@ Please analyze the input and return the correct customer match.`;
         return { customer_number: "", customer_name: "" };
       }
 
-      // Parse the JSON response
+      // Parse the JSON response - handle markdown code blocks
       try {
-        const result = JSON.parse(content);
+        let jsonContent = content;
+        
+        // Remove markdown code blocks if present
+        if (content.includes('```json')) {
+          const jsonMatch = content.match(/```json\s*([\s\S]*?)\s*```/);
+          if (jsonMatch) {
+            jsonContent = jsonMatch[1].trim();
+          }
+        } else if (content.includes('```')) {
+          const codeMatch = content.match(/```\s*([\s\S]*?)\s*```/);
+          if (codeMatch) {
+            jsonContent = codeMatch[1].trim();
+          }
+        }
+        
+        const result = JSON.parse(jsonContent);
         
         // Validate the response format
         if (typeof result.customer_number === 'string' && typeof result.customer_name === 'string') {
+          console.log(`   ✅ Successfully parsed OpenAI response: ${result.customer_name} (${result.customer_number})`);
           return result;
         } else {
           console.log(`   ⚠️  Invalid response format from OpenAI:`, result);
@@ -331,6 +382,7 @@ Please analyze the input and return the correct customer match.`;
         }
       } catch (parseError) {
         console.log(`   ⚠️  Failed to parse OpenAI response as JSON:`, content);
+        console.log(`   🔍 Raw content:`, content);
         return { customer_number: "", customer_name: "" };
       }
       

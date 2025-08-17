@@ -592,11 +592,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
               customerMeta = customerMatch;
               console.log(`   ✅ OpenAI found HCL customer: ${customerMatch.customer_name} (${customerMatch.customer_number})`);
               console.log(`   └─ Method: ${customerMatch.method} (Confidence: ${Math.round((customerMatch.confidence || 0) * 100)}%)`);
-            } else if (customerMatch.status === 'not_found') {
-              console.log(`   ❌ OpenAI found no confident match for: ${extractionResult.purchaseOrder.customer.company}`);
-              console.log(`   🆕 FLAGGING AS NEW CUSTOMER for CSR review`);
-            } else if (customerMatch.status === 'error') {
-              console.log(`   ⚠️  OpenAI customer finder encountered an error`);
+            } else {
+              console.log(`   ❌ Customer lookup failed (Status: ${customerMatch.status})`);
+              console.log(`   └─ Input: ${extractionResult.purchaseOrder.customer.company}`);
               console.log(`   🆕 FLAGGING AS NEW CUSTOMER for CSR review`);
             }
           } catch (error) {
@@ -2255,10 +2253,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
                       finalCustomerData = customerResult;
                       console.log(`   ✅ OpenAI found HCL customer: ${finalCustomerData.customer_name} (${finalCustomerData.customer_number})`);
                       console.log(`   └─ Method: ${customerResult.method} (Confidence: ${Math.round((customerResult.confidence || 0) * 100)}%)`);
-                    } else if (customerResult.status === 'not_found') {
-                      console.log(`   ❌ Customer not found in HCL database, will flag as new_customer`);
-                    } else if (customerResult.status === 'error') {
-                      console.log(`   ⚠️  Customer finder error, will flag as new_customer`);
+                    } else {
+                      console.log(`   ❌ Customer lookup failed (Status: ${customerResult.status})`);
+                      console.log(`   └─ Input: ${extractionResult.purchaseOrder?.customer?.company || 'No customer name'}`);
+                      console.log(`   🆕 Will flag as new_customer for CSR review`);
                     }
                   }
 
