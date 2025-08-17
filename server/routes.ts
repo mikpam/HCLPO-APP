@@ -591,12 +591,22 @@ totalPrice: ${item.totalPrice || 0}`;
             validatedLineItems = await skuValidator.validateLineItems(lineItemsForValidation);
             
             console.log(`   ✅ SKU validation complete: ${validatedLineItems.length} items processed`);
-            validatedLineItems.forEach((item, index) => {
-              const original = extractionResult.lineItems[index];
-              if (original?.sku !== item.finalSKU) {
-                console.log(`      ${index + 1}. "${original?.sku || item.sku}" → "${item.finalSKU}"`);
-              }
-            });
+            
+            // Merge validated SKUs back into original line items structure
+            if (validatedLineItems && extractionResult.lineItems) {
+              extractionResult.lineItems.forEach((originalItem: any, index: number) => {
+                const validatedItem = validatedLineItems[index];
+                if (validatedItem) {
+                  // Preserve original structure and add finalSKU
+                  originalItem.finalSKU = validatedItem.finalSKU || '';
+                  
+                  // Log validation results
+                  if (originalItem.sku !== validatedItem.finalSKU && validatedItem.finalSKU) {
+                    console.log(`      ${index + 1}. "${originalItem.sku || validatedItem.sku}" → "${validatedItem.finalSKU}"`);
+                  }
+                }
+              });
+            }
             
           } catch (error) {
             console.error(`   ❌ SKU validation failed:`, error);
@@ -618,8 +628,7 @@ totalPrice: ${item.totalPrice || 0}`;
           originalJson: processingResult.classification,
           extractedData: {
             ...extractionResult,
-            // Override line items with validated ones if available
-            lineItems: validatedLineItems || extractionResult?.lineItems || [],
+            // Line items now have finalSKU merged in from validation
             forwardedEmail: isForwardedEmail ? {
               originalSender: messageToProcess.sender,
               cNumber: extractedCNumber,
@@ -627,7 +636,7 @@ totalPrice: ${item.totalPrice || 0}`;
               extractedCustomer: customerInfo || hclCustomerLookup // Use Gemini extraction first, fallback to HCL lookup
             } : undefined
           },
-          lineItems: validatedLineItems || extractionResult?.lineItems || [], // Store validated line items in main lineItems field
+          lineItems: extractionResult?.lineItems || [], // Store line items with merged finalSKU values
           customerMeta: customerMeta, // Include HCL customer lookup result
           contactMeta: contactMeta, // Include HCL contact lookup result  
           contact: extractionResult?.purchaseOrder?.contact?.name || null // Store contact name for NetSuite
@@ -1369,13 +1378,21 @@ totalPrice: ${item.totalPrice || 0}`;
                     validatedItems = await skuValidator.validateLineItems(lineItemsForValidation);
                     console.log(`   ✅ SKU validation complete: ${validatedItems.length} items processed`);
                     
-                    // Log validation results
-                    validatedItems.forEach((item: any, index: number) => {
-                      const original = extractionResult.lineItems[index];
-                      if (original?.sku !== item.finalSKU) {
-                        console.log(`      ${index + 1}. "${original?.sku || item.sku}" → "${item.finalSKU}"`);
-                      }
-                    });
+                    // Merge validated SKUs back into original line items structure
+                    if (validatedItems && extractionResult.lineItems) {
+                      extractionResult.lineItems.forEach((originalItem: any, index: number) => {
+                        const validatedItem = validatedItems[index];
+                        if (validatedItem) {
+                          // Preserve original structure and add finalSKU
+                          originalItem.finalSKU = validatedItem.finalSKU || '';
+                          
+                          // Log validation results
+                          if (originalItem.sku !== validatedItem.finalSKU && validatedItem.finalSKU) {
+                            console.log(`      ${index + 1}. "${originalItem.sku || validatedItem.sku}" → "${validatedItem.finalSKU}"`);
+                          }
+                        }
+                      });
+                    }
                   }
 
                   // Determine final status
@@ -1387,7 +1404,7 @@ totalPrice: ${item.totalPrice || 0}`;
                     customerMeta: finalCustomerData,
                     contactMeta: contactMeta, // Include HCL contact validation result
                     status: finalStatus,
-                    lineItems: validatedItems || extractionResult?.lineItems || [],
+                    lineItems: extractionResult?.lineItems || [], // Store line items with merged finalSKU values
                     contact: extractionResult.purchaseOrder?.contact?.name || null
                   });
 
