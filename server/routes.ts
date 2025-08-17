@@ -1894,22 +1894,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
 
 
-          // Update Gmail labels
-          console.log(`Updating Gmail labels for message ${messageToProcess.id}`);
+          // FINAL GMAIL LABELING: Remove all labels and add only 'processed' or 'filtered'
           try {
-            const classificationName = preprocessing.classification || preprocessing.response || 'none-of-these';
-            const aiLabelName = `ai-${classificationName.toLowerCase().replace(/\s+/g, '-')}`;
-            console.log(`   └─ Adding '${aiLabelName}' label (AI classification: ${classificationName})`);
-            await gmailService.addLabelToEmail(messageToProcess.id, aiLabelName);
-            
-            if (preprocessing.shouldProceed) {
-              console.log(`   └─ Adding 'processed' label (passed preprocessing: ${classificationName})`);
-              await gmailService.addLabelToEmail(messageToProcess.id, 'processed');
-            } else {
-              console.log(`   └─ Adding 'filtered' label (blocked by preprocessing: ${classificationName})`);  
-              await gmailService.addLabelToEmail(messageToProcess.id, 'filtered');
-            }
-            console.log(`   ✅ Successfully updated Gmail labels`);
+            // Use finalProcessing=true to remove ALL labels and add only final status
+            await gmailService.markAsProcessed(messageToProcess.id, {
+              shouldProceed: preprocessing.shouldProceed,
+              response: preprocessing.classification || preprocessing.response || 'none-of-these'
+            }, true); // finalProcessing = true
           } catch (error) {
             console.error(`   ❌ Failed to update Gmail labels:`, error);
             await logProcessingError(

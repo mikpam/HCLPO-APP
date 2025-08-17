@@ -280,60 +280,91 @@ export class GmailService {
     }
   }
 
-  async markAsProcessed(messageId: string, preprocessingResult?: { shouldProceed: boolean; response: string }): Promise<void> {
+  async markAsProcessed(messageId: string, preprocessingResult?: { shouldProceed: boolean; response: string }, finalProcessing: boolean = false): Promise<void> {
     try {
       console.log(`Updating Gmail labels for message ${messageId}`);
-      
-      // Get label IDs (these should exist in the Gmail account)
-      const unprocessedId = await this.getLabelId('unprocessed');
       
       let removeLabels: string[] = [];
       let addLabels: string[] = [];
       
-      // Always remove 'unprocessed' label if it exists
-      if (unprocessedId) {
-        removeLabels.push(unprocessedId);
-      }
-      
-      if (preprocessingResult) {
-        // Add preprocessing classification label for auditing
-        const classificationLabelMap: { [key: string]: string } = {
-          'Purchase Order': 'ai-purchase-order',
-          'Sample Request': 'ai-sample-request', 
-          'Rush Order': 'ai-rush-order',
-          'Follow Up': 'ai-follow-up',
-          'None of these': 'ai-none-of-these'
-        };
+      if (finalProcessing) {
+        // FINAL PROCESSING: Remove ALL labels and add only final status ('processed' or 'filtered')
+        const finalStatus = preprocessingResult?.shouldProceed ? 'processed' : 'filtered';
+        console.log(`   🔄 FINAL PROCESSING: Removing all labels and adding only '${finalStatus}'`);
         
-        const classificationLabel = classificationLabelMap[preprocessingResult.response];
-        if (classificationLabel) {
-          const classificationLabelId = await this.getLabelId(classificationLabel);
-          if (classificationLabelId) {
-            addLabels.push(classificationLabelId);
-            console.log(`   └─ Adding '${classificationLabel}' label (AI classification: ${preprocessingResult.response})`);
+        // Get current message to see all existing labels
+        const message = await this.gmail.users.messages.get({
+          userId: 'me',
+          id: messageId
+        });
+        
+        // Remove ALL current labels (except system labels like INBOX, SENT, etc.)
+        const currentLabels = message.data.labelIds || [];
+        const systemLabels = ['INBOX', 'SENT', 'DRAFT', 'SPAM', 'TRASH', 'UNREAD', 'STARRED', 'IMPORTANT'];
+        
+        for (const labelId of currentLabels) {
+          if (!systemLabels.includes(labelId)) {
+            removeLabels.push(labelId);
           }
         }
         
-        if (preprocessingResult.shouldProceed) {
-          // Email passed preprocessing - will be processed further
+        // Add only the final status label
+        const finalLabelId = await this.getLabelId(finalStatus);
+        if (finalLabelId) {
+          addLabels.push(finalLabelId);
+          console.log(`   └─ Removing all labels and adding only '${finalStatus}' (final output reached)`);
+        }
+        
+      } else {
+        // INTERMEDIATE PROCESSING: Normal label management
+        // Get label IDs (these should exist in the Gmail account)
+        const unprocessedId = await this.getLabelId('unprocessed');
+        
+        // Always remove 'unprocessed' label if it exists
+        if (unprocessedId) {
+          removeLabels.push(unprocessedId);
+        }
+        
+        if (preprocessingResult) {
+          // Add preprocessing classification label for auditing
+          const classificationLabelMap: { [key: string]: string } = {
+            'Purchase Order': 'ai-purchase-order',
+            'Sample Request': 'ai-sample-request', 
+            'Rush Order': 'ai-rush-order',
+            'Follow Up': 'ai-follow-up',
+            'None of these': 'ai-none-of-these'
+          };
+          
+          const classificationLabel = classificationLabelMap[preprocessingResult.response];
+          if (classificationLabel) {
+            const classificationLabelId = await this.getLabelId(classificationLabel);
+            if (classificationLabelId) {
+              addLabels.push(classificationLabelId);
+              console.log(`   └─ Adding '${classificationLabel}' label (AI classification: ${preprocessingResult.response})`);
+            }
+          }
+          
+          if (preprocessingResult.shouldProceed) {
+            // Email passed preprocessing - will be processed further
+            const processedId = await this.getLabelId('processed');
+            if (processedId) {
+              addLabels.push(processedId);
+              console.log(`   └─ Adding 'processed' label (passed preprocessing: ${preprocessingResult.response})`);
+            }
+          } else {
+            // Email was filtered out by preprocessing
+            const filteredId = await this.getLabelId('filtered');
+            if (filteredId) {
+              addLabels.push(filteredId);
+              console.log(`   └─ Adding 'filtered' label (blocked by preprocessing: ${preprocessingResult.response})`);
+            }
+          }
+        } else {
+          // Fallback - just mark as processed
           const processedId = await this.getLabelId('processed');
           if (processedId) {
             addLabels.push(processedId);
-            console.log(`   └─ Adding 'processed' label (passed preprocessing: ${preprocessingResult.response})`);
           }
-        } else {
-          // Email was filtered out by preprocessing
-          const filteredId = await this.getLabelId('filtered');
-          if (filteredId) {
-            addLabels.push(filteredId);
-            console.log(`   └─ Adding 'filtered' label (blocked by preprocessing: ${preprocessingResult.response})`);
-          }
-        }
-      } else {
-        // Fallback - just mark as processed
-        const processedId = await this.getLabelId('processed');
-        if (processedId) {
-          addLabels.push(processedId);
         }
       }
       
