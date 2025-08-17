@@ -541,21 +541,12 @@ export default function PurchaseOrdersPage() {
                                 return <span className="text-gray-400 text-sm">No validated SKUs</span>;
                               }
                               
-                              return validatedItems.slice(0, 3).map((item: any, index: number) => (
+                              return validatedItems.map((item: any, index: number) => (
                                 <div key={index} className="flex items-center justify-between text-xs bg-blue-50 rounded px-2 py-1">
                                   <span className="font-mono font-medium text-blue-700 truncate">{item.finalSKU}</span>
                                   <span className="text-gray-600 ml-2 flex-shrink-0">Qty: {item.quantity || 0}</span>
                                 </div>
                               ));
-                            })()}
-                            {(() => {
-                              const extractedData = order.extractedData as any;
-                              const lineItems = extractedData?.lineItems || [];
-                              const validatedItems = lineItems.filter((item: any) => item.finalSKU && item.finalSKU.trim() !== '');
-                              if (validatedItems.length > 3) {
-                                return <div className="text-xs text-gray-500 pl-2">+{validatedItems.length - 3} more validated SKUs</div>;
-                              }
-                              return null;
                             })()}
                           </div>
                         </TableCell>
@@ -714,21 +705,12 @@ export default function PurchaseOrdersPage() {
                                 return <span className="text-gray-400 text-xs">No validated SKUs</span>;
                               }
                               
-                              return validatedItems.slice(0, 2).map((item: any, index: number) => (
+                              return validatedItems.map((item: any, index: number) => (
                                 <div key={index} className="flex items-center justify-between text-xs bg-blue-50 rounded px-2 py-1">
                                   <span className="font-mono font-medium text-blue-700 truncate">{item.finalSKU}</span>
                                   <span className="text-gray-600 ml-2 flex-shrink-0">Qty: {item.quantity || 0}</span>
                                 </div>
                               ));
-                            })()}
-                            {(() => {
-                              const extractedData = order.extractedData as any;
-                              const lineItems = extractedData?.lineItems || [];
-                              const validatedItems = lineItems.filter((item: any) => item.finalSKU && item.finalSKU.trim() !== '');
-                              if (validatedItems.length > 2) {
-                                return <div className="text-xs text-gray-500 pl-2">+{validatedItems.length - 2} more validated SKUs</div>;
-                              }
-                              return null;
                             })()}
                           </div>
                         </div>
