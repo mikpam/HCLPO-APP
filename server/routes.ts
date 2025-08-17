@@ -677,10 +677,22 @@ totalPrice: ${item.totalPrice || 0}`;
     try {
       console.log(`🔄 NORMAL PROCESSING: Starting sequential email processing...`);
       
+      // First, count how many unprocessed emails exist
+      const allMessages = await gmailService.getMessages();
+      let unprocessedCount = 0;
+      for (const message of allMessages) {
+        const existingQueue = await storage.getEmailQueueByGmailId(message.id);
+        if (!existingQueue) {
+          unprocessedCount++;
+        }
+      }
+      
+      console.log(`📊 PROCESSING SCOPE: Found ${unprocessedCount} unprocessed emails out of ${allMessages.length} total emails`);
+      
       let processedCount = 0;
-      let totalMessages = 0;
+      let totalMessages = allMessages.length;
       const processedEmails = [];
-      const maxEmails = 10; // Process max 10 emails per request to avoid timeouts
+      const maxEmails = Math.max(100, unprocessedCount); // Process all unprocessed emails, with minimum safety limit
       
       // Process emails one at a time until no more unprocessed emails
       while (processedCount < maxEmails) {
@@ -1021,11 +1033,28 @@ totalPrice: ${item.totalPrice || 0}`;
         }
       }
 
+      // Check if there are more unprocessed emails remaining
+      const finalMessages = await gmailService.getMessages();
+      let remainingUnprocessed = 0;
+      for (const message of finalMessages) {
+        const existingQueue = await storage.getEmailQueueByGmailId(message.id);
+        if (!existingQueue) {
+          remainingUnprocessed++;
+        }
+      }
+
       console.log(`🔄 NORMAL PROCESSING: Completed processing ${processedCount} emails`);
+      if (remainingUnprocessed > 0) {
+        console.log(`⚠️  REMAINING EMAILS: ${remainingUnprocessed} unprocessed emails still remain - run "Process Emails Normally" again to continue`);
+      } else {
+        console.log(`✅ ALL EMAILS PROCESSED: No more unprocessed emails found in Gmail`);
+      }
 
       res.json({ 
         processed: processedCount,
         total: totalMessages,
+        remaining: remainingUnprocessed,
+        allComplete: remainingUnprocessed === 0,
         emails: processedEmails 
       });
     } catch (error) {
