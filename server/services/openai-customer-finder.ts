@@ -180,9 +180,10 @@ Only answer when the match is confident. Never fabricate a customer number.
 
 MATCHING PRIORITIES (highest to lowest):
 1. Exact Email match - test Customer Email first, then Sender Email
-2. Exact ASI or PPAI match
-3. Customer Name match (be confident with obvious variations: singular/plural, case differences, punctuation)
-4. Address match (only if highly confident)
+2. Email DOMAIN match - same domain indicates same company (e.g., office@cms-4you.com = tracy@cms-4you.com)
+3. Exact ASI or PPAI match
+4. Customer Name match (be confident with obvious variations: singular/plural, case differences, punctuation)
+5. Address match (only if highly confident)
 
 ROOT-FIRST DISAMBIGUATION:
 When several candidates share the same root brand but differ by qualifiers:
@@ -210,6 +211,7 @@ RULES:
 - customer_number must start with "C" + digits
 - Never return Calibre International, LLC or HCL Sales Department
 - Exact email or ASI/PPAI overrides name-only evidence
+- EMAIL DOMAIN matches are HIGH CONFIDENCE: office@cms-4you.com = tracy@cms-4you.com (same company)
 - Be CONFIDENT with obvious name variations: "CREATIVE MARKETING SPECIALISTS" = "Creative Marketing Specialist"
 - Singular/plural differences are the SAME company (Specialists vs Specialist)
 - Case differences are the SAME company (CREATIVE vs Creative)
