@@ -6,6 +6,7 @@ import itemsRouter from "./routes/items";
 import { gmailService } from "./services/gmail";
 import { openaiService } from "./services/openai";
 import { aiService, type AIEngine } from "./services/ai-service";
+import { GeminiService } from "./services/gemini";
 import { netsuiteService } from "./services/netsuite";
 import { openaiCustomerFinderService } from "./services/openai-customer-finder";
 import { OpenAISKUValidatorService } from "./services/openai-sku-validator";
@@ -1471,7 +1472,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 console.log(`🔍 MULTI-ATTACHMENT SCREENING: Found ${gmailMessage.attachments.length} attachments`);
                 
                 // Use Gemini AI to screen all attachments and identify the purchase order
-                const screeningResult = await aiService.screenAttachmentsForPurchaseOrder(gmailMessage.attachments);
+                const geminiService = new GeminiService();
+                const screeningResult = await geminiService.screenAttachmentsForPurchaseOrder(gmailMessage.attachments);
                 
                 console.log(`   └─ Screening Results:`);
                 screeningResult.analysisResults.forEach((result, index) => {

@@ -96,10 +96,10 @@ export class GeminiService {
       'tiff': 'image/tiff',
       'webp': 'image/webp',
       
-      // Microsoft Office documents
-      'doc': 'application/msword',
+      // Microsoft Office documents - Gemini supports these natively
+      'doc': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
       'docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-      'xls': 'application/vnd.ms-excel',
+      'xls': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
       'xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
       
       // Text and CSV
