@@ -2,7 +2,7 @@ import type { Express } from "express";
 import { customerLookupService } from "../services/customer-lookup";
 import { db } from "../db";
 import { customers, insertCustomerSchema, updateCustomerSchema } from "@shared/schema";
-import { eq } from "drizzle-orm";
+import { eq, or, ilike, sql } from "drizzle-orm";
 import { z } from "zod";
 
 export function registerCustomerRoutes(app: Express): void {
@@ -12,8 +12,9 @@ export function registerCustomerRoutes(app: Express): void {
       const page = parseInt(req.query.page as string) || 1;
       const limit = parseInt(req.query.limit as string) || 50000; // Allow fetching all customers - increased to 50k
       const offset = (page - 1) * limit;
+      const search = req.query.search as string;
 
-      const allCustomers = await db
+      let query = db
         .select({
           id: customers.id,
           customer_number: customers.customerNumber,
@@ -27,7 +28,21 @@ export function registerCustomerRoutes(app: Express): void {
           created_at: customers.createdAt,
           updated_at: customers.updatedAt
         })
-        .from(customers)
+        .from(customers);
+
+      // Add search filtering if search parameter provided
+      if (search && search.trim()) {
+        const searchTerm = `%${search.trim()}%`;
+        query = query.where(
+          or(
+            ilike(customers.companyName, searchTerm),
+            ilike(customers.email, searchTerm),
+            sql`${customers.alternateNames}::text ILIKE ${searchTerm}`
+          )
+        );
+      }
+
+      const allCustomers = await query
         .orderBy(customers.companyName)
         .limit(limit)
         .offset(offset);
@@ -54,6 +69,31 @@ export function registerCustomerRoutes(app: Express): void {
     } catch (error) {
       console.error("Error looking up customer:", error);
       res.status(500).json({ error: "Customer lookup failed" });
+    }
+  });
+
+  // OpenAI-powered customer finder endpoint
+  app.post("/api/customers/find", async (req, res) => {
+    try {
+      const { customerName, customerEmail, senderEmail, asiNumber, ppaiNumber, address } = req.body;
+      
+      // Import OpenAI customer finder service
+      const { OpenAICustomerFinderService } = await import("../services/openai-customer-finder");
+      const finderService = new OpenAICustomerFinderService();
+      
+      const result = await finderService.findCustomer({
+        customerName,
+        customerEmail,
+        senderEmail,
+        asiNumber,
+        ppaiNumber,
+        address
+      });
+      
+      res.json(result);
+    } catch (error) {
+      console.error("Error finding customer with OpenAI:", error);
+      res.status(500).json({ error: "Customer finder failed" });
     }
   });
 

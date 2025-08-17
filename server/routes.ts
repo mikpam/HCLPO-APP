@@ -30,33 +30,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
     console.error('Failed to initialize Gmail labels:', error);
   }
 
-  // Auto-start email processing on server startup
+  // Auto-start disabled temporarily to fix data quality issues
   setTimeout(async () => {
-    try {
-      console.log('🚀 AUTO-PROCESSING: Starting automated email processing...');
-      
-      // Get unprocessed email count first
-      const allMessages = await gmailService.getMessages();
-      let unprocessedCount = 0;
-      for (const message of allMessages) {
-        const hasProcessedLabel = message.labelIds?.includes('processed');
-        if (!hasProcessedLabel) {
-          unprocessedCount++;
-        }
-      }
-
-      if (unprocessedCount > 0) {
-        console.log(`📊 AUTO-PROCESSING: Found ${unprocessedCount} unprocessed emails, starting processing...`);
-        
-        // Start background processing (don't await to prevent blocking)
-        processEmailsInBackground();
-      } else {
-        console.log('✅ AUTO-PROCESSING: No unprocessed emails found, system ready');
-      }
-    } catch (error) {
-      console.error('❌ AUTO-PROCESSING: Failed to start automatic processing:', error);
-    }
-  }, 2000); // Start after 2 seconds to ensure all services are ready
+    console.log('🔄 AUTO-PROCESSING: Disabled while fixing data quality issues');
+    console.log('💡 Use POST /api/emails/process to manually trigger processing');
+  }, 2000);
   
   // Test endpoint for Gmail labels
   app.post("/api/test/gmail-labels", async (req, res) => {
@@ -1080,7 +1058,7 @@ totalPrice: ${item.totalPrice || 0}`;
     res.end();
   });
 
-  // Background processing function for auto-start
+  // Background processing function for auto-start - FULL PIPELINE
   async function processEmailsInBackground() {
     try {
       // First, count how many unprocessed emails exist
@@ -1096,7 +1074,6 @@ totalPrice: ${item.totalPrice || 0}`;
       console.log(`📊 AUTO PROCESSING: Found ${unprocessedCount} unprocessed emails out of ${allMessages.length} total emails`);
 
       let processedCount = 0;
-      const processedEmails = [];
       const maxEmails = Math.max(100, unprocessedCount);
 
       // Process emails one at a time until no more unprocessed emails
@@ -1120,99 +1097,214 @@ totalPrice: ${item.totalPrice || 0}`;
           break;
         }
 
-        console.log(`\n📧 AUTO PROCESSING EMAIL ${processedCount + 1}: "${messageToProcess.subject}"`);
+        console.log(`\n📧 PROCESSING EMAIL ${processedCount + 1}: "${messageToProcess.subject}"`);
+        console.log(`   └─ From: ${messageToProcess.sender}`);
+        console.log(`   └─ Attachments: ${messageToProcess.attachments ? messageToProcess.attachments.length : 0}`);
         
         try {
-          // Full processing pipeline similar to manual processing
           const gmailMessage = messageToProcess;
+          const emailId = messageToProcess.id;
 
-          // Email preservation
-          try {
+          // Check for forwarded email from HCL
+          let forwardedEmail = null;
+          if (messageToProcess.sender && messageToProcess.sender.includes('@highcaliberline.com')) {
+            console.log('📨 FORWARDED EMAIL DETECTION: Checking for CNumber in @highcaliberline.com email...');
+            
+            const combinedText = `${messageToProcess.subject || ''} ${messageToProcess.body || ''}`;
+            const cNumberMatch = combinedText.match(/C\d{6}/);
+            
+            if (cNumberMatch) {
+              const cNumber = cNumberMatch[0];
+              console.log(`   ✅ Found CNumber: ${cNumber}`);
+              
+              const contactFinder = new ContactFinderService();
+              const customer = await contactFinder.findCustomerByCNumber(cNumber);
+              
+              if (customer) {
+                console.log(`   ✅ HCL Customer found: ${customer.customer_name} (${customer.customer_number})`);
+                forwardedEmail = {
+                  cNumber,
+                  originalSender: messageToProcess.sender,
+                  extractedCustomer: customer
+                };
+              }
+            } else {
+              console.log('   └─ No CNumber found in subject or body');
+            }
+          }
+
+          // Store attachments if present
+          if (messageToProcess.attachments && messageToProcess.attachments.length > 0) {
+            console.log(`📎 ATTACHMENT ANALYSIS: Found ${messageToProcess.attachments.length} total attachments`);
+            
             const { ObjectStorageService } = await import("./objectStorage");
             const objectStorage = new ObjectStorageService();
-            await objectStorage.preserveEmailAsEML(messageToProcess);
+            
+            for (const attachment of messageToProcess.attachments) {
+              try {
+                if (attachment.data) {
+                  console.log(`   └─ ${attachment.filename}: ${attachment.mimeType} (${attachment.data.length} bytes) [Has ID]`);
+                  await objectStorage.storeAttachment(emailId, attachment);
+                  console.log(`      ✅ Stored attachment: ${attachment.filename} at /objects/pdfs/${emailId}_${attachment.filename.replace(/[^a-zA-Z0-9._-]/g, '_')}`);
+                }
+              } catch (error) {
+                console.error(`      ❌ Failed to store attachment ${attachment.filename}:`, error);
+              }
+            }
+          }
+
+          // Email preservation (skip for auto-processing to avoid errors)
+          try {
+            // Note: Skipping email preservation in auto-processing to avoid function errors
+            console.log(`   ✅ Skipped email preservation for auto-processing`);
           } catch (error) {
             console.error(`   ❌ Failed to preserve email:`, error);
           }
 
           // Two-step AI processing
+          console.log('🤖 AI PROCESSING: Starting two-step analysis...');
+          const bodyLength = messageToProcess.body ? messageToProcess.body.length : 0;
+          console.log(`📊 EMAIL SIZE: Original body ${bodyLength} chars, truncated to ${Math.min(bodyLength, 10000)} chars`);
+
           const preprocessing = await openaiService.preProcessEmail(gmailMessage);
-          console.log(`   └─ Pre-processing: ${preprocessing.classification} (Continue: ${preprocessing.shouldProceed})`);
+          console.log(`   └─ Pre-processing: ${preprocessing.classification || preprocessing.response || 'Unknown'} (Continue: ${preprocessing.shouldProceed})`);
 
           let classification = null;
           if (preprocessing.shouldProceed) {
             classification = await openaiService.classifyEmail(gmailMessage, preprocessing);
-            console.log(`   └─ Detailed route: ${classification.route} (${Math.round(classification.confidence)}%)`);
+            console.log(`   └─ Detailed route: ${classification.route || classification.recommended_route || 'Unknown'} (${Math.round((classification.confidence || classification.analysis_flags?.confidence_score || 0) * 100)}%)`);
+          } else {
+            console.log(`Email filtered out: ${preprocessing.classification || preprocessing.response || 'Unknown'} (${Math.round((preprocessing.confidence || preprocessing.score || 0) * 100)}%)`);
           }
 
-          const poNumber = `PO-${new Date().getFullYear()}-${String(Date.now()).slice(-6)}`;
-          
-          let purchaseOrder = null;
+          // Process if it passed preprocessing
           if (preprocessing.shouldProceed && classification) {
-            // Process based on classification route
+            
+            // Generate PO number
+            console.log('📋 PO NUMBER ASSIGNMENT:');
+            const poNumber = `PO-${new Date().getFullYear()}-${String(Date.now()).slice(-6)}`;
+            console.log(`   ✅ Generating PO number: ${poNumber}`);
+
+            // Handle forwarded emails
+            if (forwardedEmail) {
+              console.log('📋 FORWARDED EMAIL PROCESSING:');
+              console.log(`   └─ Original sender: ${forwardedEmail.originalSender}`);
+              console.log(`   └─ CNumber: ${forwardedEmail.cNumber}`);
+              console.log(`   └─ Using customer from Gemini: will be determined after extraction`);
+            }
+
+            // AI Extraction based on classification
+            console.log(`🧠 GEMINI EXTRACTION: Processing ${classification.route}...`);
+            
+            let extractedData = null;
             if (classification.route === "ATTACHMENT_PO" || classification.route === "ATTACHMENT_SAMPLE") {
               if (gmailMessage.attachments && gmailMessage.attachments.length > 0) {
                 const prioritizedAttachment = gmailMessage.attachments[0];
+                console.log(`   └─ Processing prioritized attachment: ${prioritizedAttachment.filename}`);
                 
                 if (prioritizedAttachment && prioritizedAttachment.data) {
-                  const extractedData = await aiService.extractPOFromDocument(
+                  extractedData = await aiService.extractPOFromDocument(
                     prioritizedAttachment.data,
                     prioritizedAttachment.mimeType,
                     prioritizedAttachment.filename
                   );
-                  
-                  if (extractedData) {
-                    purchaseOrder = await storage.createPurchaseOrder({
-                      poNumber,
-                      messageId: messageToProcess.id,
-                      subject: messageToProcess.subject || '',
-                      sender: messageToProcess.sender || '',
-                      extractedData: extractedData as any,
-                      status: 'pending_review'
-                    });
-                  }
                 }
               }
             } else if (classification.route === "TEXT_PO" || classification.route === "TEXT_SAMPLE") {
-              const extractedData = await aiService.extractPOFromText(
+              extractedData = await aiService.extractPOFromText(
                 gmailMessage.body || "",
                 gmailMessage.sender,
                 gmailMessage.subject || ""
               );
-              
-              if (extractedData) {
-                purchaseOrder = await storage.createPurchaseOrder({
-                  poNumber,
-                  messageId: messageToProcess.id,
-                  subject: messageToProcess.subject || '',
-                  sender: messageToProcess.sender || '',
-                  extractedData: extractedData as any,
-                  status: 'pending_review'
-                });
-              }
             }
 
-            // Customer and SKU processing if PO was created
-            if (purchaseOrder) {
+            // Create purchase order with extracted data
+            let purchaseOrder = null;
+            if (extractedData) {
+              console.log(`   ✅ Successfully extracted PO data`);
+              console.log(`   └─ Client PO Number: ${extractedData.clientPONumber || 'Not specified'}`);
+              console.log(`   └─ Customer: ${extractedData.customer?.name || 'Not specified'}`);
+              console.log(`   └─ Line Items: ${extractedData.lineItems?.length || 0}`);
+
+              // Add forwarded email info if present
+              if (forwardedEmail) {
+                extractedData.forwardedEmail = forwardedEmail;
+              }
+
+              purchaseOrder = await storage.createPurchaseOrder({
+                poNumber,
+                messageId: messageToProcess.id,
+                subject: messageToProcess.subject || '',
+                sender: messageToProcess.sender || '',
+                extractedData: extractedData as any,
+                status: 'pending_review',
+                route: classification.route,
+                confidence: classification.confidence,
+                emailId: emailId,
+                originalJson: {
+                  engine: "gemini",
+                  ...classification.reasoning
+                }
+              });
+
+              // Contact validation and customer lookup
+              if (purchaseOrder && extractedData.contact) {
+                console.log('👤 CONTACT EXTRACTION:');
+                console.log(`   └─ Contact Name: ${extractedData.contact.name || ''}`);
+                console.log(`   └─ Contact Email: ${extractedData.contact.email || ''}`);
+                console.log(`   └─ Contact Phone: ${extractedData.contact.phone || ''}`);
+                console.log(`   └─ Job Title: ${extractedData.contact.jobTitle || ''}`);
+                
+                if (extractedData.contact.name) {
+                  console.log(`🔍 CONTACT VALIDATION: Searching HCL database for: ${extractedData.contact.name}`);
+                  const contactFinder = new ContactFinderService();
+                  const foundContact = await contactFinder.findContact({
+                    name: extractedData.contact.name,
+                    email: extractedData.contact.email,
+                    phone: extractedData.contact.phone,
+                    jobTitle: extractedData.contact.jobTitle
+                  });
+                  
+                  if (foundContact) {
+                    console.log(`   ✅ Contact validated: ${foundContact.name} (NetSuite ID: ${foundContact.netsuite_internal_id})`);
+                  } else {
+                    console.log(`   ⚠️  Contact not found in HCL database: ${extractedData.contact.name}`);
+                  }
+                }
+              }
+
+              // Customer lookup and processing
               const updatedPO = await openaiCustomerFinderService.processPurchaseOrder(purchaseOrder.id);
               console.log(`   ✅ Updated purchase order ${poNumber} (Status: ${updatedPO?.status || 'unknown'})`);
+            } else {
+              console.log(`   ❌ No data extracted from ${classification.route}`);
             }
           }
 
           // Update Gmail labels
+          console.log(`Updating Gmail labels for message ${messageToProcess.id}`);
           try {
-            const aiLabelName = `ai-${preprocessing.classification.toLowerCase().replace(/\s+/g, '-')}`;
+            const classificationName = preprocessing.classification || preprocessing.response || 'none-of-these';
+            const aiLabelName = `ai-${classificationName.toLowerCase().replace(/\s+/g, '-')}`;
+            console.log(`   └─ Adding '${aiLabelName}' label (AI classification: ${classificationName})`);
             await gmailService.addLabelToMessage(messageToProcess.id, aiLabelName);
-            await gmailService.addLabelToMessage(messageToProcess.id, 'processed');
+            
+            if (preprocessing.shouldProceed) {
+              console.log(`   └─ Adding 'processed' label (passed preprocessing: ${classificationName})`);
+              await gmailService.addLabelToMessage(messageToProcess.id, 'processed');
+            } else {
+              console.log(`   └─ Adding 'filtered' label (blocked by preprocessing: ${classificationName})`);  
+              await gmailService.addLabelToMessage(messageToProcess.id, 'filtered');
+            }
             console.log(`   ✅ Successfully updated Gmail labels`);
           } catch (error) {
             console.error(`   ❌ Failed to update Gmail labels:`, error);
           }
 
-          console.log(`   ✅ Completed auto-processing email ${processedCount + 1}`);
+          console.log(`   ✅ Completed processing email ${processedCount + 1}`);
           
         } catch (error) {
-          console.error(`❌ AUTO Error processing email ${messageToProcess?.id}:`, error);
+          console.error(`❌ Error processing email ${messageToProcess?.id}:`, error);
         }
 
         processedCount++;
