@@ -1415,6 +1415,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
           // Process if it passed preprocessing
           if (preprocessing.shouldProceed && classification) {
             
+            // Declare extractedData at function scope to avoid temporal dead zone
+            let extractedData = null;
+            
             // Generate PO number
             console.log('📋 PO NUMBER ASSIGNMENT:');
             const poNumber = `PO-${new Date().getFullYear()}-${String(Date.now()).slice(-6)}`;
@@ -1462,7 +1465,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
               currentStep: "gemini_extraction",
             });
             
-            let extractedData = null;
+
             if (route === "ATTACHMENT_PO" || route === "ATTACHMENT_SAMPLE") {
               if (gmailMessage.attachments && gmailMessage.attachments.length > 0) {
                 const prioritizedAttachment = gmailMessage.attachments[0];

@@ -202,21 +202,24 @@ ${JSON.stringify(lineItems, null, 2)}`;
       
       const validatedItems = JSON.parse(cleanContent) as ValidatedLineItem[];
       
-      // Add validation metadata
+      // Add validation metadata  
       for (const item of validatedItems) {
         const skuMatch = this.itemsCache.get(item.finalSKU);
         if (skuMatch) {
-          item.productName = skuMatch.displayName;
+          // Found in items database
+          item.productName = skuMatch.displayName || skuMatch.description || 'Product';
           item.isValidSKU = true;
+          item.validationNotes = 'Valid product SKU';
+        } else if (this.chargeCodebook.has(item.finalSKU)) {
+          // Found in charge codes
+          item.isValidSKU = true;
+          item.validationNotes = 'Valid charge code';
+          item.productName = this.chargeCodebook.get(item.finalSKU);
         } else {
-          item.isValidSKU = this.chargeCodebook.has(item.finalSKU);
-          if (item.isValidSKU) {
-            item.validationNotes = 'Charge code';
-            item.productName = this.chargeCodebook.get(item.finalSKU);
-          } else {
-            item.validationNotes = 'Unknown SKU - using fallback';
-            item.productName = 'Unknown item';
-          }
+          // Not found anywhere
+          item.isValidSKU = false;
+          item.validationNotes = 'Unknown SKU - using fallback';
+          item.productName = 'Unknown item';
         }
       }
 
@@ -254,9 +257,8 @@ ${JSON.stringify(lineItems, null, 2)}`;
         // Handle common transformations
         if (processedSKU === 'SET UP') {
           processedSKU = 'SETUP';
-        } else if (processedSKU === 'OE-MISC-CHARGE') {
-          processedSKU = 'P'; // Convert to proof charge as seen in logs
         }
+        // Remove incorrect OE-MISC-CHARGE mapping - let OpenAI handle it properly
         
         console.log(`   ✅ Processed: "${item.sku}" → "${processedSKU}"`);
         item.sku = processedSKU;
