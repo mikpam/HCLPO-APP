@@ -9,7 +9,7 @@ const navigationItems = [
   { path: "/", label: "Dashboard", icon: "fas fa-chart-line" },
   { path: "/email-queue", label: "Email Queue", icon: "fas fa-inbox" },
   { path: "/purchase-orders", label: "Purchase Orders", icon: "fas fa-file-invoice" },
-  { path: "/customer-import", label: "Customer Import", icon: "fas fa-users" },
+
   { path: "/customers", label: "Customer Directory", icon: "fas fa-address-book" },
   { path: "/files", label: "File Management", icon: "fas fa-folder-open" },
   { path: "/error-logs", label: "Error Logs", icon: "fas fa-exclamation-triangle" },
