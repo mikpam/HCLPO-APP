@@ -8,13 +8,27 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useState, useMemo } from "react";
-import { Eye, ExternalLink, FileText, Search, Filter, ArrowUpDown, MoreHorizontal, MapPin, Calendar, User, Users, Mail, Hash, CheckCircle, XCircle, Clock } from "lucide-react";
+import { Eye, ExternalLink, FileText, Search, Filter, ArrowUpDown, MoreHorizontal, MapPin, Calendar, User, Users, Mail, Hash, CheckCircle, XCircle, Clock, Plus, Minus } from "lucide-react";
 
 export default function PurchaseOrdersPage() {
   const [selectedOrder, setSelectedOrder] = useState<PurchaseOrder | null>(null);
   const [isViewModalOpen, setIsViewModalOpen] = useState(false);
+  const [expandedCells, setExpandedCells] = useState<Set<string>>(new Set());
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
+
+  // Toggle expanded state for cells
+  const toggleCellExpansion = (cellId: string) => {
+    setExpandedCells(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(cellId)) {
+        newSet.delete(cellId);
+      } else {
+        newSet.add(cellId);
+      }
+      return newSet;
+    });
+  };
 
   const [sortField, setSortField] = useState("createdAt");
   const [sortDirection, setSortDirection] = useState<"asc" | "desc">("desc");
@@ -498,9 +512,34 @@ export default function PurchaseOrdersPage() {
                           </div>
                         </TableCell>
                         <TableCell className="max-w-[80px]">
-                          <span className="text-xs text-gray-600 truncate block max-w-[70px]" title={customer.email}>
-                            {customer.email}
-                          </span>
+                          <div className="flex items-center space-x-1">
+                            {(() => {
+                              const emailCellId = `email-${order.id}`;
+                              const isExpanded = expandedCells.has(emailCellId);
+                              const emailTruncated = customer.email.length > 12;
+                              
+                              return (
+                                <>
+                                  <span 
+                                    className={`text-xs text-gray-600 ${isExpanded ? '' : 'truncate'} block ${isExpanded ? 'max-w-none' : 'max-w-[50px]'}`}
+                                    title={customer.email}
+                                  >
+                                    {customer.email}
+                                  </span>
+                                  {emailTruncated && (
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      onClick={() => toggleCellExpansion(emailCellId)}
+                                      className="h-4 w-4 p-0 flex-shrink-0 text-gray-400 hover:text-gray-600"
+                                    >
+                                      {isExpanded ? <Minus className="h-3 w-3" /> : <Plus className="h-3 w-3" />}
+                                    </Button>
+                                  )}
+                                </>
+                              );
+                            })()}
+                          </div>
                         </TableCell>
                         <TableCell>
                           <div className="space-y-1">
@@ -527,10 +566,12 @@ export default function PurchaseOrdersPage() {
                           </Badge>
                         </TableCell>
                         <TableCell>
-                          <div className="space-y-1 max-w-[400px]">
+                          <div className="max-w-[400px]">
                             {(() => {
                               const extractedData = order.extractedData as any;
                               const lineItems = extractedData?.lineItems || [];
+                              const lineItemsCellId = `lineitems-${order.id}`;
+                              const isExpanded = expandedCells.has(lineItemsCellId);
                               
                               if (lineItems.length === 0) return <span className="text-gray-400 text-sm">No items</span>;
                               
@@ -540,13 +581,35 @@ export default function PurchaseOrdersPage() {
                               if (validatedItems.length === 0) {
                                 return <span className="text-gray-400 text-sm">No validated SKUs</span>;
                               }
+
+                              const displayItems = isExpanded ? validatedItems : validatedItems.slice(0, 2);
+                              const hasMore = validatedItems.length > 2;
                               
-                              return validatedItems.map((item: any, index: number) => (
-                                <div key={index} className="flex items-center justify-between text-xs bg-blue-50 rounded px-2 py-1">
-                                  <span className="font-mono font-medium text-blue-700 truncate">{item.finalSKU}</span>
-                                  <span className="text-gray-600 ml-2 flex-shrink-0">Qty: {item.quantity || 0}</span>
+                              return (
+                                <div className="space-y-1">
+                                  {displayItems.map((item: any, index: number) => (
+                                    <div key={index} className="flex items-center justify-between text-xs bg-blue-50 rounded px-2 py-1">
+                                      <span className="font-mono font-medium text-blue-700 truncate">{item.finalSKU}</span>
+                                      <span className="text-gray-600 ml-2 flex-shrink-0">Qty: {item.quantity || 0}</span>
+                                    </div>
+                                  ))}
+                                  {hasMore && (
+                                    <div className="flex items-center space-x-1">
+                                      {!isExpanded && (
+                                        <span className="text-xs text-gray-500">+{validatedItems.length - 2} more</span>
+                                      )}
+                                      <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        onClick={() => toggleCellExpansion(lineItemsCellId)}
+                                        className="h-5 w-5 p-0 text-gray-400 hover:text-gray-600"
+                                      >
+                                        {isExpanded ? <Minus className="h-3 w-3" /> : <Plus className="h-3 w-3" />}
+                                      </Button>
+                                    </div>
+                                  )}
                                 </div>
-                              ));
+                              );
                             })()}
                           </div>
                         </TableCell>
@@ -695,6 +758,8 @@ export default function PurchaseOrdersPage() {
                             {(() => {
                               const extractedData = order.extractedData as any;
                               const lineItems = extractedData?.lineItems || [];
+                              const mobileLineItemsCellId = `mobile-lineitems-${order.id}`;
+                              const isExpanded = expandedCells.has(mobileLineItemsCellId);
                               
                               if (lineItems.length === 0) return <span className="text-gray-400 text-xs">No items</span>;
                               
@@ -704,13 +769,35 @@ export default function PurchaseOrdersPage() {
                               if (validatedItems.length === 0) {
                                 return <span className="text-gray-400 text-xs">No validated SKUs</span>;
                               }
+
+                              const displayItems = isExpanded ? validatedItems : validatedItems.slice(0, 2);
+                              const hasMore = validatedItems.length > 2;
                               
-                              return validatedItems.map((item: any, index: number) => (
-                                <div key={index} className="flex items-center justify-between text-xs bg-blue-50 rounded px-2 py-1">
-                                  <span className="font-mono font-medium text-blue-700 truncate">{item.finalSKU}</span>
-                                  <span className="text-gray-600 ml-2 flex-shrink-0">Qty: {item.quantity || 0}</span>
+                              return (
+                                <div className="space-y-1">
+                                  {displayItems.map((item: any, index: number) => (
+                                    <div key={index} className="flex items-center justify-between text-xs bg-blue-50 rounded px-2 py-1">
+                                      <span className="font-mono font-medium text-blue-700 truncate">{item.finalSKU}</span>
+                                      <span className="text-gray-600 ml-2 flex-shrink-0">Qty: {item.quantity || 0}</span>
+                                    </div>
+                                  ))}
+                                  {hasMore && (
+                                    <div className="flex items-center space-x-1">
+                                      {!isExpanded && (
+                                        <span className="text-xs text-gray-500">+{validatedItems.length - 2} more</span>
+                                      )}
+                                      <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        onClick={() => toggleCellExpansion(mobileLineItemsCellId)}
+                                        className="h-5 w-5 p-0 text-gray-400 hover:text-gray-600"
+                                      >
+                                        {isExpanded ? <Minus className="h-3 w-3" /> : <Plus className="h-3 w-3" />}
+                                      </Button>
+                                    </div>
+                                  )}
                                 </div>
-                              ));
+                              );
                             })()}
                           </div>
                         </div>
