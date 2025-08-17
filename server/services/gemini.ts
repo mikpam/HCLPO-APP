@@ -338,7 +338,7 @@ ColorCode Map:
 
 **8. Missing Values**  
 - Use \`""\` for text, leave numbers blank.  
-- If critical info missing (e.g., customer name, grand total), add note in \`additionalNotes\`.
+- If critical info missing (e.g., customer name, grand total), add note in \`additionalNotes\`.`;
 
       const response = await ai.models.generateContent({
         model: "gemini-2.5-flash",

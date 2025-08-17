@@ -1197,36 +1197,93 @@ totalPrice: ${item.totalPrice || 0}`;
           const gmailMessage = messageToProcess;
           const emailId = messageToProcess.id;
 
-          // Check for forwarded email from HCL
+          // Enhanced forwarded email detection from HCL
           let forwardedEmail = null;
           if (messageToProcess.sender && messageToProcess.sender.includes('@highcaliberline.com')) {
-            console.log('📨 FORWARDED EMAIL DETECTION: Checking for CNumber in @highcaliberline.com email...');
+            console.log('📨 FORWARDED EMAIL DETECTION: Analyzing @highcaliberline.com forwarded email...');
             
             const combinedText = `${messageToProcess.subject || ''} ${messageToProcess.body || ''}`;
-            const cNumberMatch = combinedText.match(/C\d{6}/);
             
-            if (cNumberMatch) {
-              const cNumber = cNumberMatch[0];
-              console.log(`   ✅ Found CNumber: ${cNumber}`);
-              
-              const contactFinder = new ContactFinderService();
-              const customer = await contactFinder.findContact({
-                netsuiteInternalId: cNumber
-              });
-              
-              if (customer) {
-                console.log(`   ✅ HCL Customer found: ${customer.name} (${customer.netsuite_internal_id})`);
-                forwardedEmail = {
-                  cNumber,
-                  originalSender: messageToProcess.sender,
-                  extractedCustomer: {
-                    customer_name: customer.name,
-                    customer_number: customer.netsuite_internal_id
-                  }
-                };
+            // Enhanced CNumber detection patterns
+            const cNumberPatterns = [
+              /C\d{6}/gi,  // Standard C123456
+              /C\d{5}/gi,  // C12345
+              /C\d{4}/gi,  // C1234
+              /Customer[:\s#]*C\d{4,6}/gi,  // Customer: C123456
+              /Cust[:\s#]*C\d{4,6}/gi,     // Cust # C123456
+              /Account[:\s#]*C\d{4,6}/gi,   // Account # C123456
+            ];
+            
+            let cNumberMatch = null;
+            let matchedCNumber = null;
+            
+            for (const pattern of cNumberPatterns) {
+              cNumberMatch = combinedText.match(pattern);
+              if (cNumberMatch) {
+                // Extract just the C number part
+                matchedCNumber = cNumberMatch[0].match(/C\d{4,6}/i)?.[0];
+                if (matchedCNumber) {
+                  console.log(`   ✅ Found CNumber pattern: ${cNumberMatch[0]} → extracted: ${matchedCNumber}`);
+                  break;
+                }
               }
+            }
+            
+            // Enhanced forwarded sender extraction
+            const forwardedSenderPatterns = [
+              /From:[\s]*([^\r\n<]+<[^>]+>)/i,     // From: Name <email>
+              /From:[\s]*([^\r\n]+@[^\s\r\n]+)/i,  // From: email@domain.com
+              /Sent[\s\w]*:[\s\w\d\/,:-]*[\r\n]+From:[\s]*([^\r\n<]+<[^>]+>)/i, // Multi-line Sent: ... From:
+              /Original Message[\s\S]*?From:[\s]*([^\r\n<]+<[^>]+>)/i, // -----Original Message----- From:
+              /-----[\s\w]*-----[\s\S]*?From:[\s]*([^\r\n<]+<[^>]+>)/i, // Any dashed separator
+            ];
+            
+            let originalSenderEmail = null;
+            for (const pattern of forwardedSenderPatterns) {
+              const senderMatch = combinedText.match(pattern);
+              if (senderMatch && senderMatch[1]) {
+                originalSenderEmail = senderMatch[1].trim();
+                console.log(`   ✅ Found forwarded sender: ${originalSenderEmail}`);
+                break;
+              }
+            }
+            
+            if (matchedCNumber || originalSenderEmail) {
+              const contactFinder = new ContactFinderService();
+              let customer = null;
+              
+              // Try to find customer by CNumber first
+              if (matchedCNumber) {
+                try {
+                  customer = await contactFinder.findContact({
+                    netsuiteInternalId: matchedCNumber
+                  });
+                  if (customer) {
+                    console.log(`   ✅ Customer found by CNumber: ${customer.name} (${customer.netsuite_internal_id})`);
+                  }
+                } catch (error) {
+                  console.log(`   ⚠️  Failed to lookup CNumber ${matchedCNumber}: ${error.message}`);
+                }
+              }
+              
+              forwardedEmail = {
+                cNumber: matchedCNumber,
+                originalSender: originalSenderEmail || messageToProcess.sender,
+                hclForwarder: messageToProcess.sender,
+                isForwarded: true,
+                extractedCustomer: customer ? {
+                  customer_name: customer.name,
+                  customer_number: customer.netsuite_internal_id
+                } : null
+              };
+              
+              console.log(`   ✅ FORWARDED EMAIL PROCESSED:`);
+              console.log(`      └─ CNumber: ${matchedCNumber || 'Not found'}`);
+              console.log(`      └─ Original Sender: ${originalSenderEmail || 'Not found'}`);
+              console.log(`      └─ HCL Forwarder: ${messageToProcess.sender}`);
+              console.log(`      └─ Customer: ${customer?.name || 'Not found'}`);
             } else {
-              console.log('   └─ No CNumber found in subject or body');
+              console.log('   └─ No CNumber or forwarded sender found in email content');
             }
           }
 
@@ -1284,12 +1341,30 @@ totalPrice: ${item.totalPrice || 0}`;
             const poNumber = `PO-${new Date().getFullYear()}-${String(Date.now()).slice(-6)}`;
             console.log(`   ✅ Generating PO number: ${poNumber}`);
 
-            // Handle forwarded emails
+            // Handle forwarded emails with enhanced processing
             if (forwardedEmail) {
               console.log('📋 FORWARDED EMAIL PROCESSING:');
               console.log(`   └─ Original sender: ${forwardedEmail.originalSender}`);
-              console.log(`   └─ CNumber: ${forwardedEmail.cNumber}`);
-              console.log(`   └─ Using customer from Gemini: will be determined after extraction`);
+              console.log(`   └─ HCL forwarder: ${forwardedEmail.hclForwarder}`);
+              console.log(`   └─ CNumber: ${forwardedEmail.cNumber || 'Not found'}`);
+              
+              // Override the sender information for processing with original sender's email
+              if (forwardedEmail.originalSender) {
+                console.log(`   ✅ Using original sender email for processing: ${forwardedEmail.originalSender}`);
+                
+                // Update the message data to use original sender for extraction
+                const originalMessage = { ...gmailMessage };
+                originalMessage.sender = forwardedEmail.originalSender;
+                
+                // Process with original sender context
+                if (route === "TEXT_PO" || route === "TEXT_SAMPLE") {
+                  extractedData = await aiService.extractPODataFromText(
+                    originalMessage.subject || "",
+                    originalMessage.body || "",
+                    forwardedEmail.originalSender  // Use original sender instead of HCL forwarder
+                  );
+                }
+              }
             }
 
             // AI Extraction based on classification
