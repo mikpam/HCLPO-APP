@@ -4,9 +4,7 @@ import { storage } from "./storage";
 import { registerCustomerRoutes } from "./routes/customers";
 import itemsRouter from "./routes/items";
 import { gmailService } from "./services/gmail";
-import { openaiService } from "./services/openai";
 import { aiService, type AIEngine } from "./services/ai-service";
-import { GeminiService } from "./services/gemini";
 import { netsuiteService } from "./services/netsuite";
 import { openaiCustomerFinderService } from "./services/openai-customer-finder";
 import { OpenAISKUValidatorService } from "./services/openai-sku-validator";
@@ -17,6 +15,10 @@ import { eq, desc, and, or, lt } from "drizzle-orm";
 
 import { insertPurchaseOrderSchema, insertErrorLogSchema, classificationResultSchema } from "@shared/schema";
 import { z } from "zod";
+
+// Create singleton service instances to prevent conflicts and ensure consistency
+const skuValidatorInstance = new OpenAISKUValidatorService();
+const contactValidatorInstance = new OpenAIContactValidatorService();
 
 // Enhanced error logging helper for comprehensive tracking
 async function logProcessingError(
@@ -354,9 +356,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           if (pdfAttachments.length > 0) {
             console.log(`\n🔍 AI DOCUMENT FILTERING: Pre-screening attachments before Gemini processing...`);
             
-            // Import GeminiService for document filtering
-            const { GeminiService } = await import('./services/gemini');
-            const geminiService = new GeminiService();
+            // Use AI service manager for attachment screening and consistent routing
             
             // CRITICAL FIX: Prioritize actual purchase order files over proof/artwork files
             console.log(`\n📋 ATTACHMENT PRIORITIZATION: Sorting attachments to prioritize purchase orders...`);
@@ -549,9 +549,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
           
           // Optionally validate against HCL contacts database
           try {
-            // Use comprehensive OpenAI contact validation
-            const contactValidator = new OpenAIContactValidatorService();
-            const validatedContact = await contactValidator.validateContact({
+            // Use singleton instance to prevent conflicts
+            const validatedContact = await contactValidatorInstance.validateContact({
               extractedData: extractionResult,
               senderName: extractionResult.purchaseOrder.contact?.name,
               senderEmail: messageToProcess.sender,
@@ -635,12 +634,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
           console.log(`\n🤖 OPENAI SKU VALIDATOR: Processing ${extractionResult.lineItems.length} extracted line items...`);
           
           try {
-            const skuValidatorService = new OpenAISKUValidatorService();
-            
+            // Use singleton instance to prevent conflicts
             console.log(`   └─ Processing ${extractionResult.lineItems.length} line items for validation`);
             
             // Validate line items with OpenAI
-            validatedLineItems = await skuValidatorService.validateLineItems(extractionResult.lineItems);
+            validatedLineItems = await skuValidatorInstance.validateLineItems(extractionResult.lineItems);
             
             console.log(`   ✅ SKU validation complete: ${validatedLineItems.length} items processed`);
             
@@ -895,14 +893,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
           console.log(`🤖 AI PROCESSING: Starting two-step analysis...`);
           
           // Step 1: Pre-processing
-          const preprocessing = await openaiService.preProcessEmail(gmailMessage);
+          const preprocessing = await aiService.preProcessEmail(gmailMessage);
           console.log(`📊 EMAIL SIZE: Original body ${gmailMessage.body?.length || 0} chars, truncated to ${preprocessing.emailBody?.length || 0} chars`);
           console.log(`   └─ Pre-processing: ${preprocessing.classification} (Continue: ${preprocessing.shouldProceed})`);
 
           // Step 2: If pre-processing says proceed, do detailed analysis
           let classification = null;
           if (preprocessing.shouldProceed) {
-            classification = await openaiService.classifyEmail(gmailMessage, preprocessing);
+            classification = await aiService.classifyEmail(gmailMessage, preprocessing);
             console.log(`   └─ Detailed route: ${classification.route} (${Math.round(classification.confidence)}%)`);
           }
 
@@ -1400,12 +1398,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
           const bodyLength = messageToProcess.body ? messageToProcess.body.length : 0;
           console.log(`📊 EMAIL SIZE: Original body ${bodyLength} chars, truncated to ${Math.min(bodyLength, 10000)} chars`);
 
-          const preprocessing = await openaiService.preProcessEmail(gmailMessage);
+          const preprocessing = await aiService.preProcessEmail(gmailMessage);
           console.log(`   └─ Pre-processing: ${preprocessing.classification || preprocessing.response || 'Unknown'} (Continue: ${preprocessing.shouldProceed})`);
 
           let classification = null;
           if (preprocessing.shouldProceed) {
-            classification = await openaiService.classifyEmail(gmailMessage);
+            classification = await aiService.classifyEmail(gmailMessage);
             const route = classification.recommended_route || classification.route || 'Unknown';
             const confidence = classification.analysis_flags?.confidence_score || classification.confidence || 0;
             console.log(`   └─ Detailed route: ${route} (${Math.round(confidence * 100)}%)`);
@@ -1471,9 +1469,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
               if (gmailMessage.attachments && gmailMessage.attachments.length > 0) {
                 console.log(`🔍 MULTI-ATTACHMENT SCREENING: Found ${gmailMessage.attachments.length} attachments`);
                 
-                // Use Gemini AI to screen all attachments and identify the purchase order
-                const geminiService = new GeminiService();
-                const screeningResult = await geminiService.screenAttachmentsForPurchaseOrder(gmailMessage.attachments);
+                // Use AI service for consistent attachment screening
+                const screeningResult = await aiService.screenAttachmentsForPurchaseOrder(gmailMessage.attachments);
                 
                 console.log(`   └─ Screening Results:`);
                 screeningResult.analysisResults.forEach((result, index) => {
@@ -1696,8 +1693,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
                   console.log(`   🔍 DEBUG: Sender name resolution: "${senderName}"`);
                   console.log(`   🔍 DEBUG: messageToProcess.sender: "${messageToProcess.sender}"`);
                   
-                  const contactValidator = new OpenAIContactValidatorService();
-                  validationContext.contactMeta = await contactValidator.validateContact({
+                  // Use singleton instance to prevent conflicts
+                  validationContext.contactMeta = await contactValidatorInstance.validateContact({
                     extractedData: extractedData,
                     senderName: senderName,
                     senderEmail: messageToProcess.sender,
@@ -1746,14 +1743,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 });
                 
                 try {
-                  const skuValidatorService = new OpenAISKUValidatorService();
-                  
-                  // Create input string for validation (format expected by validator)
-                  const lineItemsString = extractedData.lineItems.map((item: any) => {
-                    return `SKU: ${item.sku || 'N/A'} | Description: ${item.description || 'N/A'} | Quantity: ${item.quantity || 0} | Color: ${item.itemColor || 'N/A'}`;
-                  }).join(' ____ ');
-                  
-                  const validatedItems = await skuValidatorService.validateLineItems(extractedData.lineItems);
+                  // Use singleton instance to prevent conflicts
+                  const validatedItems = await skuValidatorInstance.validateLineItems(extractedData.lineItems);
                   console.log(`   ✅ Line items validated: ${validatedItems.length} items processed`);
                   
                   // Log validation results
@@ -1792,8 +1783,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 console.log(`   ⚠️  No line items found - running empty validator for consistency`);
                 // Still run validator with empty data for deterministic behavior
                 try {
-                  const skuValidatorService = new OpenAISKUValidatorService();
-                  const validatedItems = await skuValidatorService.validateLineItems([]);
+                  // Use singleton instance to prevent conflicts
+                  const validatedItems = await skuValidatorInstance.validateLineItems([]);
                   console.log(`   ✅ Empty line items validation completed (deterministic)`);
                 } catch (error) {
                   console.log(`   ⚠️  Empty line items validation failed (non-critical)`);
@@ -2219,8 +2210,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
                       console.log(`🔍 OPENAI CONTACT VALIDATION: Using comprehensive contact resolution...`);
                       
                       try {
-                        const contactValidator = new OpenAIContactValidatorService();
-                        const validatedContact = await contactValidator.validateContact({
+                        // Use singleton instance to prevent conflicts
+                        const validatedContact = await contactValidatorInstance.validateContact({
                           extractedData: extractionResult,
                           senderName: messageToProcess.senderName || extractionResult.purchaseOrder.contact?.name,
                           senderEmail: messageToProcess.sender,
@@ -2268,8 +2259,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
                     console.log(`🔍 OPENAI CONTACT VALIDATION: Using comprehensive contact resolution...`);
                     
                     try {
-                      const contactValidator = new OpenAIContactValidatorService();
-                      const validatedContact = await contactValidator.validateContact({
+                      // Use singleton instance to prevent conflicts
+                      const validatedContact = await contactValidatorInstance.validateContact({
                         extractedData: extractionResult,
                         senderName: messageToProcess.senderName || extractionResult.purchaseOrder.contact?.name,
                         senderEmail: messageToProcess.sender,
@@ -2306,8 +2297,8 @@ totalPrice: ${item.totalPrice || 0}`;
                     
                     console.log(`   └─ Formatted ${extractionResult.lineItems.length} line items for validation`);
                     
-                    const skuValidatorService = new OpenAISKUValidatorService();
-                    validatedItems = await skuValidatorService.validateLineItems(extractionResult.lineItems);
+                    // Use singleton instance to prevent conflicts
+                    validatedItems = await skuValidatorInstance.validateLineItems(extractionResult.lineItems);
                     console.log(`   ✅ SKU validation complete: ${validatedItems.length} items processed`);
                     
                     // Merge validated SKUs back into original line items structure

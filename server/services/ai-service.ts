@@ -222,6 +222,21 @@ class AIServiceManager {
     };
   }
 
+  // Multi-attachment screening - delegate to Gemini service
+  async screenAttachmentsForPurchaseOrder(attachments: any[]): Promise<any> {
+    try {
+      const service = this.getService('gemini');
+      if ('screenAttachmentsForPurchaseOrder' in service) {
+        return await service.screenAttachmentsForPurchaseOrder(attachments);
+      } else {
+        throw new Error('Gemini service does not support attachment screening');
+      }
+    } catch (error) {
+      console.error('Attachment screening failed:', error);
+      throw new Error(`Attachment screening failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }
+
   getAvailableEngines(): { engine: AIEngine; available: boolean }[] {
     return [
       { 
