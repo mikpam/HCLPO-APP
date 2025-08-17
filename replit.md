@@ -1,116 +1,68 @@
 # Purchase Order Processing System
 
 ## Overview
-
-This is a full-stack web application designed to automate the processing of purchase orders from email sources. The system integrates with multiple external services including Gmail, OpenAI for classification, Airtable for operational data storage, Dropbox for document management, and NetSuite for final sales order creation. The application provides a dashboard interface for monitoring and managing the entire purchase order processing workflow.
+This full-stack web application automates purchase order processing from email sources, integrating with external services to manage the workflow from ingestion to sales order creation. The system provides a dashboard for monitoring and management, aiming to streamline operations and enhance efficiency in handling purchase orders.
 
 ## User Preferences
-
 Preferred communication style: Simple, everyday language.
 UI Design Priority: Mobile-responsive design is now required across all pages. Users need the system to work well on both desktop and mobile devices.
 
 ## System Architecture
 
 ### Frontend Architecture
-- **Framework**: React 18 with TypeScript using Vite as the build tool
-- **UI Components**: Shadcn/ui component library built on Radix UI primitives
-- **Styling**: Tailwind CSS with custom design tokens and CSS variables
-- **State Management**: TanStack Query (React Query) for server state management
-- **Routing**: Wouter for client-side routing
-- **Design System**: New York style variant with neutral color palette
+- **Framework**: React 18 with TypeScript using Vite.
+- **UI Components**: Shadcn/ui (Radix UI primitives).
+- **Styling**: Tailwind CSS with custom design tokens.
+- **State Management**: TanStack Query (React Query).
+- **Routing**: Wouter.
+- **Design System**: New York style variant with neutral color palette.
 
 ### Backend Architecture
-- **Runtime**: Node.js with Express.js REST API
-- **Language**: TypeScript with ES modules
-- **Database ORM**: Drizzle ORM configured for PostgreSQL
-- **Schema Sharing**: Shared TypeScript schemas between client and server using Zod validation
-- **Development**: Hot reload with Vite middleware integration
+- **Runtime**: Node.js with Express.js REST API.
+- **Language**: TypeScript with ES modules.
+- **Database ORM**: Drizzle ORM for PostgreSQL.
+- **Schema Sharing**: Shared TypeScript schemas between client and server using Zod validation.
 
 ### Database Design
-- **Primary Database**: Neon PostgreSQL with Drizzle ORM for persistent data storage
-- **Tables**: Users (authentication), Purchase Orders (core data), Error Logs (monitoring), Email Queue (processing pipeline), System Health (monitoring), Customers (master data for 5,000+ records)
-- **Schema Features**: UUID primary keys, JSONB columns for flexible data storage, timestamp tracking, status enums, full-text search vectors, array columns for alternate names
-- **Connection**: Node.js pg driver with connection pooling and SSL support
-- **Customer Indexing**: Multi-strategy lookup system with database indexes, in-memory caching, and fuzzy matching algorithms
+- **Primary Database**: Neon PostgreSQL.
+- **Key Tables**: Users, Purchase Orders, Error Logs, Email Queue, System Health, Customers.
+- **Schema Features**: UUIDs, JSONB, timestamps, status enums, full-text search, array columns.
+- **Customer Indexing**: Multi-strategy lookup with database indexes, in-memory caching, and fuzzy matching.
 
 ### Email Processing Pipeline
-- **Two-Step Processing Architecture**: Mirrors existing Make.com workflow structure for easier migration
-- **Step 1 - Pre-processing**: OpenAI GPT-4o performs simple intent classification (Purchase Order, Sample Request, Rush Order, Follow Up, None)
-- **Step 2 - Detailed Analysis**: Advanced 5-route classification only for qualifying emails (Purchase Order, Sample Request, Rush Order)
-- **Filtering Logic**: Follow Up and "None of these" emails are filtered out before detailed analysis
-- **Classification Routes**: TEXT_PO, TEXT_SAMPLE, ATTACHMENT_PO, ATTACHMENT_SAMPLE, REVIEW (5-route classification system)
-- **Advanced Gate Logic**: Artwork detection, body text sufficiency analysis, sample vs full order distinction, confidence scoring
-- **AI Document Filtering Layer**: Pre-screens all attachments before Gemini processing to filter out artwork, proofs, invoices, and non-PO documents
-- **Multi-Format Document Support**: Enhanced processing for all Gemini-compatible formats (PDFs, images, Word docs, CSVs, Excel, text files)
-- **Enhanced MIME Type Detection**: Automatic format recognition and proper MIME type assignment for optimal Gemini processing
-- **Dual Gemini Extraction Routes**: 
-  - ATTACHMENT_PO: Multi-format document processing with AI filtering → Gemini extraction for validated PO documents only
-  - TEXT_PO: Email text processing with structured schema extraction from subject + body + sender
-- **Processing Flow**: Gmail ingestion → Pre-processing classification → Detailed analysis (if qualified) → AI document filtering → Gemini extraction (filtered documents or text) → real client PO extraction → NetSuite import
-- **Database Storage**: Preprocessing, classification, and extracted data (with real client PO numbers) stored in Neon PostgreSQL
-- **Manual Processing Mode**: Development uses single-email processing with detailed console tracing for debugging
-- **Enhanced Gmail Labeling**: Preprocessing classifications now automatically apply Gmail labels for auditing (ai-purchase-order, ai-sample-request, ai-rush-order, ai-follow-up, ai-none-of-these)
-- **Successful Implementation**: Both ATTACHMENT_PO and TEXT_PO routes successfully extracting real client PO numbers with enhanced AI filtering system and complete email queue tracking including filtered emails (August 15, 2025)
-- **Admin Portal**: Comprehensive purchase order management interface with search, filtering, sorting, status badges, customer data display, and detailed modal views successfully implemented and displaying authentic Gemini-extracted data (August 15, 2025)
-- **Customer Lookup System**: High-performance customer database with 6,185+ HCL customer records imported, advanced customer finder service with priority matching (email > ASI/PPAI > name > address), brand overrides, and sophisticated disambiguation logic (August 16, 2025)
-- **HCL Customer Integration**: Successfully imported 6,185 customer records from NetSuite with Internal IDs and CNumbers, enabling precise customer attribution for forwarded emails (August 16, 2025)
-- **Advanced Customer Finder**: Intelligent customer matching service implementing comprehensive search strategies including query expansion, root brand extraction, and Gemini-powered disambiguation when multiple matches found (August 16, 2025)
-- **Forwarded Email Processing**: Enhanced @highcaliberline.com email processing with CNumber extraction, HCL customer lookup, and fallback logic - uses Gemini extraction first, then HCL customer database for accurate attribution (August 16, 2025)
-- **Complete Frontend Integration**: Successfully displaying HCL customer data with CNumber badges, forwarded email indicators, and proper customer attribution in both desktop and mobile views (August 16, 2025)
-- **Architecture Simplification**: Removed Airtable and Dropbox integrations, streamlined to use only Neon PostgreSQL for data storage and Replit object storage for documents (August 16, 2025)
-- **Email Preservation System**: Added automatic .eml file preservation for classified emails (Purchase Order, Sample Request, Rush Order) stored in object storage for complete audit trails and compliance (August 16, 2025)
-- **New Customer Flagging**: Enhanced system to flag purchase orders with unknown customers as "new_customer" status for CSR review instead of proceeding to NetSuite (August 16, 2025)
-- **Customer Database Maintenance**: Successfully resolved Target Business Services (C58346) missing customer issue, demonstrating system's ability to handle customer corrections and database updates for missing HCL customers (August 16, 2025)
-- **OpenAI Customer Finder Integration**: Enhanced customer matching with sophisticated OpenAI-powered system using exact original prompt structure, email domain matching priority, name variation confidence (singular/plural), brand overrides, and root-first disambiguation for superior customer identification accuracy (August 17, 2025)
-- **OpenAI SKU Validator Implementation**: Successfully implemented comprehensive SKU validation system processing ALL line items from Gemini JSON output with 5,372+ HCL items database integration, multi-item parsing via `____` separators, charge code detection (SETUP, 48-RUSH, P, etc.), and proper fallback handling for unknown SKUs as OE-MISC-ITEM (August 17, 2025)
-- **Customer Admin Interface**: Replaced basic customer import functionality with comprehensive customer management admin tab featuring search, filtering, pagination, detailed customer modals, and mobile-responsive design for managing 6,185+ HCL customer records (August 17, 2025)
-- **Comprehensive Customer Database Import**: Successfully imported complete HCL customer database increasing coverage from 6,189 to 13,662+ customer records with enhanced search aliases and data - now includes all missing customers for 100% HCL coverage (August 17, 2025)
-- **Complete CRUD Customer Management**: Implemented full Create, Read, Update, Delete functionality for admin users with CustomerFormModal and DeleteCustomerModal components, proper form validation, role-based access control, and seamless integration with customer management interface - admin users can now create new customers, edit existing records, and deactivate/reactivate customers through intuitive modal interfaces (August 17, 2025)
-- **Complete CRUD Items Management**: Successfully implemented comprehensive items management system with full Create, Read, Update, Delete functionality for admin users, featuring ItemFormModal and DeleteItemModal components, backend API with role-based access control, items statistics dashboard, search and sorting capabilities, activate/deactivate functionality, and mobile-responsive design - managing 5,372+ HCL item records with complete product catalog control for admin users (August 17, 2025)
-- **Word Document Processing Fix**: Resolved critical Gemini service bug that was incorrectly rejecting legitimate Word documents (.doc files) containing purchase orders due to MIME type handling issues - system now properly processes all Gemini 2.5 Pro supported formats including DOC, DOCX, PDF, images, and other document types with enhanced classification logic prioritizing strong PO indicators like "New PO:" numbers (August 17, 2025)
-- **OpenAI SKU Validator Critical Fix**: Resolved race condition and initialization issues causing valid SKUs to be incorrectly mapped to OE-MISC-ITEM fallback - fixed async initialization timing, enhanced SKU visibility from 50 to 100 relevant items in OpenAI prompts, and improved matching logic to properly validate existing SKUs like H710-08, T609, and charge codes (SETUP, P, rush charges) with 100% accuracy for authenticated line item processing (August 17, 2025)
-- **Attachment Processing Priority Fix**: Resolved critical bug where system processed artwork/proof files instead of actual purchase orders when emails contained multiple attachments - implemented intelligent prioritization logic that processes "PurchaseOrder" files first and deprioritizes "Proof"/"Artwork" files, ensuring accurate Gemini extraction from correct documents and preventing corrupted purchase order data (August 17, 2025)
-- **Enhanced Dashboard Animation Pipeline**: Upgraded email processing animation to display complete 9-step pipeline including SKU validation, attachment prioritization, and database storage steps with realistic timing and responsive layout - provides full visibility into processing workflow for race condition detection and performance monitoring (August 17, 2025)
-- **Bulk Processing Race Condition Fix**: Resolved critical race condition where bulk email processing (/api/emails/process) was missing Gemini extraction, customer lookup, and SKU validation steps that worked perfectly in single email processing - added complete extraction pipeline to bulk flow including attachment prioritization, OpenAI customer finder, and SKU validator to ensure data consistency across all processing modes (August 17, 2025)
+- **Architecture**: Two-step processing mirroring Make.com workflow.
+- **Pre-processing**: OpenAI GPT-4o for intent classification (Purchase Order, Sample Request, Rush Order, Follow Up, None).
+- **Detailed Analysis**: Advanced 5-route classification for qualifying emails (TEXT_PO, TEXT_SAMPLE, ATTACHMENT_PO, ATTACHMENT_SAMPLE, REVIEW).
+- **AI Document Filtering**: Pre-screens attachments to filter out non-PO documents before Gemini processing.
+- **Multi-Format Support**: Enhanced processing for Gemini-compatible formats (PDFs, images, Word docs, CSVs, Excel, text files).
+- **Dual Gemini Extraction Routes**:
+    - **ATTACHMENT_PO**: Multi-format document processing with AI filtering.
+    - **TEXT_PO**: Email text processing with structured schema extraction from subject, body, and sender.
+- **Processing Flow**: Gmail ingestion → Pre-processing → Detailed analysis → AI document filtering → Gemini extraction → PO extraction → NetSuite import.
+- **Database Storage**: Preprocessing, classification, and extracted data stored in Neon PostgreSQL.
+- **Email Preservation**: Automatic .eml file preservation for classified emails in object storage.
+- **Customer Lookup**: High-performance customer database with NetSuite integration for precise customer attribution, including advanced matching and disambiguation.
+- **SKU Validation**: Comprehensive SKU validation system integrating with a product items database, handling charge codes and fallbacks.
+- **Admin Portal**: Comprehensive PO management interface, customer management, and item management with CRUD functionality and role-based access control.
 
 ### Authentication & Authorization
-- **Strategy**: Session-based authentication with role-based access control
-- **Roles**: Operator role for standard users with potential for additional roles
-- **Security**: Password hashing, secure session management
+- **Strategy**: Session-based authentication with role-based access control.
+- **Roles**: Operator role and potential for additional roles.
 
 ## External Dependencies
 
 ### Email Integration
-- **Gmail API**: Service account authentication for automated email retrieval from hcl@metrixdigital.com
-- **Filtering**: Label-based filtering for "purchase-order" and "unprocessed" emails
-- **Attachments**: PDF processing and content extraction capabilities
+- **Gmail API**: Service account authentication for email retrieval and labeling.
 
 ### AI/ML Services
-- **OpenAI API**: GPT-4o model for both pre-processing intent classification AND detailed 5-route email gate logic
-- **Pre-processing Prompt**: Exact replica of Make.com workflow classification (Purchase Order, Sample Request, Rush Order, Follow Up, None)
-- **Detailed Classification**: Advanced gate logic with artwork detection, body text analysis, attachment routing decisions
-- **Google Gemini API**: Gemini 2.5 Flash for dual extraction routes with structured purchase order parsing
-- **ATTACHMENT_PO Route**: Gemini processes PDF attachments using file upload API with OCR and data extraction
-- **TEXT_PO Route**: Gemini processes email text content (subject + body + sender) using structured schema extraction
-- **Specialized Prompt Engineering**: Advanced OCR error correction, vendor/customer/ship-to identification, SKU processing with color mapping
-- **Two-Step Workflow**: Pre-processing filters emails → Detailed analysis for qualified emails → Gemini extraction (PDF or text-based)
-- **Real Client PO Numbers**: System extracts actual client PO numbers (e.g., "650494") instead of generating synthetic ones
-- **Clear Separation**: OpenAI handles all email classification, Gemini handles all structured data extraction for both routes
+- **OpenAI API**: Used for email pre-processing intent classification and detailed email gate logic.
+- **Google Gemini API**: Used for structured purchase order parsing and data extraction from both attachments and email text.
 
 ### Data Storage Services
-- **Neon PostgreSQL**: Primary database for purchase orders, customers, error logs, and operational monitoring
-- **Persistent Storage**: All data stored locally in PostgreSQL with no external database dependencies
+- **Neon PostgreSQL**: Primary database for all persistent application data.
 
 ### Document Management
-- **Object Storage**: PDF and document storage using Replit's built-in object storage
-- **File Management**: Original purchase order PDFs, artwork filtering, and document attachments stored securely
+- **Object Storage**: Replit's built-in object storage for PDF and document storage.
 
 ### ERP Integration
-- **NetSuite REST API**: Sales order creation with custom User Event scripts
-- **Features**: Customer lookup/creation, shipping method mapping, line item matching, fallback SKU handling
-- **Data Mapping**: FinalSKU preference with OE_MISC_ITEM fallbacks
-
-### Development & Deployment
-- **Replit Platform**: Development environment with live reload and error overlay
-- **Build Process**: Vite for frontend, esbuild for backend bundling
-- **Environment Variables**: Secure API key management for all external services
+- **NetSuite REST API**: For sales order creation, including customer lookup/creation, shipping method mapping, and line item matching.
