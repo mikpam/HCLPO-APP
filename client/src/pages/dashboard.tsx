@@ -3,6 +3,7 @@ import { DashboardMetrics } from "@/types";
 import MetricsCards from "@/components/dashboard/metrics-cards";
 import RecentProcessing from "@/components/dashboard/recent-processing";
 import SystemHealth from "@/components/dashboard/system-health";
+import ProcessingStatus from "@/components/dashboard/processing-status";
 import ManualProcessModal from "@/components/modals/manual-process-modal";
 import EmailProcessingAnimation from "@/components/dashboard/email-processing-animation";
 import { useState, useEffect } from "react";
@@ -69,17 +70,17 @@ export default function Dashboard() {
     currentStep: ""
   });
 
-  // Background processing status (for animation)
+  // Real-time background processing status
   const { data: backgroundStatus } = useQuery({
     queryKey: ["/api/processing/current-status"],
-    refetchInterval: 3000, // Check every 3 seconds
+    refetchInterval: 1000, // Check every 1 second for real-time updates
     onSuccess: (data) => {
       if (data) {
         setProcessingState({
           isProcessing: data.isProcessing || false,
           currentEmail: data.currentEmail || null,
-          processedCount: data.processedCount || 0,
-          totalCount: data.totalCount || 0,
+          processedCount: data.emailNumber || 0,
+          totalCount: data.totalEmails || 0,
           currentStep: data.currentStep || ""
         });
       }
@@ -303,20 +304,10 @@ export default function Dashboard() {
           isLoading={metricsLoading}
         />
 
-        {/* Email Processing Animation */}
-        <EmailProcessingAnimation 
-          isProcessing={processSingleEmail.isPending || processNormalEmails.isPending || processingState.isProcessing}
-          processedCount={processingState.processedCount || lastProcessResult?.processed || 0}
-          totalCount={processingState.totalCount || lastProcessResult?.total || 0}
-          currentStep={processingState.currentStep || 
-                      (processSingleEmail.isPending ? "Processing single email..." : 
-                      processNormalEmails.isPending ? "Processing emails normally..." : "")}
-          currentEmail={processingState.currentEmail}
-          finalStatus={lastProcessResult?.details?.purchaseOrder?.status || "pending"}
-          onAnimationComplete={() => {
-            console.log("Animation completed with status:", lastProcessResult?.details?.purchaseOrder?.status);
-          }}
-        />
+        {/* Real-time Processing Status */}
+        <div className="mb-8">
+          <ProcessingStatus />
+        </div>
 
         {/* Processing Result Display */}
         {lastProcessResult && (

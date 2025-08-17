@@ -1247,6 +1247,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
         console.log(`   └─ From: ${messageToProcess.sender}`);
         console.log(`   └─ Attachments: ${messageToProcess.attachments ? messageToProcess.attachments.length : 0}`);
         
+        // Update processing status for email start
+        updateProcessingStatus({
+          isProcessing: true,
+          currentStep: "email_preprocessing",
+          currentPO: "",
+          currentEmail: `${messageToProcess.subject} (${processedCount + 1}/${unprocessedMessages.length + 1})`,
+          emailNumber: processedCount + 1,
+          totalEmails: unprocessedMessages.length + 1
+        });
+        
         try {
           const gmailMessage = messageToProcess;
           const emailId = messageToProcess.id;
@@ -1397,6 +1407,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
             console.log('📋 PO NUMBER ASSIGNMENT:');
             const poNumber = `PO-${new Date().getFullYear()}-${String(Date.now()).slice(-6)}`;
             console.log(`   ✅ Generating PO number: ${poNumber}`);
+            
+            // Update status with PO number
+            updateProcessingStatus({
+              currentStep: "po_assignment",
+              currentPO: poNumber,
+            });
 
             // Handle forwarded emails with enhanced processing
             if (forwardedEmail) {
@@ -1428,6 +1444,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
             // AI Extraction based on classification
             const route = classification.recommended_route || classification.route;
             console.log(`🧠 GEMINI EXTRACTION: Processing ${route}...`);
+            
+            // Update status for Gemini extraction
+            updateProcessingStatus({
+              currentStep: "gemini_extraction",
+            });
             
             let extractedData = null;
             if (route === "ATTACHMENT_PO" || route === "ATTACHMENT_SAMPLE") {
@@ -1579,6 +1600,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
               // Customer lookup and processing
               console.log(`🔍 CUSTOMER LOOKUP: Starting for PO ${purchaseOrder.id}`);
+              
+              // Update status for customer validation
+              updateProcessingStatus({
+                currentStep: "customer_validation",
+              });
               try {
                 const updatedPO = await openaiCustomerFinderService.processPurchaseOrder(purchaseOrder.id);
                 console.log(`   ✅ Customer processing completed for PO ${poNumber} (Status: ${updatedPO?.status || purchaseOrder.status})`);
@@ -1613,6 +1639,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
               // Line items validation using OpenAI SKU validator
               if (extractedData.lineItems && extractedData.lineItems.length > 0) {
                 console.log(`📦 LINE ITEMS VALIDATION: Starting for ${extractedData.lineItems.length} items`);
+                
+                // Update status for line item validation
+                updateProcessingStatus({
+                  currentStep: "line_item_validation",
+                });
                 
                 try {
                   const skuValidatorService = new OpenAISKUValidatorService();
@@ -2044,7 +2075,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
                   }
 
                   // Contact validation using comprehensive OpenAI validation (step 3 of sequence)
-                  let contactMeta = null;
+                  contactMeta = null;
                   if (extractionResult.purchaseOrder?.contact || messageToProcess.sender) {
                     console.log(`🔍 OPENAI CONTACT VALIDATION: Using comprehensive contact resolution...`);
                     
@@ -2591,40 +2622,31 @@ totalPrice: ${item.totalPrice || 0}`;
     }
   });
 
-  // Current processing status for animation
+  // Global processing status tracking for real-time dashboard updates
+  let currentProcessingStatus = {
+    isProcessing: false,
+    currentStep: "",
+    currentPO: "",
+    currentEmail: "",
+    emailNumber: 0,
+    totalEmails: 0
+  };
+
+  // Helper function to update processing status (will be used throughout processing)
+  const updateProcessingStatus = (status: Partial<typeof currentProcessingStatus>) => {
+    currentProcessingStatus = { ...currentProcessingStatus, ...status };
+    console.log(`📊 REAL-TIME STATUS: ${currentProcessingStatus.currentPO} - ${currentProcessingStatus.currentStep}`);
+  };
+
   app.get("/api/processing/current-status", async (req, res) => {
     try {
-      // Check if background processing is active by looking at recent activity
-      const recentEmails = await storage.getEmailQueue({ limit: 5 });
-      const recentProcessing = recentEmails.filter(email => {
-        const timeDiff = Date.now() - new Date(email.processedAt || email.createdAt).getTime();
-        return timeDiff < 60000; // Within last minute
-      });
-      
-      const isProcessing = recentProcessing.length > 0;
-      let currentStep = "";
-      let currentEmail = null;
-
-      if (isProcessing && recentProcessing[0]) {
-        const email = recentProcessing[0];
-        currentStep = email.status === 'processed' ? 'Completed processing' : 'Processing email';
-        currentEmail = {
-          sender: email.sender,
-          subject: email.subject,
-          number: 1
-        };
-      }
-
-      res.json({
-        isProcessing,
-        currentStep,
-        currentEmail,
-        processedCount: recentProcessing.length,
-        totalCount: recentEmails.length
-      });
+      res.json(currentProcessingStatus);
     } catch (error) {
+      console.error("Error getting processing status:", error);
       res.status(500).json({ 
         isProcessing: false,
+        currentStep: "",
+        currentPO: "",
         message: error instanceof Error ? error.message : 'Failed to get processing status' 
       });
     }
