@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -34,6 +34,22 @@ export function CustomerFormModal({ isOpen, onClose, customer, mode }: CustomerF
   }));
 
   const [newAlternateName, setNewAlternateName] = useState("");
+
+  // Update form data when customer prop changes
+  useEffect(() => {
+    if (isOpen) {
+      setFormData({
+        customerNumber: customer?.customerNumber || "",
+        companyName: customer?.companyName || "",
+        email: customer?.email || "",
+        phone: customer?.phone || "",
+        netsuiteId: customer?.netsuiteId || "",
+        isActive: customer?.isActive ?? true,
+        alternateNames: customer?.alternateNames || [],
+      });
+      setNewAlternateName("");
+    }
+  }, [customer, isOpen, mode]);
 
   const createMutation = useMutation({
     mutationFn: async (data: InsertCustomer) => {
