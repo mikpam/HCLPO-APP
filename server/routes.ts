@@ -1928,6 +1928,28 @@ export async function registerRoutes(app: Express): Promise<Server> {
             );
           }
 
+          // CRITICAL FIX: Create emailQueue record for dashboard tracking (was missing!)
+          try {
+            const emailQueueRecord = await storage.createEmailQueueItem({
+              gmailId: messageToProcess.id,
+              sender: messageToProcess.sender || 'Unknown',
+              subject: messageToProcess.subject || 'No Subject',
+              route: preprocessing.shouldProceed ? (classification?.route || 'TEXT_PO') : 'FILTERED',
+              status: preprocessing.shouldProceed ? 'processed' : 'filtered',
+              confidence: preprocessing.shouldProceed ? (classification?.confidence || 0) : 0,
+              processedAt: new Date(),
+              metadata: {
+                classification: preprocessing.classification || preprocessing.response,
+                shouldProceed: preprocessing.shouldProceed,
+                attachmentCount: messageToProcess.attachments?.length || 0,
+                processingEngine: 'auto'
+              }
+            });
+            console.log(`   ✅ Created emailQueue record: ${emailQueueRecord.id} (Status: ${emailQueueRecord.status})`);
+          } catch (queueError) {
+            console.error(`   ❌ Failed to create emailQueue record:`, queueError);
+          }
+
           console.log(`   ✅ Completed processing email ${processedCount + 1}`);
           
         } catch (error) {
