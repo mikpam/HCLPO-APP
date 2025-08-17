@@ -48,15 +48,17 @@ export class OpenAIContactValidatorService {
     }
 
     try {
-      // Load active contacts
+      // Load active contacts (inactive=false means active)
       const allContacts = await db
         .select()
         .from(contacts)
-        .where(eq(contacts.isActive, true));
+        .where(eq(contacts.inactive, false));
       
       this.contactsCache.clear();
       for (const contact of allContacts) {
-        this.contactsCache.set(contact.email.toLowerCase(), contact);
+        if (contact.email) { // Add null safety
+          this.contactsCache.set(contact.email.toLowerCase(), contact);
+        }
       }
 
       // Load customers with domains
