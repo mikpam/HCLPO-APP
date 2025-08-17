@@ -291,11 +291,55 @@ export async function registerRoutes(app: Express): Promise<Server> {
             const { GeminiService } = await import('./services/gemini');
             const geminiService = new GeminiService();
             
+            // CRITICAL FIX: Prioritize actual purchase order files over proof/artwork files
+            console.log(`\n📋 ATTACHMENT PRIORITIZATION: Sorting attachments to prioritize purchase orders...`);
+            const prioritizedAttachments = pdfAttachments.sort((a, b) => {
+              const aFilename = a.filename.toLowerCase();
+              const bFilename = b.filename.toLowerCase();
+              
+              // Purchase order indicators (high priority)
+              const aPOScore = (aFilename.includes('purchaseorder') ? 100 : 0) + 
+                             (aFilename.includes('purchase_order') ? 100 : 0) + 
+                             (aFilename.includes('purchase order') ? 100 : 0) +
+                             (aFilename.includes('po_') ? 50 : 0) +
+                             (aFilename.match(/po[\s\-_#]*\d+/) ? 75 : 0);
+                             
+              const bPOScore = (bFilename.includes('purchaseorder') ? 100 : 0) + 
+                             (bFilename.includes('purchase_order') ? 100 : 0) + 
+                             (bFilename.includes('purchase order') ? 100 : 0) +
+                             (bFilename.includes('po_') ? 50 : 0) +
+                             (bFilename.match(/po[\s\-_#]*\d+/) ? 75 : 0);
+              
+              // Proof/artwork indicators (negative priority)
+              const aProofScore = (aFilename.includes('proof') ? -100 : 0) + 
+                                (aFilename.includes('artwork') ? -100 : 0) + 
+                                (aFilename.includes('mock') ? -50 : 0) +
+                                (aFilename.includes('layout') ? -50 : 0);
+                                
+              const bProofScore = (bFilename.includes('proof') ? -100 : 0) + 
+                                (bFilename.includes('artwork') ? -100 : 0) + 
+                                (bFilename.includes('mock') ? -50 : 0) +
+                                (bFilename.includes('layout') ? -50 : 0);
+              
+              const aTotal = aPOScore + aProofScore;
+              const bTotal = bPOScore + bProofScore;
+              
+              return bTotal - aTotal; // Higher scores first
+            });
+            
+            console.log(`   └─ Attachment processing order:`);
+            prioritizedAttachments.forEach((att, i) => {
+              const filename = att.filename.toLowerCase();
+              const isPO = filename.includes('purchaseorder') || filename.includes('purchase_order') || filename.includes('purchase order');
+              const isProof = filename.includes('proof') || filename.includes('artwork');
+              console.log(`      ${i+1}. ${att.filename} ${isPO ? '✅ (PO Priority)' : isProof ? '❌ (Proof - Low Priority)' : '(Standard)'}`);
+            });
+            
             let processedPO = false;
             
-            // Filter and process each PDF attachment
-            for (let i = 0; i < pdfAttachments.length && !processedPO; i++) {
-              const pdfAttachment = pdfAttachments[i];
+            // Filter and process each PDF attachment in priority order
+            for (let i = 0; i < prioritizedAttachments.length && !processedPO; i++) {
+              const pdfAttachment = prioritizedAttachments[i];
               console.log(`   └─ Screening: ${pdfAttachment.filename} (${pdfAttachment.buffer?.length} bytes)`);
               
               try {
@@ -1193,6 +1237,8 @@ totalPrice: ${item.totalPrice || 0}`;
     }
   });
 
+
   const httpServer = createServer(app);
+
   return httpServer;
 }
