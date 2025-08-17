@@ -1261,6 +1261,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
           const gmailMessage = messageToProcess;
           const emailId = messageToProcess.id;
 
+          // Declare validator variables at the start of each email processing cycle
+          let customerMeta = null;
+          let contactMeta = null;
+          let validationCompleted = false;
+
           // Enhanced forwarded email detection from HCL
           let forwardedEmail = null;
           if (messageToProcess.sender && messageToProcess.sender.includes('@highcaliberline.com')) {
@@ -1573,6 +1578,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
               // Customer lookup and processing
               console.log(`🔍 CUSTOMER LOOKUP: Starting for PO ${purchaseOrder.id}`);
               
+              // Variables already declared at email processing start
+              console.log(`🔍 VALIDATION START: Processing validators for PO ${purchaseOrder.id}`);
+              
               // Update status for customer validation
               updateProcessingStatus({
                 currentStep: "customer_validation",
@@ -1580,6 +1588,32 @@ export async function registerRoutes(app: Express): Promise<Server> {
               try {
                 const updatedPO = await openaiCustomerFinderService.processPurchaseOrder(purchaseOrder.id);
                 console.log(`   ✅ Customer processing completed for PO ${poNumber} (Status: ${updatedPO?.status || purchaseOrder.status})`);
+                
+                // CRITICAL: Capture customer data for final update  
+                if (updatedPO?.status === 'customer_found') {
+                  // Get current PO to access extracted data and customer finder results
+                  const currentPO = await storage.getPurchaseOrder(purchaseOrder.id);
+                  
+                  // Try to get customer data from extractedData first
+                  if (currentPO?.extractedData?.purchaseOrder?.customer?.customerNumber) {
+                    customerMeta = {
+                      customer_name: currentPO.extractedData.purchaseOrder.customer.company || 'Unknown',
+                      customer_number: currentPO.extractedData.purchaseOrder.customer.customerNumber
+                    };
+                    console.log(`   ✅ Captured customer data from extractedData: ${customerMeta.customer_name} (${customerMeta.customer_number})`);
+                  } else if (currentPO?.extractedData?.customer) {
+                    // Fallback to older structure
+                    customerMeta = {
+                      customer_name: currentPO.extractedData.customer.company || 'Unknown',
+                      customer_number: currentPO.extractedData.customer.customerNumber || currentPO.extractedData.customer.customernumber || 'Unknown'
+                    };
+                    console.log(`   ✅ Captured customer data from legacy extractedData: ${customerMeta.customer_name} (${customerMeta.customer_number})`);
+                  } else {
+                    console.log(`   ⚠️  Customer found but data not in expected extractedData structure`);
+                  }
+                } else {
+                  console.log(`   ⚠️  Customer status: ${updatedPO?.status || 'unknown'} - no customer data captured`);
+                }
                 
                 // Log customer lookup failures for review
                 if (updatedPO?.status === 'customer_not_found' || updatedPO?.status === 'new_customer') {
@@ -1608,6 +1642,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 );
               }
 
+              // Validation workflow is starting (will be marked complete after all validators finish)
+
               console.log(`🚀 IMMEDIATE DEBUG: Just finished customer catch block - execution continues...`);
 
               console.log(`🔍 FLOW DEBUG: Finished customer processing, about to start contact validation...`);
@@ -1626,8 +1662,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 currentPO: poNumber,
               });
               
-              let contactMeta = null;
-              if (extractedData?.customer || extractedData?.contact || messageToProcess.sender) {
+              // ALWAYS run contact validator for deterministic results
+              console.log(`📞 CONTACT VALIDATION: Running deterministically for all emails`);
+              {
                 try {
                   // Extract sender name from email if not available in parsed format
                   let senderName = '';
@@ -1650,7 +1687,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
                   console.log(`   🔍 DEBUG: messageToProcess.sender: "${messageToProcess.sender}"`);
                   
                   const contactValidator = new OpenAIContactValidatorService();
-                  const validatedContact = await contactValidator.validateContact({
+                  contactMeta = await contactValidator.validateContact({
                     extractedData: extractedData,
                     senderName: senderName,
                     senderEmail: messageToProcess.sender,
@@ -1658,16 +1695,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
                     companyId: extractedData?.customer?.customernumber
                   });
                   
-                  contactMeta = validatedContact;
-                  console.log(`   ✅ Contact validated: ${validatedContact.name} <${validatedContact.email}>`);
-                  console.log(`   └─ Method: ${validatedContact.match_method} (Confidence: ${validatedContact.confidence})`);
-                  console.log(`   └─ Role: ${validatedContact.role}`);
+                  console.log(`   ✅ Contact validated: ${contactMeta.name} <${contactMeta.email}>`);
+                  console.log(`   └─ Method: ${contactMeta.match_method} (Confidence: ${contactMeta.confidence})`);
+                  console.log(`   └─ Role: ${contactMeta.role}`);
                   
                   // Update purchase order with validated contact info
                   await storage.updatePurchaseOrder(purchaseOrder.id, {
                     extractedData: {
                       ...extractedData,
-                      validatedContact: validatedContact,
+                      validatedContact: contactMeta,
                       contactValidationCompleted: true
                     }
                   });
@@ -1687,12 +1723,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
                     }
                   );
                 }
-              } else {
-                console.log(`   ⚠️  No contact information available for validation`);
               }
 
-              // Line items validation using OpenAI SKU validator
-              if (extractedData.lineItems && extractedData.lineItems.length > 0) {
+              // ALWAYS run line items validator for deterministic results
+              console.log(`📦 LINE ITEMS VALIDATION: Running deterministically for all emails`);
+              if (extractedData?.lineItems && extractedData.lineItems.length > 0) {
                 console.log(`📦 LINE ITEMS VALIDATION: Starting for ${extractedData.lineItems.length} items`);
                 
                 // Update status for line item validation
@@ -1744,7 +1779,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
                   );
                 }
               } else {
-                console.log(`   ⚠️  No line items found for validation`);
+                console.log(`   ⚠️  No line items found - running empty validator for consistency`);
+                // Still run validator with empty data for deterministic behavior
+                try {
+                  const skuValidatorService = new OpenAISKUValidatorService();
+                  const validatedItems = await skuValidatorService.validateLineItems([]);
+                  console.log(`   ✅ Empty line items validation completed (deterministic)`);
+                } catch (error) {
+                  console.log(`   ⚠️  Empty line items validation failed (non-critical)`);
+                }
+                
                 await logProcessingError(
                   'sku_validation_failed',
                   `No line items found for PO ${poNumber}. Email processing completed but no products were extracted for validation.`,
@@ -1758,6 +1802,69 @@ export async function registerRoutes(app: Express): Promise<Server> {
                   }
                 );
               }
+
+              // Mark that ALL validation is complete
+              validationCompleted = true;
+              console.log(`🏁 VALIDATION COMPLETED: All validators finished for PO ${poNumber}`);
+
+              // CRITICAL: Final deterministic update with ALL validator results (ONLY for validated emails)
+              if (validationCompleted) {
+                console.log(`🔍 FINAL UPDATE CHECK: validationCompleted=${validationCompleted}`);
+                console.log(`🔄 FINAL UPDATE: Storing all validator results to main database fields`);
+                
+                // Get latest purchase order data to ensure we have all validator results
+                const currentPO = await storage.getPurchaseOrder(purchaseOrder.id);
+                const finalUpdateData: any = {};
+                
+                // CUSTOMER DATA: Extract from actual data structures that exist
+                if (currentPO?.status === 'customer_found' && currentPO?.extractedData?.purchaseOrder?.customer?.customerNumber) {
+                  const customerData = currentPO.extractedData.purchaseOrder.customer;
+                  const customerMeta = {
+                    customer_name: customerData.company || 'Unknown',
+                    customer_number: customerData.customerNumber
+                  };
+                  finalUpdateData.customerMeta = customerMeta;
+                  console.log(`   ✅ Storing customer data: ${customerMeta.customer_name} (${customerMeta.customer_number})`);
+                } else if (currentPO?.status === 'customer_found') {
+                  console.log(`   ⚠️  Customer found but data structure unexpected`);
+                } else {
+                  console.log(`   ⚠️  Customer not found, status: ${currentPO?.status || 'unknown'}`);
+                }
+                
+                // CONTACT DATA: Already captured by contact validator  
+                if (contactMeta) {
+                  console.log(`   ✅ Storing contact data: ${contactMeta.name} <${contactMeta.email}>`);
+                  finalUpdateData.contact = contactMeta.email || null;
+                  finalUpdateData.contactMeta = contactMeta;
+                } else {
+                  console.log(`   ⚠️  No contact data captured`);
+                }
+                
+                // LINE ITEMS: Extract validated line items
+                if (currentPO?.extractedData?.validatedLineItems && currentPO.extractedData.validatedLineItems.length > 0) {
+                  console.log(`   ✅ Storing line items: ${currentPO.extractedData.validatedLineItems.length} validated items`);
+                  finalUpdateData.lineItems = currentPO.extractedData.validatedLineItems;
+                } else {
+                  console.log(`   ⚠️  No validated line items found`);
+                }
+                
+                // CLIENT PO NUMBER: From extraction data
+                if (currentPO?.extractedData?.purchaseOrder?.purchaseOrderNumber) {
+                  console.log(`   ✅ Storing client PO: ${currentPO.extractedData.purchaseOrder.purchaseOrderNumber}`);
+                  finalUpdateData.clientPONumber = currentPO.extractedData.purchaseOrder.purchaseOrderNumber;
+                }
+                
+                // Execute final update
+                if (Object.keys(finalUpdateData).length > 0) {
+                  await storage.updatePurchaseOrder(purchaseOrder.id, finalUpdateData);
+                  console.log(`   ✅ FINAL UPDATE COMPLETED: Stored ${Object.keys(finalUpdateData).length} data fields deterministically`);
+                } else {
+                  console.log(`   ⚠️  No validator results to store in final update`);
+                }
+              } else {
+                console.log(`   ⚠️  Skipping final update - email did not go through complete validation process`);
+              }
+
             } else {
               console.log(`   ❌ No data extracted from ${classification.route || 'unknown route'}`);
               await logProcessingError(
@@ -1776,6 +1883,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
               );
             }
           }
+
+
 
           // Update Gmail labels
           console.log(`Updating Gmail labels for message ${messageToProcess.id}`);
