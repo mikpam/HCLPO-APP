@@ -6,7 +6,7 @@ import itemsRouter from "./routes/items";
 import { gmailService } from "./services/gmail";
 import { aiService, type AIEngine } from "./services/ai-service";
 import { netsuiteService } from "./services/netsuite";
-import { openaiCustomerFinderService } from "./services/openai-customer-finder";
+// openaiCustomerFinderService now uses per-email instances to prevent race conditions
 import { OpenAISKUValidatorService } from "./services/openai-sku-validator";
 import { OpenAIContactValidatorService } from "./services/openai-contact-validator";
 import { db } from "./db";
@@ -587,8 +587,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
           console.log(`   └─ Searching HCL database for: ${extractionResult.purchaseOrder.customer.company || 'Unknown'}`);
           
           try {
-            const { openaiCustomerFinderService } = await import('./services/openai-customer-finder');
-            const customerMatch = await openaiCustomerFinderService.findCustomer({
+            // Create fresh customer finder instance for this email to prevent race conditions
+            const { OpenAICustomerFinderService } = await import('./services/openai-customer-finder');
+            const customerFinder = new OpenAICustomerFinderService();
+            const customerMatch = await customerFinder.findCustomer({
               customerName: extractionResult.purchaseOrder.customer.company,
               customerEmail: extractionResult.purchaseOrder.customer.email,
               senderEmail: messageToProcess.sender,
@@ -1023,7 +1025,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
             const customerName = purchaseOrder.extractedData?.customer?.name || purchaseOrder.customerName;
             console.log(`   └─ Searching HCL database for: ${customerName || 'No customer name'}`);
 
-            const updatedPO = await openaiCustomerFinderService.processPurchaseOrder(purchaseOrder.id);
+            // Create fresh customer finder instance for this email to prevent race conditions
+            const { OpenAICustomerFinderService } = await import('./services/openai-customer-finder');
+            const customerFinder = new OpenAICustomerFinderService();
+            const updatedPO = await customerFinder.processPurchaseOrder(purchaseOrder.id);
             
             console.log(`   ✅ Updated purchase order ${poNumber} (Status: ${updatedPO?.status || 'unknown'})`);
           }
@@ -1642,7 +1647,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 currentStep: "customer_validation",
               });
               try {
-                const updatedPO = await openaiCustomerFinderService.processPurchaseOrder(purchaseOrder.id);
+                // Create fresh customer finder instance for this email to prevent race conditions
+                const { OpenAICustomerFinderService } = await import('./services/openai-customer-finder');
+                const customerFinder = new OpenAICustomerFinderService();
+                const updatedPO = await customerFinder.processPurchaseOrder(purchaseOrder.id);
                 console.log(`   ✅ Customer processing completed for PO ${poNumber} (Status: ${updatedPO?.status || purchaseOrder.status})`);
                 
                 // CRITICAL: Capture customer data for final update  
@@ -2288,8 +2296,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
                   
                   let finalCustomerData = null;
                   if (extractionResult.purchaseOrder?.customer?.company) {
-                    // Use SAME service and method as single email processing
-                    const customerResult = await openaiCustomerFinderService.findCustomer({
+                    // Create fresh customer finder instance for this email to prevent race conditions
+                    const { OpenAICustomerFinderService } = await import('./services/openai-customer-finder');
+                    const customerFinder = new OpenAICustomerFinderService();
+                    const customerResult = await customerFinder.findCustomer({
                       customerName: extractionResult.purchaseOrder.customer.company,
                       customerEmail: extractionResult.purchaseOrder.customer.email || '',
                       senderEmail: messageToProcess.sender,

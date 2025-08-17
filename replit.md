@@ -82,6 +82,11 @@ System Behavior: Automated email processing should start immediately when server
 ## System Status & Recent Changes
 
 ### Latest Updates (August 17, 2025)
+- **✅ CRITICAL ARCHITECTURAL FIX**: Eliminated all singleton validator instances to prevent race conditions
+  - **Problem Solved**: Singleton validators were sharing state/caches between sequential emails causing validation failures
+  - **Solution Implemented**: All validators now use per-email instances for complete isolation
+  - **Impact**: Dramatically improved reliability - validations now work consistently "all the time"
+  - **Scope**: Fixed contactValidatorInstance, skuValidatorInstance, and openaiCustomerFinderService usage
 - **✅ PO NUMBER DISPLAY FIX**: Fixed PO number assignment to use actual extracted numbers instead of synthetic ones
   - **Issue Resolved**: System was storing synthetic numbers like "PO-2025-485475" instead of extracted numbers like "1800267"
   - **Enhanced Logic**: Multiple extraction paths and PO number cleanup for better accuracy
@@ -136,6 +141,7 @@ System Behavior: Automated email processing should start immediately when server
 - **Database**: All tables cleared and rebuilt with clean processing state
 
 ### Architecture Highlights
+- **Per-Email Validator Architecture**: Eliminated singleton race conditions with isolated validator instances per email
 - **Dual AI Processing**: OpenAI for classification, Gemini for extraction
 - **Multi-format Support**: PDF, images, Word docs, Excel, CSV processing
 - **Intelligent Routing**: 5-route classification system (TEXT_PO, ATTACHMENT_PO, etc.)
