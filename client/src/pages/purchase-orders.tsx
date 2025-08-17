@@ -412,7 +412,7 @@ export default function PurchaseOrdersPage() {
                         <ArrowUpDown className="ml-2 h-3 w-3" />
                       </Button>
                     </TableHead>
-                    <TableHead className="w-[200px]">Customer Email</TableHead>
+                    <TableHead className="w-[120px]">Customer Email</TableHead>
                     <TableHead className="w-[160px]">Contact</TableHead>
                     <TableHead className="w-[140px]">
                       <Button 
@@ -425,7 +425,7 @@ export default function PurchaseOrdersPage() {
                         <ArrowUpDown className="ml-2 h-3 w-3" />
                       </Button>
                     </TableHead>
-                    <TableHead className="w-[300px]">Line Items</TableHead>
+                    <TableHead className="w-[400px]">Line Items</TableHead>
                     <TableHead className="w-[120px]">Customer Number</TableHead>
                     <TableHead className="w-[120px]">Validated JSON</TableHead>
                     <TableHead className="w-[100px]">PO KEY</TableHead>
@@ -498,7 +498,7 @@ export default function PurchaseOrdersPage() {
                           </div>
                         </TableCell>
                         <TableCell>
-                          <span className="text-sm text-gray-600 truncate max-w-[150px]">
+                          <span className="text-sm text-gray-600 truncate max-w-[100px]">
                             {customer.email}
                           </span>
                         </TableCell>
@@ -527,7 +527,7 @@ export default function PurchaseOrdersPage() {
                           </Badge>
                         </TableCell>
                         <TableCell>
-                          <div className="space-y-1 max-w-[300px]">
+                          <div className="space-y-1 max-w-[400px]">
                             {(() => {
                               const extractedData = order.extractedData as any;
                               const lineItems = extractedData?.lineItems || [];
