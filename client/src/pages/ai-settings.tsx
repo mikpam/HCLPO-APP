@@ -180,37 +180,7 @@ export default function AISettings() {
               </div>
             ))}
 
-            <div className="pt-4 border-t">
-              <Button
-                onClick={handleTestConnections}
-                disabled={testing || testConnectionsMutation.isPending}
-                className="w-full"
-                variant="outline"
-              >
-                {testing || testConnectionsMutation.isPending ? (
-                  <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                ) : (
-                  <CheckCircle className="h-4 w-4 mr-2" />
-                )}
-                Test All Connections
-              </Button>
-            </div>
 
-            {connectionResults && (
-              <div className="space-y-2 mt-4">
-                <h4 className="font-medium text-sm">Connection Test Results:</h4>
-                <div className="text-xs space-y-1">
-                  <div className={`flex justify-between p-2 rounded ${connectionResults.openai.success ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'}`}>
-                    <span>OpenAI:</span>
-                    <span>{connectionResults.openai.success ? 'OK' : connectionResults.openai.error}</span>
-                  </div>
-                  <div className={`flex justify-between p-2 rounded ${connectionResults.gemini.success ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'}`}>
-                    <span>Gemini:</span>
-                    <span>{connectionResults.gemini.success ? 'OK' : connectionResults.gemini.error}</span>
-                  </div>
-                </div>
-              </div>
-            )}
           </CardContent>
         </Card>
       </div>

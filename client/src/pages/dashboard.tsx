@@ -264,25 +264,6 @@ export default function Dashboard() {
             <p className="text-secondary mt-1">Monitor and manage purchase order processing</p>
           </div>
           <div className="flex items-center space-x-4">
-            {/* Development Controls */}
-            <div className="flex items-center space-x-2 px-3 py-1 bg-amber-50 border border-amber-200 rounded-lg">
-              <span className="text-xs text-amber-700 font-medium">DEV</span>
-              <button
-                onClick={() => processSingleEmail.mutate()}
-                disabled={processSingleEmail.isPending || processNormalEmails.isPending}
-                className="px-3 py-1 bg-amber-600 text-white text-xs rounded hover:bg-amber-700 transition-colors disabled:opacity-50"
-              >
-                {processSingleEmail.isPending ? "Processing..." : "Process 1 Email"}
-              </button>
-              <button
-                onClick={() => processNormalEmails.mutate()}
-                disabled={processNormalEmails.isPending || processSingleEmail.isPending}
-                className="px-3 py-1 bg-green-600 text-white text-xs rounded hover:bg-green-700 transition-colors disabled:opacity-50"
-              >
-                {processNormalEmails.isPending ? "Processing..." : "📋 Process Normally"}
-              </button>
-            </div>
-            
             <div className="flex items-center space-x-2 text-sm text-secondary">
               <i className="fas fa-sync-alt w-4"></i>
               <span>Last sync: 2 minutes ago</span>
@@ -318,12 +299,12 @@ export default function Dashboard() {
           }}
         />
 
-        {/* Development Processing Result Display */}
+        {/* Processing Result Display */}
         {lastProcessResult && (
-          <div className="mb-8 bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-200 rounded-xl p-6">
-            <h3 className="text-lg font-semibold text-amber-800 mb-4">
-              <i className="fas fa-code text-amber-600 mr-2"></i>
-              {lastProcessResult.processedEmails ? 'Normal Processing Result' : 'Development Processing Result'}
+          <div className="mb-8 bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-xl p-6">
+            <h3 className="text-lg font-semibold text-blue-800 mb-4">
+              <i className="fas fa-check-circle text-blue-600 mr-2"></i>
+              Processing Result
             </h3>
             
             {lastProcessResult.details ? (
