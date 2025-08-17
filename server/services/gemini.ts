@@ -117,15 +117,8 @@ export class GeminiService {
 
       // Convert document buffer to base64 and get MIME type
       const base64Data = documentBuffer.toString('base64');
-      let mimeType = this.getMimeTypeFromFilename(filename);
-      
-      // Fix MIME type for Word documents - Gemini prefers these formats
-      if (mimeType === 'application/msword') {
-        mimeType = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
-        console.log(`   └─ Converted Word doc MIME type to: ${mimeType}`);
-      } else {
-        console.log(`   └─ Using MIME type: ${mimeType}`);
-      }
+      const mimeType = this.getMimeTypeFromFilename(filename);
+      console.log(`   └─ Using MIME type: ${mimeType} (Gemini 2.5 Pro supports DOC/DOCX directly)`);
 
       const prompt = `Analyze the provided document to determine its primary function: Is it a purchase order (including sample orders/requests) or something else?
 
