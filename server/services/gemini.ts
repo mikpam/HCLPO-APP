@@ -117,40 +117,53 @@ export class GeminiService {
 
       // Convert document buffer to base64 and get MIME type
       const base64Data = documentBuffer.toString('base64');
-      const mimeType = this.getMimeTypeFromFilename(filename);
-      console.log(`   └─ Detected MIME type: ${mimeType}`);
+      let mimeType = this.getMimeTypeFromFilename(filename);
+      
+      // Fix MIME type for Word documents - Gemini prefers these formats
+      if (mimeType === 'application/msword') {
+        mimeType = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+        console.log(`   └─ Converted Word doc MIME type to: ${mimeType}`);
+      } else {
+        console.log(`   └─ Using MIME type: ${mimeType}`);
+      }
 
       const prompt = `Analyze the provided document to determine its primary function: Is it a purchase order (including sample orders/requests) or something else?
 
-**Primary Function Test:**
+**PRIORITY PURCHASE ORDER INDICATORS (Check First):**
 
-1. **Exclusion Check (Perform First):** Does the document's primary purpose appear to be one of the following?
-   * **Artwork/Proof/Design:** Contains visual mockups, layouts, design specifications, color palettes, approval boxes, or keywords like "Proof," "Artwork," "Layout," "Design," "Mockup," "Revision," "Approve," "Approval Required," "Sample Proof." Even if quantities/prices are present for context, if the main goal is design review/approval, it's NOT a purchase order.
-   * **Quotation/Proposal:** Presents prices/terms for *potential* future work, often using terms like "Quote," "Proposal," "Estimate," "Offer," "Valid Until."
-   * **Invoice/Bill:** Requests payment for goods/services *already provided* or shipped, using terms like "Invoice," "Bill," "Due Date," "Amount Due."
-   * **Packing List/Slip:** Details items included in a shipment, often lacking prices, using terms like "Packing List," "Delivery Note."
-   * **Receipt/Statement:** Confirms payment received or summarizes account activity.
-   * **Shipping Notice/ASN:** Provides information about a shipment in transit.
-   * **Internal Memos/Emails/Attachments:** Discussions *about* an order, attachments to emails *containing* proofs, etc., are not the order itself.
+Look for these strong purchase order signals:
+- **PO Number:** "PO:", "Purchase Order #", "New PO:", "PO #" followed by a number/code
+- **Order Intent:** "Purchase Order", "Sample Order", "Request for Sample", "Order Confirmation"
+- **Item + Quantity + Company combo:** Specific items with quantities being ordered TO or FROM a company
+- **"Ship to" addresses:** Clear shipping instructions for order fulfillment
 
-   *If the document clearly fits any category above, classify it immediately as "not a purchase order" and stop.*
+**If ANY of these strong indicators are present, likely a purchase order - continue to detailed analysis.**
 
-2. **Purchase Order Confirmation (Only if Exclusion Check Passed):** If the document is NOT primarily one of the excluded types, check if it contains **at least THREE (3)** distinct elements from the list below, clearly indicating a transactional intent to order or request goods/services:
-   * **Explicit Order Intent:** Clear title like "Purchase Order," "PO," "Sample Order," "Order Confirmation," "Request for Sample," or equivalent explicit text stating an order is being placed/requested. (A PO Number alone counts if contextually clear it's for an order).
-   * **Supplier/Vendor Information:** Identifiable Seller (company name, address, contact).
-   * **Buyer Information:** Identifiable Buyer (company name, address, contact).
-   * **Itemized Product Details:** Specific descriptions, SKUs, model numbers identifying *what* is being ordered. (Generic descriptions on a proof don't count).
-   * **Quantities/Units:** Specific number of units requested *for the order transaction*. (Quantities shown on a design example don't count).
-   * **Pricing Information:** Unit price, total price, or subtotal clearly associated with the *order transaction*. (Reference prices on a proof don't count).
-   * **Order/Required Delivery Date:** An explicit date when items are requested or must be delivered (cannot be a general project timeline or event date).
-   * **Payment Terms:** Specific terms like Net 30, Due on Receipt, Credit Card, etc., related to *this order*.
+**EXCLUSION CHECK (Only if no strong PO indicators found):**
 
-**Decision Rules:**
+Only classify as "not a purchase order" if the document's PRIMARY purpose is clearly one of these:
+   * **Pure Artwork/Proof:** ONLY design mockups, layouts, color palettes, approval forms with NO clear order transaction
+   * **Pure Quote/Estimate:** ONLY pricing proposals for potential future work with "Quote", "Estimate", "Valid Until" 
+   * **Pure Invoice for payment:** ONLY billing for completed/shipped goods with "Amount Due", "Payment Required"
+   * **Pure Packing List:** ONLY shipping contents without order details
+   * **Pure Receipt:** ONLY payment confirmation
 
-* The Exclusion Check takes priority. If it matches an excluded type (especially Art/Proof), it's "not a purchase order."
-* If the Exclusion Check does not apply, **at least THREE (3)** distinct PO elements *must* be present and clearly related to an order transaction.
-* Sample Orders and Requests for Samples *are* considered "purchase orders" if they meet the criteria.
-* If uncertain, or if fewer than three PO elements are found after passing the exclusion check, default to "not a purchase order." Be strict.
+**DETAILED ANALYSIS:**
+
+Count these purchase order elements (need at least 3):
+1. **Explicit Order Intent:** PO numbers, "Purchase Order", "Sample Order", "Order Confirmation" 
+2. **Supplier/Vendor Info:** Company providing goods/services
+3. **Buyer Information:** Company receiving goods/services  
+4. **Item Details:** Specific products, SKUs, descriptions being ordered
+5. **Quantities:** Number of units for the transaction
+6. **Pricing:** Costs associated with the order
+7. **Delivery/Ship-to:** Where items should be sent
+8. **Order Dates:** When items are needed
+
+**IMPORTANT NOTES:**
+- Documents can have mixed elements (invoice headers + PO content) - focus on PRIMARY FUNCTION
+- If document shows ordering/requesting specific items TO be delivered, it's likely a purchase order
+- Sample requests and rush orders ARE purchase orders if they meet the criteria
 
 **Response Format:**
 
