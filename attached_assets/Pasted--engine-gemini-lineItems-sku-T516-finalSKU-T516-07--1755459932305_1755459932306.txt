@@ -1,0 +1,124 @@
+
+  "engine": "gemini",
+  "lineItems": [
+    {
+      "sku": "T516",
+      "finalSKU": "T516-07",
+      "quantity": 3000,
+      "itemColor": "Grey",
+      "unitPrice": 1.02,
+      "totalPrice": 3060,
+      "description": "Popper Stress Reliever Key Chain (199-T516-Grey)",
+      "imprintColor": "Purple"
+    },
+    {
+      "sku": "SETUP",
+      "finalSKU": "SETUP",
+      "quantity": 1,
+      "itemColor": "",
+      "unitPrice": 0,
+      "totalPrice": 0,
+      "description": "Setup Charge Ink Imprint (per imprint color)",
+      "imprintColor": ""
+    },
+    {
+      "sku": "X",
+      "finalSKU": "X",
+      "quantity": 1,
+      "itemColor": "",
+      "unitPrice": 0,
+      "totalPrice": 0,
+      "description": "S & H 3RD PARTY UPS - ACCT. Y4700X - 4ALLPROMOS INCLUDE PO# IN REFERENCE FIELD (FIELD #1 PREFERRED) PLEASE NOTE - WE WILL NOT PAY SHIPPING CHARGES ON ANY INVOICES PLEASE BE ADVISED THAT WE WILL ONLY PAY UP TO THE QUANTITY LISTED ON THIS PO. WE WILL ADJUST ANY BILLS THAT REFLECT A BILLED QUANTITY GREATER THAN WHAT IS LISTED ON THIS PO.",
+      "imprintColor": ""
+    }
+  ],
+  "subtotals": {
+    "grandTotal": 3060,
+    "merchandiseSubtotal": 3060,
+    "additionalChargesSubtotal": 0
+  },
+  "processedAt": "2025-08-17T19:31:46.575Z",
+  "purchaseOrder": {
+    "shipTo": {
+      "city": "Lamont",
+      "name": "Ariadna Valdes",
+      "state": "California",
+      "company": "Lamont Elementary School District",
+      "country": "United States",
+      "zipCode": "93241",
+      "address1": "7915 Burgundy Ave.",
+      "address2": ""
+    },
+    "vendor": {
+      "city": "Irwindale",
+      "name": "High Caliber Line",
+      "email": "",
+      "phone": "6269694660",
+      "state": "California",
+      "country": "United States",
+      "zipCode": "91702",
+      "address1": "6250 Irwindale Ave",
+      "address2": ""
+    },
+    "customer": {
+      "city": "Essex",
+      "email": "Dan@4allpromos.com",
+      "phone": "860.767.9951",
+      "state": "CT",
+      "company": "4AllPromos",
+      "country": "United States",
+      "zipCode": "06426",
+      "address1": "50 West Ave.",
+      "address2": "",
+      "lastName": "",
+      "firstName": "",
+      "customernumber": ""
+    },
+    "asiNumber": "196920",
+    "orderDate": "08/15/2025",
+    "ppaiNumber": "269402",
+    "inHandsDate": "08/25/2025",
+    "shippingMethod": "UPS Ground",
+    "salesPersonName": "",
+    "shippingCarrier": "UPS",
+    "requiredShipDate": "08/22/2025",
+    "salesPersonEmail": "",
+    "purchaseOrderNumber": "1800267"
+  },
+  "extractionType": "text",
+  "additionalNotes": [],
+  "validatedLineItems": [
+    {
+      "sku": "T516",
+      "finalSKU": "OE-MISC-ITEM",
+      "quantity": 3000,
+      "itemColor": "Grey",
+      "isValidSKU": true,
+      "description": "Popper Stress Reliever Key Chain (199-T516-Grey)",
+      "productName": "Unidentified Items",
+      "validationNotes": "Valid product SKU"
+    },
+    {
+      "sku": "SETUP",
+      "finalSKU": "SETUP",
+      "quantity": 1,
+      "itemColor": "",
+      "isValidSKU": true,
+      "description": "Setup Charge Ink Imprint (per imprint color)",
+      "productName": "Setup Charge",
+      "validationNotes": "Valid product SKU"
+    },
+    {
+      "sku": "X",
+      "finalSKU": "OE-MISC-CHARGE",
+      "quantity": 1,
+      "itemColor": "",
+      "isValidSKU": true,
+      "description": "S & H 3RD PARTY UPS - ACCT. Y4700X - 4ALLPROMOS INCLUDE PO# IN REFERENCE FIELD (FIELD #1 PREFERRED) PLEASE NOTE - WE WILL NOT PAY SHIPPING CHARGES ON ANY INVOICES PLEASE BE ADVISED THAT WE WILL ONLY PAY UP TO THE QUANTITY LISTED ON THIS PO. WE WILL ADJUST ANY BILLS THAT REFLECT A BILLED QUANTITY GREATER THAN WHAT IS LISTED ON THIS PO.",
+      "productName": "Unidentified Charge",
+      "validationNotes": "Valid product SKU"
+    }
+  ],
+  "specialInstructions": "Please use the attached artwork file (1800267_199-T516_key_chain_KEY.eps) to imprint Popper Stress Reliever Key Chain (qty: 3000).",
+  "skuValidationCompleted": true
+}

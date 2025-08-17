@@ -293,7 +293,7 @@ Output *only* the following JSON object, with no other text, comments, or explan
       ];
 
       const response = await ai.models.generateContent({
-        model: "gemini-2.5-flash",
+        model: "gemini-2.5-pro",
         contents: contents,
       });
 
@@ -334,36 +334,39 @@ Output *only* the following JSON object, with no other text, comments, or explan
       // Strip HTML from body text
       const cleanBody = body.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
       
-      const prompt = `Analyze the data ${subject}${cleanBody}${fromAddress} 
-and return the most accurate result in this schema.  
+      const prompt = `Extract purchase order data from the following email content and return ONLY a valid JSON object following this exact schema.
 
-Output must be a single valid JSON object with no markdown, comments, or extra text.
+EMAIL CONTENT:
+Subject: ${subject}
+Body: ${cleanBody}
+From: ${fromAddress}
 
-{  
-  "purchaseOrder": {    
-    "purchaseOrderNumber": "string",    
-    "orderDate": "date",    
-    "inHandsDate": "date",    
-    "requiredShipDate": "date",    
-    "customer": {      
-      "company": "string",  
-      "customernumber": "string",    
-      "firstName": "string",      
-      "lastName": "string",      
-      "email": "string",      
-      "address1": "string",      
-      "address2": "string",      
-      "city": "string",      
-      "state": "string",      
-      "country": "string",      
-      "zipCode": "string",      
-      "phone": "string"    
-    },    
-    "ppaiNumber": "string",    
-    "asiNumber": "string",    
-    "salesPersonName": "string",    
-    "salesPersonEmail": "string",    
-    "vendor": {   // Always hard-coded
+REQUIRED JSON SCHEMA - Return ONLY this structure:
+{
+  "purchaseOrder": {
+    "purchaseOrderNumber": "",
+    "orderDate": "",
+    "inHandsDate": "",
+    "requiredShipDate": "",
+    "customer": {
+      "company": "",
+      "customerNumber": "",
+      "firstName": "",
+      "lastName": "",
+      "email": "",
+      "address1": "",
+      "address2": "",
+      "city": "",
+      "state": "",
+      "country": "",
+      "zipCode": "",
+      "phone": ""
+    },
+    "ppaiNumber": "",
+    "asiNumber": "",
+    "salesPersonName": "",
+    "salesPersonEmail": "",
+    "vendor": {
       "name": "High Caliber Line",
       "address1": "6250 Irwindale Ave",
       "address2": "",
@@ -373,39 +376,39 @@ Output must be a single valid JSON object with no markdown, comments, or extra t
       "zipCode": "91702",
       "phone": "6269694660",
       "email": ""
-    },    
-    "shipTo": {      
-      "name": "string",      
-      "company": "string",      
-      "address1": "string",      
-      "address2": "string",      
-      "city": "string",      
-      "state": "string",      
-      "country": "string",      
-      "zipCode": "string"    
-    },    
-    "shippingMethod": "string",    
-    "shippingCarrier": "string"  
-  },  
-  "lineItems": [    
-    {      
-      "sku": "string",      
-      "itemColor": "string",      
-      "imprintColor": "string",      
-      "description": "string",      
-      "quantity": "number",      
-      "unitPrice": "number",      
-      "totalPrice": "number",      
-      "finalSKU": "string"    
-    }  
-  ],  
-  "subtotals": {    
-    "merchandiseSubtotal": "number",    
-    "additionalChargesSubtotal": "number",    
-    "grandTotal": "number"  
-  },  
-  "specialInstructions": "string",  
-  "additionalNotes": ["string"]
+    },
+    "shipTo": {
+      "name": "",
+      "company": "",
+      "address1": "",
+      "address2": "",
+      "city": "",
+      "state": "",
+      "country": "",
+      "zipCode": ""
+    },
+    "shippingMethod": "",
+    "shippingCarrier": ""
+  },
+  "lineItems": [
+    {
+      "sku": "",
+      "itemColor": "",
+      "imprintColor": "",
+      "description": "",
+      "quantity": 0,
+      "unitPrice": 0.00,
+      "totalPrice": 0.00,
+      "finalSKU": ""
+    }
+  ],
+  "subtotals": {
+    "merchandiseSubtotal": 0.00,
+    "additionalChargesSubtotal": 0.00,
+    "grandTotal": 0.00
+  },
+  "specialInstructions": "",
+  "additionalNotes": []
 }
 
 ---
@@ -457,8 +460,11 @@ ColorCode Map:
 - If critical info missing (e.g., customer name, grand total), add note in \`additionalNotes\`.`;
 
       const response = await ai.models.generateContent({
-        model: "gemini-2.5-flash",
+        model: "gemini-2.5-pro",
         contents: prompt,
+        config: {
+          responseMimeType: "application/json"
+        }
       });
 
       const rawResponse = response.text || "";
@@ -503,10 +509,9 @@ ColorCode Map:
       const mimeType = this.getMimeTypeFromFilename(filename);
       console.log(`   └─ Using MIME type: ${mimeType}`);
 
-      const prompt = `Analyze the provided file and return the most accurate data in this schema.  
-Output must be a single valid JSON object with no markdown, comments, or extra text.
+      const prompt = `Extract purchase order data from the attached document and return ONLY a valid JSON object following this exact schema.
 
-JSON Schema:
+REQUIRED JSON SCHEMA - Return ONLY this structure:
 {
   "purchaseOrder": {
     "purchaseOrderNumber": "string",
@@ -789,7 +794,7 @@ Processing Rules:
   async testConnection(): Promise<{ success: boolean; error?: string }> {
     try {
       const response = await this.ai.models.generateContent({
-        model: "gemini-2.5-flash",
+        model: "gemini-2.5-pro",
         contents: "Respond with 'OK' to test the connection.",
       });
 
