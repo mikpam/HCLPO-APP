@@ -162,6 +162,49 @@ class AIServiceManager {
     return this.extractPOData("", pdfText);
   }
 
+  // Document type filtering - determines if a document is a purchase order
+  async filterDocumentType(documentBuffer: Buffer, filename: string): Promise<{ document_type: string; confidence: number; reason: string }> {
+    // Use OpenAI for document classification/filtering
+    const engine = 'openai';
+    
+    try {
+      const service = this.getService(engine);
+      
+      // Use OpenAI's analyzeAttachmentContent method for document filtering
+      if ('analyzeAttachmentContent' in service) {
+        const analysis = await service.analyzeAttachmentContent(filename, 'application/pdf');
+        
+        // Map the response to the expected format
+        const document_type = analysis.isPurchaseOrder ? 'purchase order' : 
+                            analysis.isArtwork ? 'artwork' : 'other';
+        
+        return {
+          document_type,
+          confidence: analysis.confidence,
+          reason: analysis.reason
+        };
+      } else {
+        throw new Error(`${engine} engine does not support attachment analysis`);
+      }
+    } catch (error) {
+      console.error(`${engine} document filtering failed:`, error);
+      
+      // Fallback: basic filename analysis
+      const filename_lower = filename.toLowerCase();
+      const isPO = filename_lower.includes('purchaseorder') || 
+                  filename_lower.includes('purchase_order') || 
+                  filename_lower.includes('purchase order') ||
+                  filename_lower.includes('po ') ||
+                  /\bpo\b/.test(filename_lower);
+      
+      return {
+        document_type: isPO ? 'purchase order' : 'other',
+        confidence: 0.7,
+        reason: `Filename-based classification: ${filename}`
+      };
+    }
+  }
+
   async testConnections(): Promise<{
     openai: { success: boolean; error?: string };
     gemini: { success: boolean; error?: string };
