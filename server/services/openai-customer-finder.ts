@@ -181,7 +181,7 @@ Only answer when the match is confident. Never fabricate a customer number.
 MATCHING PRIORITIES (highest to lowest):
 1. Exact Email match - test Customer Email first, then Sender Email
 2. Exact ASI or PPAI match
-3. Customer Name match (only if highly confident)
+3. Customer Name match (be confident with obvious variations: singular/plural, case differences, punctuation)
 4. Address match (only if highly confident)
 
 ROOT-FIRST DISAMBIGUATION:
@@ -210,8 +210,12 @@ RULES:
 - customer_number must start with "C" + digits
 - Never return Calibre International, LLC or HCL Sales Department
 - Exact email or ASI/PPAI overrides name-only evidence
+- Be CONFIDENT with obvious name variations: "CREATIVE MARKETING SPECIALISTS" = "Creative Marketing Specialist"
+- Singular/plural differences are the SAME company (Specialists vs Specialist)
+- Case differences are the SAME company (CREATIVE vs Creative)
+- Common punctuation differences are acceptable
+- Only return empty fields if truly no match exists
 - Do not cite sources or add explanations
-- Do not guess; if uncertain return empty fields
 
 AVAILABLE CUSTOMER CANDIDATES:
 ${candidatesList}
