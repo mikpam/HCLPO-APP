@@ -365,6 +365,12 @@ JSON Schema:
     "asiNumber": "string",
     "salesPersonName": "string",
     "salesPersonEmail": "string",
+    "contact": {
+      "name": "string",
+      "jobTitle": "string", 
+      "email": "string",
+      "phone": "string"
+    },
     "vendor": {
       "name": "string",
       "address1": "string",
@@ -500,6 +506,12 @@ JSON Schema:
     "asiNumber": "string",
     "salesPersonName": "string",
     "salesPersonEmail": "string",
+    "contact": {
+      "name": "string",
+      "jobTitle": "string", 
+      "email": "string",
+      "phone": "string"
+    },
     "vendor": {
       "name": "string",
       "address1": "string",

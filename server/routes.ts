@@ -422,6 +422,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         let effectiveSenderForPO = messageToProcess.sender;
         let customerInfo = null;
         let customerMeta = null;
+        let contactMeta = null;
         
         // Lookup customer in HCL database for all purchase orders
         if (extractionResult?.purchaseOrder?.customer) {

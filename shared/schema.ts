@@ -15,6 +15,7 @@ export const purchaseOrders = pgTable("purchase_orders", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   poNumber: text("po_number").notNull().unique(),
   customerMeta: jsonb("customer_meta"),
+  contactMeta: jsonb("contact_meta"), // Contact information extracted and validated
   shippingCarrier: text("shipping_carrier"),
   shippingMethod: text("shipping_method"),
   originalJson: jsonb("original_json"),
@@ -82,6 +83,22 @@ export const customers = pgTable("customers", {
   updatedAt: timestamp("updated_at").defaultNow(),
 });
 
+// HCL Contacts table for contact validation with NetSuite Internal IDs
+export const contacts = pgTable("contacts", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  netsuiteInternalId: text("netsuite_internal_id").notNull().unique(), // NetSuite Internal ID
+  name: text("name").notNull(),
+  jobTitle: text("job_title"),
+  phone: text("phone"),
+  email: text("email"),
+  inactive: boolean("inactive").default(false),
+  duplicate: boolean("duplicate").default(false),
+  loginAccess: boolean("login_access").default(false),
+  searchVector: text("search_vector"), // For full-text search
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
 export const systemHealth = pgTable("system_health", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   service: text("service").notNull().unique(),
@@ -123,6 +140,13 @@ export type InsertUser = z.infer<typeof insertUserSchema>;
 
 export type Customer = typeof customers.$inferSelect;
 export const insertCustomerSchema = createInsertSchema(customers);
+
+export type Contact = typeof contacts.$inferSelect;
+export const insertContactSchema = createInsertSchema(contacts).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
 export type InsertCustomer = z.infer<typeof insertCustomerSchema>;
 
 export type PurchaseOrder = typeof purchaseOrders.$inferSelect;
