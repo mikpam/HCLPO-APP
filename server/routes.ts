@@ -1629,12 +1629,30 @@ export async function registerRoutes(app: Express): Promise<Server> {
               let contactMeta = null;
               if (extractedData?.customer || extractedData?.contact || messageToProcess.sender) {
                 try {
+                  // Extract sender name from email if not available in parsed format
+                  let senderName = '';
+                  if (extractedData?.customer?.firstName && extractedData?.customer?.lastName) {
+                    senderName = `${extractedData.customer.firstName} ${extractedData.customer.lastName}`;
+                  } else if (extractedData?.contact?.name) {
+                    senderName = extractedData.contact.name;
+                  } else if (messageToProcess.sender) {
+                    // Extract name from "Name <email@domain.com>" format
+                    const match = messageToProcess.sender.match(/^(.+?)\s*<(.+)>$/);
+                    if (match) {
+                      senderName = match[1].trim();
+                    } else {
+                      // If no match, use the email itself or part of it
+                      senderName = messageToProcess.sender.split('@')[0];
+                    }
+                  }
+                  
+                  console.log(`   🔍 DEBUG: Sender name resolution: "${senderName}"`);
+                  console.log(`   🔍 DEBUG: messageToProcess.sender: "${messageToProcess.sender}"`);
+                  
                   const contactValidator = new OpenAIContactValidatorService();
                   const validatedContact = await contactValidator.validateContact({
                     extractedData: extractedData,
-                    senderName: extractedData?.customer?.firstName && extractedData?.customer?.lastName 
-                      ? `${extractedData.customer.firstName} ${extractedData.customer.lastName}`
-                      : extractedData?.contact?.name || messageToProcess.senderName,
+                    senderName: senderName,
                     senderEmail: messageToProcess.sender,
                     resolvedCustomerId: extractedData?.customer?.customernumber,
                     companyId: extractedData?.customer?.customernumber

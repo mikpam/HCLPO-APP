@@ -92,7 +92,7 @@ export class OpenAIContactValidatorService {
       phones: contact.phones || [],
       role: contact.role,
       company_id: contact.companyId,
-      is_active: contact.isActive
+      is_active: !contact.inactive // Database uses 'inactive' field where false = active
     }));
 
     // Get customer info if available
