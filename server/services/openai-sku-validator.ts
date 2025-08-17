@@ -84,28 +84,89 @@ export class OpenAISKUValidator {
   }
 
   private async validateSingleLineItem(lineItem: string): Promise<ValidatedSKU> {
-    // Prepare a focused prompt for a single line item
-    const normalizedSkusArray = Array.from(this.normalizedSkus).slice(0, 30);
+    // Prepare comprehensive validation prompt with full HCL items database
+    const normalizedSkusArray = Array.from(this.normalizedSkus);
+    const catalogEntries = Object.fromEntries(Array.from(this.catalog.entries()));
 
-    const prompt = `Extract data from this single line item for High Caliber Line (HCL):
+    const prompt = `You are a data-validation assistant for **High Caliber Line (HCL)**.
 
-Return a JSON object with exactly these fields:
-{
-  "sku": "extracted SKU or empty string",
-  "description": "item description", 
-  "itemColor": "color if mentioned or empty string",
-  "quantity": number (minimum 1),
-  "finalSKU": "validated final SKU"
-}
+---
 
-For finalSKU rules:
-- If SKU exists in catalog: use it uppercase
-- If description contains "setup", "charge", "rush", "proof": use "SETUP", "48-RUSH", "R", "P" etc.
-- Otherwise: "OE-MISC-ITEM"
+### Output (strict)
 
-Available SKUs: ${JSON.stringify(normalizedSkusArray.slice(0, 15))}
+Return **only** a JSON object with exactly these keys, in this order:
 
-Line item:
+* \`sku\`  (string; original as seen, or empty if none)
+* \`description\`  (string)
+* \`itemColor\`  (string; as seen or empty)
+* \`quantity\`  (integer ≥ 1; coerce if needed, see below)
+* \`finalSKU\`  (string; uppercase; strictly formatted)
+
+No markdown, no comments, no trailing text.
+
+---
+
+### Processing Logic
+
+#### A) Product SKU normalization (attempt before charges)
+
+Use case-insensitive matching. Try, in order, stopping at first hit:
+
+1. **Exact** lookup of \`sku\` in **NormalizedSkus**.
+2. **Vendor prefix removal**: drop known prefixes (\`199-\`, \`ALLP-\`, \`4AP-\`); re-attempt exact lookup.
+3. **Non-color suffix removal**: drop known non-color suffixes (\`-FD\`, \`-SS\`); re-attempt exact lookup.
+4. **Trailing-letter drop**: if \`sku\` ends with \`[A-Z]\`, drop one letter and retry exact lookup; may repeat once more (max two drops).
+
+If any step hits, treat that as the product match candidate.
+
+---
+
+#### B) Charge codes (explicit tokens first, then phrases)
+
+Run **only if Section A found no accepted product match**.
+
+**B1. Explicit code tokens (highest priority)**
+If the line contains any of these as a **standalone token** (case-insensitive; bounded by start/end, space, tab, comma, slash, colon, or parentheses), map directly to that code:
+
+\`48-RUSH\`, \`LTM\`, \`CCC\`, \`DB\`, \`DDP\`, \`DP\`, \`DS\`, \`EC\`, \`ED\`, \`EL\`, \`HT\`, \`ICC\`, \`LE\`, \`P\`, \`PC\`, \`PE\`, \`PMS\`, \`PP\`, \`R\`, \`SETUP\`, \`SPEC\`, \`SR\`, \`VD\`, \`VI\`, \`X\`
+
+Special handling:
+
+* Accept \`"SET UP"\`, \`"SET-UP"\`, \`"setup"\`, or \`"setup charge"\` → \`SETUP\`.
+* Accept \`"OE-MISC-CHARGE"\` or \`"OE-MISC-ITEM"\` only as placeholders → ignore them and re-run phrase mapping below (e.g., \`"Exact count"\` → \`X\`).
+* Accept \`48-RUSH\` if you see either the exact token **or** both "48" and "rush" in context.
+* For single-letter codes \`P\`, \`R\`, \`X\`, require isolation by boundaries (not part of another token).
+
+**B2. Phrase synonyms (second priority)**
+If B1 didn't fire, map common phrases to the same codes:
+
+* \`X\`: "exact quantity", "no overrun", "no underrun", "exact qty", "exact count"
+* \`SETUP\`: "setup", "set up", "setup charge"
+* \`48-RUSH\`: "48 hour rush", "48hr rush", "48 hours rush", "2 day rush"
+* \`P\`: "digital proof", "e-proof", "electronic proof"
+* \`R\`: "rush charge", "rush service", "expedite fee"
+
+If a charge code is selected, set \`finalSKU\` to that code and finish this item.
+
+---
+
+#### C) Fuzzy matching fallback
+
+If no product or charge code found, use semantic similarity between description and catalog names. Accept if similarity ≥ 0.75.
+
+If still no match, use \`OE-MISC-ITEM\`.
+
+---
+
+### Available Data
+
+**NormalizedSkus**: ${JSON.stringify(normalizedSkusArray.slice(0, 50))}${normalizedSkusArray.length > 50 ? ` ... (${normalizedSkusArray.length} total)` : ''}
+
+**Catalog**: ${JSON.stringify(Object.fromEntries(Array.from(this.catalog.entries()).slice(0, 20)))}${this.catalog.size > 20 ? ` ... (${this.catalog.size} total)` : ''}
+
+---
+
+### Input Line Item:
 ${lineItem}`;
 
     const response = await openai.chat.completions.create({
