@@ -672,65 +672,126 @@ totalPrice: ${item.totalPrice || 0}`;
     }
   });
 
-  // Email processing
+  // Email processing - Sequential processing like single email but iterate through all
   app.post("/api/emails/process", async (req, res) => {
     try {
-      // Fetch emails from Gmail
-      const messages = await gmailService.getMessages();
+      console.log(`🔄 NORMAL PROCESSING: Starting sequential email processing...`);
+      
+      let processedCount = 0;
+      let totalMessages = 0;
       const processedEmails = [];
-
-      for (const message of messages) {
-        try {
-          // Check if already processed
+      const maxEmails = 10; // Process max 10 emails per request to avoid timeouts
+      
+      // Process emails one at a time until no more unprocessed emails
+      while (processedCount < maxEmails) {
+        // Fetch one unprocessed email
+        const messages = await gmailService.getMessages();
+        totalMessages = messages.length;
+        
+        // Find first unprocessed email
+        let messageToProcess = null;
+        for (const message of messages) {
           const existingQueue = await storage.getEmailQueueByGmailId(message.id);
-          if (existingQueue) {
-            continue;
+          if (!existingQueue) {
+            messageToProcess = message;
+            break;
           }
+        }
+        
+        // No more unprocessed emails
+        if (!messageToProcess) {
+          console.log(`📧 NORMAL PROCESSING: No more unprocessed emails found`);
+          break;
+        }
+        
+        console.log(`\n📧 PROCESSING EMAIL ${processedCount + 1}: "${messageToProcess.subject}"`);
+        console.log(`   └─ From: ${messageToProcess.sender}`);
+        console.log(`   └─ Attachments: ${messageToProcess.attachments.length}`);
+
+        try {
 
           // Check for forwarded email from @highcaliberline.com and extract CNumber
           let isForwardedEmail = false;
           let extractedCNumber = null;
+          let hclCustomerLookup = null;
           
-          if (message.sender.includes('@highcaliberline.com')) {
-            // Look for CNumber pattern in subject and body (flexible patterns)
-            const cNumberPattern = /(?:Account\s+C|C\s*#?\s*:?\s*)(\d+)/i;
-            const subjectMatch = message.subject.match(cNumberPattern);
-            const bodyMatch = message.body.match(cNumberPattern);
+          if (messageToProcess.sender.includes('@highcaliberline.com')) {
+            console.log(`\n📨 FORWARDED EMAIL DETECTION: Checking for CNumber in @highcaliberline.com email...`);
             
-            if (subjectMatch || bodyMatch) {
-              extractedCNumber = subjectMatch?.[1] || bodyMatch?.[1];
+            // Look for CNumber pattern in subject and body (more specific patterns to avoid zip codes)
+            const cNumberPattern = /(?:Account\s+C|Customer\s+C|CNumber\s*:?\s*C?|C\s*#\s*:?\s*C?)(\d{4,6})\b/i;
+            const subjectMatch = messageToProcess.subject.match(cNumberPattern);
+            const bodyMatch = messageToProcess.body.match(cNumberPattern);
+            
+            // Additional validation: ensure it's a reasonable CNumber format (4-6 digits)
+            let validCNumber = null;
+            const foundMatch = subjectMatch?.[1] || bodyMatch?.[1];
+            if (foundMatch && foundMatch.length >= 4 && foundMatch.length <= 6) {
+              validCNumber = foundMatch;
+            }
+            
+            if (validCNumber) {
+              extractedCNumber = validCNumber;
               isForwardedEmail = true;
-              console.log(`📨 BULK: Found CNumber ${extractedCNumber} in forwarded email: ${message.subject}`);
+              console.log(`   ✅ Found CNumber: ${extractedCNumber}`);
+              
+              // Lookup customer using the advanced customer finder
+              const { customerFinderService } = await import('./services/customer-finder');
+              const fullCNumber = `C${extractedCNumber}`;
+              hclCustomerLookup = await customerFinderService.findByCNumber(fullCNumber);
+              
+              if (hclCustomerLookup.customer_number) {
+                console.log(`   ✅ HCL Customer found: ${hclCustomerLookup.customer_name} (${hclCustomerLookup.customer_number})`);
+                console.log(`   └─ This is a forwarded email - will use customer from Gemini extraction, or fallback to HCL lookup`);
+              } else {
+                console.log(`   ⚠️  No HCL customer found for CNumber: ${fullCNumber}`);
+              }
+            } else {
+              console.log(`   └─ No CNumber found in subject or body`);
             }
           }
 
           // Create email queue item
           const queueItem = await storage.createEmailQueueItem({
-            gmailId: message.id,
-            sender: message.sender,
-            subject: message.subject,
-            body: message.body,
-            attachments: message.attachments,
-            labels: message.labels,
+            gmailId: messageToProcess.id,
+            sender: messageToProcess.sender,
+            subject: messageToProcess.subject,
+            body: messageToProcess.body,
+            attachments: messageToProcess.attachments,
+            labels: messageToProcess.labels,
             status: 'processing'
           });
 
           // Store PDF attachments for this email
-          let storedAttachments: any[] = [];
-          if (message.attachments.length > 0) {
-            storedAttachments = await gmailService.storeEmailAttachments(
-              message.id,
-              message.attachments
+          let attachmentPaths: Array<{filename: string; storagePath: string; buffer?: Buffer}> = [];
+          if (messageToProcess.attachments.length > 0) {
+            attachmentPaths = await gmailService.storeEmailAttachments(
+              messageToProcess.id,
+              messageToProcess.attachments
             );
           }
 
-          // Process email using two-step approach (pre-processing + detailed classification)
+          // Preserve email as .eml file
+          try {
+            const { emailId } = await gmailService.preserveEmail(messageToProcess.id);
+            console.log(`   ✅ Email preserved as .eml file: ${emailId}`);
+          } catch (error) {
+            console.error(`   ❌ Failed to preserve email:`, error);
+            // Continue processing even if email preservation fails
+          }
+
+          // Process email using two-step approach
+          console.log(`🤖 AI PROCESSING: Starting two-step analysis...`);
           const processingResult = await aiService.processEmail({
-            sender: message.sender,
-            subject: message.subject,
-            body: message.body,
-            attachments: message.attachments
+            sender: messageToProcess.sender,
+            subject: messageToProcess.subject,
+            body: messageToProcess.body,
+            attachments: messageToProcess.attachments
           });
+          console.log(`   └─ Pre-processing: ${processingResult.preprocessing.response} (Continue: ${processingResult.preprocessing.shouldProceed})`);
+          if (processingResult.classification) {
+            console.log(`   └─ Detailed route: ${processingResult.classification.recommended_route} (${Math.round((processingResult.classification.analysis_flags.confidence_score || 0) * 100)}%)`);
+          }
 
           // Update queue item with both preprocessing and classification results (ALL emails tracked)
           const updateData: any = {
@@ -756,56 +817,69 @@ totalPrice: ${item.totalPrice || 0}`;
 
           await storage.updateEmailQueueItem(queueItem.id, updateData);
 
-          // Only create purchase order if email passed preprocessing and detailed classification
+          let purchaseOrder = null;
+          let extractionResult: any = null;
+
+          // Create purchase order if email passed both steps
           if (processingResult.preprocessing.shouldProceed && processingResult.classification && 
               processingResult.classification.recommended_route !== 'REVIEW') {
             const poNumber = `PO-${new Date().getFullYear()}-${String(Date.now()).slice(-6)}`;
             
-            // Handle forwarded emails for bulk processing
-            let effectiveSenderForPO = message.sender;
+            console.log(`📋 PO NUMBER ASSIGNMENT:`);
+            console.log(`   ✅ Generating PO number: ${poNumber}`);
+
+            // Handle forwarded emails 
+            let effectiveSender = messageToProcess.sender;
             let forwardedEmailData = undefined;
             
             if (isForwardedEmail) {
-              console.log(`📋 BULK: Processing forwarded email with CNumber ${extractedCNumber}`);
-              // For bulk processing, we'll mark for later extraction with proper customer lookup
-              effectiveSenderForPO = message.sender; // Keep original for now, will be updated after extraction
+              console.log(`📋 FORWARDED EMAIL PROCESSING:`);
+              console.log(`   └─ Original sender: ${messageToProcess.sender}`);
+              console.log(`   └─ CNumber: ${extractedCNumber}`);
+              console.log(`   └─ Using customer from Gemini: will be determined after extraction`);
+              
               forwardedEmailData = {
-                originalSender: message.sender,
+                originalSender: messageToProcess.sender,
                 cNumber: extractedCNumber,
                 extractedCustomer: null // Will be populated after Gemini extraction
               };
             }
             
-            const purchaseOrder = await storage.createPurchaseOrder({
+            purchaseOrder = await storage.createPurchaseOrder({
               poNumber,
-              emailId: message.id,
-              sender: effectiveSenderForPO,
-              subject: message.subject,
+              emailId: messageToProcess.id,
+              sender: effectiveSender,
+              subject: messageToProcess.subject,
               route: processingResult.classification.recommended_route,
               confidence: processingResult.classification.analysis_flags?.confidence_score || 0,
-              status: processingResult.classification.recommended_route === 'TEXT_PO' ? 'ready_for_extraction' : 'pending_review',
+              status: 'ready_for_extraction',
               originalJson: processingResult.classification,
               extractedData: forwardedEmailData ? { forwardedEmail: forwardedEmailData } : undefined
             });
 
-            // MISSING LOGIC: Add Gemini extraction for qualifying routes
-            let extractionResult: any = null;
+            // Perform Gemini extraction based on route
             const route = processingResult.classification.recommended_route;
             
             if (route === 'ATTACHMENT_PO' || route === 'TEXT_PO') {
               try {
-                console.log(`🧠 BULK GEMINI EXTRACTION: Processing ${route} for PO ${poNumber}...`);
+                console.log(`🧠 GEMINI EXTRACTION: Processing ${route}...`);
                 
                 const { GeminiService } = await import('./services/gemini');
                 const geminiService = new GeminiService();
                 
-                if (route === 'ATTACHMENT_PO' && storedAttachments.length > 0) {
-                  // Process attachment with priority logic  
-                  const prioritizedAttachment = storedAttachments.find((att: any) => 
+                if (route === 'ATTACHMENT_PO' && attachmentPaths.length > 0) {
+                  // Apply attachment prioritization logic
+                  const prioritizedAttachment = attachmentPaths.find(att => 
                     att.filename.toLowerCase().includes('purchaseorder') ||
                     att.filename.toLowerCase().includes('purchase_order') ||
                     att.filename.toLowerCase().includes('po_')
-                  ) || storedAttachments[0]; // fallback to first attachment
+                  ) || attachmentPaths.find(att => 
+                    !att.filename.toLowerCase().includes('proof') &&
+                    !att.filename.toLowerCase().includes('artwork') &&
+                    !att.filename.toLowerCase().includes('mock')
+                  ) || attachmentPaths[0]; // fallback to first attachment
+                  
+                  console.log(`   └─ Processing prioritized attachment: ${prioritizedAttachment.filename}`);
                   
                   if (prioritizedAttachment.buffer) {
                     extractionResult = await geminiService.extractPODataFromPDF(
@@ -815,23 +889,42 @@ totalPrice: ${item.totalPrice || 0}`;
                   }
                 } else if (route === 'TEXT_PO') {
                   extractionResult = await geminiService.extractPODataFromText(
-                    message.body,
-                    message.subject,
-                    message.sender
+                    messageToProcess.body,
+                    messageToProcess.subject,
+                    messageToProcess.sender
                   );
                 }
                 
                 if (extractionResult) {
-                  // Customer lookup
-                  let finalCustomerData = null;
-                  const { CustomerFinderService } = await import('./services/customer-finder');
-                  const customerFinderService = new CustomerFinderService();
+                  console.log(`   ✅ Successfully extracted PO data`);
+                  console.log(`   └─ Client PO Number: ${extractionResult.po_number || 'Not specified'}`);
+                  console.log(`   └─ Customer: ${extractionResult.customer?.name || 'Not specified'}`);
+                  console.log(`   └─ Line Items: ${extractionResult.line_items?.length || 0}`);
+
+                  // Extract and process contact information
+                  let contactData = null;
+                  if (extractionResult.contact) {
+                    console.log(`👤 CONTACT EXTRACTION:`);
+                    console.log(`   └─ Contact Name: ${extractionResult.contact.name}`);
+                    console.log(`   └─ Contact Email: ${extractionResult.contact.email}`);
+                    console.log(`   └─ Contact Phone: ${extractionResult.contact.phone}`);
+                    console.log(`   └─ Job Title: ${extractionResult.contact.job_title}`);
+                    contactData = extractionResult.contact;
+                  }
+
+                  // Customer lookup using OpenAI customer finder
+                  console.log(`🔍 OPENAI CUSTOMER LOOKUP:`);
+                  console.log(`   └─ Searching HCL database for: ${extractionResult.customer?.name || 'No customer name'}`);
                   
+                  let finalCustomerData = null;
                   if (extractionResult.customer?.name) {
+                    const { CustomerFinderService } = await import('./services/customer-finder');
+                    const customerFinderService = new CustomerFinderService();
+                    
                     const customerResult = await customerFinderService.findCustomer({
                       customerName: extractionResult.customer.name,
                       customerEmail: extractionResult.customer.email || '',
-                      senderEmail: message.sender,
+                      senderEmail: messageToProcess.sender,
                       asiNumber: extractionResult.customer.asi_number || '',
                       ppaiNumber: extractionResult.customer.ppai_number || '',
                       address: extractionResult.customer.address || ''
@@ -839,58 +932,66 @@ totalPrice: ${item.totalPrice || 0}`;
                     
                     if (customerResult.customer_number) {
                       finalCustomerData = customerResult;
-                      console.log(`   ✅ BULK: Customer found: ${finalCustomerData.customer_name} (${finalCustomerData.customer_number})`);
+                      console.log(`   ✅ OpenAI found HCL customer: ${finalCustomerData.customer_name} (${finalCustomerData.customer_number})`);
                     } else {
-                      console.log(`   ⚠️  BULK: Customer not found, will flag as new_customer`);
+                      console.log(`   ⚠️  Customer not found in HCL database, will flag as new_customer`);
                     }
                   }
-                  
-                  // SKU validation
+
+                  // SKU validation with OpenAI
                   let validatedItems: any[] = [];
                   if (extractionResult.line_items?.length > 0) {
+                    console.log(`🤖 OPENAI SKU VALIDATOR: Processing ${extractionResult.line_items.length} extracted line items...`);
                     const { OpenAISKUValidator } = await import('./services/openai-sku-validator');
                     const skuValidator = new OpenAISKUValidator();
                     
-                    validatedItems = await skuValidator.validateLineItems(
-                      extractionResult.line_items
-                    );
-                    console.log(`   ✅ BULK: SKU validation complete: ${validatedItems.length} items processed`);
+                    validatedItems = await skuValidator.validateLineItems(extractionResult.line_items);
+                    console.log(`   ✅ SKU validation complete: ${validatedItems.length} items processed`);
+                    
+                    // Log validation results
+                    validatedItems.forEach((item: any, index: number) => {
+                      console.log(`      ${index + 1}. "${item.original_sku || item.sku}" → "${item.final_sku}"`);
+                    });
                   }
-                  
-                  // Update PO with extracted data
+
+                  // Determine final status
                   const finalStatus = !finalCustomerData ? 'new_customer' : 'ready_for_netsuite';
-                  
+
+                  // Update purchase order with all extracted data
                   await storage.updatePurchaseOrder(purchaseOrder.id, {
                     extractedData: extractionResult,
                     customerMeta: finalCustomerData,
-                    status: finalStatus
+                    status: finalStatus,
+                    lineItems: validatedItems
                   });
-                  
-                  console.log(`   ✅ BULK: Updated PO ${poNumber} with extracted data (Status: ${finalStatus})`);
+
+                  console.log(`   ✅ Updated purchase order ${poNumber} (Status: ${finalStatus})`);
                 }
-                
+
               } catch (extractionError: any) {
-                console.error(`   ❌ BULK: Extraction failed for PO ${poNumber}:`, extractionError);
+                console.error(`   ❌ Extraction failed:`, extractionError);
                 await storage.updatePurchaseOrder(purchaseOrder.id, {
                   status: 'pending_review',
-                  extractedData: { error: 'Extraction failed', details: extractionError?.message || 'Unknown error' }
+                  extractedData: { 
+                    error: 'Extraction failed', 
+                    details: extractionError?.message || 'Unknown error'
+                  }
                 });
               }
             }
 
             processedEmails.push({
-              email: message,
+              email: messageToProcess,
               preprocessing: processingResult.preprocessing,
               classification: processingResult.classification,
               purchaseOrder,
               extractionResult
             });
           } else if (!processingResult.preprocessing.shouldProceed) {
-            console.log(`Email filtered out: ${processingResult.preprocessing.response} (${processingResult.preprocessing.score})`);
+            console.log(`Email filtered out: ${processingResult.preprocessing.response} (${Math.round((processingResult.preprocessing.score || 0) * 100)}%)`);
             
-            // Add filtered emails to processed list for tracking
             processedEmails.push({
-              email: message,
+              email: messageToProcess,
               preprocessing: processingResult.preprocessing,
               classification: null,
               purchaseOrder: null,
@@ -898,26 +999,33 @@ totalPrice: ${item.totalPrice || 0}`;
             });
           }
 
-          // Mark as processed in Gmail with preprocessing result
-          await gmailService.markAsProcessed(message.id, processingResult.preprocessing);
-
+          // Mark as processed in Gmail
+          await gmailService.markAsProcessed(messageToProcess.id, processingResult.preprocessing);
+          
+          processedCount++;
+          console.log(`   ✅ Completed processing email ${processedCount}`);
+          
         } catch (error) {
-          console.error(`Error processing email ${message.id}:`, error);
+          console.error(`❌ Error processing email ${messageToProcess?.id}:`, error);
           
           // Log error
           await storage.createErrorLog({
-            type: 'Classification Error',
+            type: 'Processing Error',
             message: error instanceof Error ? error.message : 'Unknown error',
-            relatedPoNumber: message.id,
+            relatedPoNumber: messageToProcess?.id || 'unknown',
             resolved: false,
-            metadata: { email: message }
+            metadata: { email: messageToProcess }
           });
+          
+          processedCount++; // Still count this as processed to avoid infinite loop
         }
       }
 
+      console.log(`🔄 NORMAL PROCESSING: Completed processing ${processedCount} emails`);
+
       res.json({ 
-        processed: processedEmails.length,
-        total: messages.length,
+        processed: processedCount,
+        total: totalMessages,
         emails: processedEmails 
       });
     } catch (error) {
