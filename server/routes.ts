@@ -943,16 +943,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
                   const objectPath = await objectStorageService.storeAttachment(
                     attachment.data,
                     `${messageToProcess.id}_${cleanFilename}`,
-                    attachment.mimeType
+                    attachment.contentType
                   );
                   
-                  // Update attachment with object path
-                  attachment.objectPath = objectPath;
+                  // Update attachment with object path (add to attachment object)
+                  (attachment as any).objectPath = objectPath;
                   
-                  console.log(`   └─ ${attachment.filename}: ${attachment.mimeType} (${attachment.data.length} bytes) [Has ID]`);
+                  console.log(`   └─ ${attachment.filename}: ${attachment.contentType} (${attachment.data.length} bytes) [Has ID]`);
                   console.log(`      ✅ Stored attachment: ${attachment.filename} at ${objectPath}`);
                 } else {
-                  console.log(`   └─ ${attachment.filename}: ${attachment.mimeType} (no data) [Missing Data]`);
+                  console.log(`   └─ ${attachment.filename}: ${attachment.contentType} (no data) [Missing Data]`);
                 }
               } catch (error) {
                 console.error(`   └─ ❌ Failed to store attachment ${attachment.filename}:`, error);
@@ -960,9 +960,30 @@ export async function registerRoutes(app: Express): Promise<Server> {
             }
           }
 
-          // Try to preserve email as .eml file
+          // Preserve email as .eml file for classified emails
           try {
-            // Email preservation handled elsewhere
+            if (preprocessing.shouldProceed) {
+              const { ObjectStorageService } = await import('./objectStorage');
+              const objectStorageService = new ObjectStorageService();
+              
+              // Create email content in .eml format
+              const emlContent = `From: ${messageToProcess.sender}
+To: ${messageToProcess.to || 'N/A'}
+Subject: ${messageToProcess.subject}
+Date: ${new Date().toISOString()}
+
+${messageToProcess.body || ''}`;
+              
+              const emailPath = await objectStorageService.storeEmailFile(
+                messageToProcess.id,
+                messageToProcess.subject || 'No Subject',
+                emlContent
+              );
+              
+              console.log(`   ✅ Email preserved: ${emailPath}`);
+            } else {
+              console.log(`   ✅ Skipped email preservation for filtered email`);
+            }
           } catch (error) {
             console.error("   ❌ Failed to preserve email:", error);
           }

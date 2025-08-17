@@ -303,6 +303,31 @@ export class ObjectStorageService {
     });
   }
 
+  // Store any attachment from email processing
+  async storeAttachment(buffer: Buffer, filename: string, contentType: string): Promise<string> {
+    const privateObjectDir = this.getPrivateObjectDir();
+    const sanitizedFilename = filename.replace(/[^a-zA-Z0-9.-]/g, '_');
+    const timestamp = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
+    const fullPath = `${privateObjectDir}/attachments/${timestamp}_${sanitizedFilename}`;
+
+    const { bucketName, objectName } = parseObjectPath(fullPath);
+    const bucket = objectStorageClient.bucket(bucketName);
+    const file = bucket.file(objectName);
+
+    // Upload the buffer
+    await file.save(buffer, {
+      metadata: {
+        contentType: contentType || 'application/octet-stream',
+        metadata: {
+          originalFilename: filename,
+          uploadedAt: new Date().toISOString(),
+        },
+      },
+    });
+
+    return `/objects/attachments/${timestamp}_${sanitizedFilename}`;
+  }
+
   // Store PDF attachment from email processing
   async storePdfAttachment(emailId: string, filename: string, buffer: Buffer): Promise<string> {
     const privateObjectDir = this.getPrivateObjectDir();
