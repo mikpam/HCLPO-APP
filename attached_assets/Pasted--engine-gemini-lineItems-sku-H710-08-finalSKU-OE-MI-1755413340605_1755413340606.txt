@@ -1,0 +1,97 @@
+{
+  "engine": "gemini",
+  "lineItems": [
+    {
+      "sku": "H710-08",
+      "finalSKU": "OE-MISC-ITEM",
+      "quantity": 500,
+      "itemColor": "Black",
+      "description": "Very Kool Cooling Towel"
+    }
+  ],
+  "subtotals": {
+    "grandTotal": 762,
+    "merchandiseSubtotal": 762,
+    "additionalChargesSubtotal": 0
+  },
+  "purchaseOrder": {
+    "shipTo": {
+      "city": "BOYNTON BEACH",
+      "name": "MARVIN - WEST PALM BEACH",
+      "state": "Florida",
+      "company": "",
+      "country": "United States",
+      "zipCode": "33437",
+      "address1": "5253 CEDAR LAKE RD",
+      "address2": "APT 514"
+    },
+    "vendor": {
+      "city": "AZUSA",
+      "name": "High Caliber Line",
+      "email": "info@highcaliberline.com",
+      "phone": "626-969-4660",
+      "state": "California",
+      "country": "United States",
+      "zipCode": "91702",
+      "address1": "6250 N IRWINDALE AVE",
+      "address2": ""
+    },
+    "contact": {
+      "name": "Katrina Flemmer",
+      "email": "",
+      "phone": "",
+      "jobTitle": ""
+    },
+    "customer": {
+      "city": "Fargo",
+      "email": "",
+      "phone": "701-297-0524",
+      "state": "North Dakota",
+      "company": "COACHESCHOICE",
+      "country": "United States",
+      "zipCode": "58104-6919",
+      "address1": "4141 38th St. S. Suite 2E",
+      "address2": "",
+      "lastName": "",
+      "firstName": "",
+      "customerNumber": ""
+    },
+    "asiNumber": "163460",
+    "orderDate": "08/14/2025",
+    "ppaiNumber": "",
+    "inHandsDate": "",
+    "shippingMethod": "UPS Ground Commercial",
+    "salesPersonName": "Katrina Flemmer",
+    "shippingCarrier": "UPS",
+    "requiredShipDate": "",
+    "salesPersonEmail": "",
+    "purchaseOrderNumber": "18452"
+  },
+  "forwardedEmail": {
+    "cNumber": "13515",
+    "originalSender": "Information Please <info@highcaliberline.com>",
+    "extractedCustomer": {
+      "city": "Fargo",
+      "email": "",
+      "phone": "701-297-0524",
+      "state": "North Dakota",
+      "company": "COACHESCHOICE",
+      "country": "United States",
+      "zipCode": "58104-6919",
+      "address1": "4141 38th St. S. Suite 2E",
+      "address2": "",
+      "lastName": "",
+      "firstName": "",
+      "customerNumber": ""
+    },
+    "hclCustomerLookup": {
+      "customer_name": "Coaches Choice Inc.",
+      "customer_number": "C13515"
+    }
+  },
+  "additionalNotes": [
+    "Price validation failed for line 1: Quantity (500) * Unit Price (1.52) = 760.00, but Total Price is 762.00."
+  ],
+  "specialInstructions": "KF - 8/14/2025 3:45 PM - please use our shipping number EW7160 and ship direct to customer KF - 8/14/2025 3:44 PM - same art as PO 15102- changing imprint color and towel color KF - 8/14/2025 3:44 PM - yellow on black imprint"
+}
+Engine: gemini

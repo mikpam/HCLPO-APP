@@ -16,12 +16,17 @@ interface ValidatedSKU {
 export class OpenAISKUValidator {
   private normalizedSkus: Set<string> = new Set();
   private catalog: Map<string, string> = new Map();
+  private isInitialized: boolean = false;
 
   constructor() {
-    this.initializeData();
+    // Don't initialize in constructor - do it when needed
   }
 
-  private async initializeData() {
+  private async ensureInitialized() {
+    if (this.isInitialized) {
+      return;
+    }
+
     try {
       console.log('🔄 Initializing SKU validator with HCL items database...');
       
@@ -41,14 +46,19 @@ export class OpenAISKUValidator {
         this.catalog.set(sku, item.displayName);
       });
 
+      this.isInitialized = true;
       console.log(`✅ SKU validator initialized with ${this.normalizedSkus.size} SKUs`);
     } catch (error) {
       console.error('❌ Error initializing SKU validator:', error);
+      throw error;
     }
   }
 
   async validateLineItems(input: string): Promise<ValidatedSKU[]> {
     console.log('🤖 OPENAI SKU VALIDATOR: Processing line items...');
+    
+    // Ensure data is loaded first
+    await this.ensureInitialized();
 
     // Pre-process: Split input by ____ separator to handle multiple line items
     const lineItems = input.split('____').map(item => item.trim()).filter(item => item.length > 0);
@@ -86,7 +96,19 @@ export class OpenAISKUValidator {
   private async validateSingleLineItem(lineItem: string): Promise<ValidatedSKU> {
     // Prepare comprehensive validation prompt with full HCL items database
     const normalizedSkusArray = Array.from(this.normalizedSkus);
-    const catalogEntries = Object.fromEntries(Array.from(this.catalog.entries()));
+    
+    // Extract SKU from lineItem to show relevant SKUs in prompt
+    const skuMatch = lineItem.match(/(?:sku|item|product)[\s:]*([A-Z0-9-]+)/i);
+    const inputSku = skuMatch ? skuMatch[1].toUpperCase() : '';
+    
+    // Show relevant SKUs - if we have an input SKU, prioritize similar ones
+    let relevantSkus = normalizedSkusArray.slice(0, 100);
+    if (inputSku) {
+      const similar = normalizedSkusArray.filter(sku => 
+        sku.includes(inputSku.split('-')[0]) || inputSku.includes(sku.split('-')[0])
+      );
+      relevantSkus = [...similar, ...normalizedSkusArray.filter(sku => !similar.includes(sku))].slice(0, 100);
+    }
 
     const prompt = `You are a data-validation assistant for **High Caliber Line (HCL)**.
 
@@ -117,7 +139,7 @@ Use case-insensitive matching. Try, in order, stopping at first hit:
 3. **Non-color suffix removal**: drop known non-color suffixes (\`-FD\`, \`-SS\`); re-attempt exact lookup.
 4. **Trailing-letter drop**: if \`sku\` ends with \`[A-Z]\`, drop one letter and retry exact lookup; may repeat once more (max two drops).
 
-If any step hits, treat that as the product match candidate.
+If any step hits, treat that as the product match candidate and use the ORIGINAL SKU as finalSKU.
 
 ---
 
@@ -160,9 +182,9 @@ If still no match, use \`OE-MISC-ITEM\`.
 
 ### Available Data
 
-**NormalizedSkus**: ${JSON.stringify(normalizedSkusArray.slice(0, 50))}${normalizedSkusArray.length > 50 ? ` ... (${normalizedSkusArray.length} total)` : ''}
+**NormalizedSkus (Relevant)**: ${JSON.stringify(relevantSkus)}
 
-**Catalog**: ${JSON.stringify(Object.fromEntries(Array.from(this.catalog.entries()).slice(0, 20)))}${this.catalog.size > 20 ? ` ... (${this.catalog.size} total)` : ''}
+**Sample Catalog**: ${JSON.stringify(Object.fromEntries(Array.from(this.catalog.entries()).slice(0, 20)))}
 
 ---
 
