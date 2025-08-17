@@ -29,6 +29,34 @@ export async function registerRoutes(app: Express): Promise<Server> {
   } catch (error) {
     console.error('Failed to initialize Gmail labels:', error);
   }
+
+  // Auto-start email processing on server startup
+  setTimeout(async () => {
+    try {
+      console.log('🚀 AUTO-PROCESSING: Starting automated email processing...');
+      
+      // Get unprocessed email count first
+      const allMessages = await gmailService.getMessages();
+      let unprocessedCount = 0;
+      for (const message of allMessages) {
+        const hasProcessedLabel = message.labelIds?.includes('processed');
+        if (!hasProcessedLabel) {
+          unprocessedCount++;
+        }
+      }
+
+      if (unprocessedCount > 0) {
+        console.log(`📊 AUTO-PROCESSING: Found ${unprocessedCount} unprocessed emails, starting processing...`);
+        
+        // Start background processing (don't await to prevent blocking)
+        processEmailsInBackground();
+      } else {
+        console.log('✅ AUTO-PROCESSING: No unprocessed emails found, system ready');
+      }
+    } catch (error) {
+      console.error('❌ AUTO-PROCESSING: Failed to start automatic processing:', error);
+    }
+  }, 2000); // Start after 2 seconds to ensure all services are ready
   
   // Test endpoint for Gmail labels
   app.post("/api/test/gmail-labels", async (req, res) => {
@@ -1051,6 +1079,154 @@ totalPrice: ${item.totalPrice || 0}`;
 
     res.end();
   });
+
+  // Background processing function for auto-start
+  async function processEmailsInBackground() {
+    try {
+      // First, count how many unprocessed emails exist
+      const allMessages = await gmailService.getMessages();
+      let unprocessedCount = 0;
+      for (const message of allMessages) {
+        const hasProcessedLabel = message.labelIds?.includes('processed');
+        if (!hasProcessedLabel) {
+          unprocessedCount++;
+        }
+      }
+
+      console.log(`📊 AUTO PROCESSING: Found ${unprocessedCount} unprocessed emails out of ${allMessages.length} total emails`);
+
+      let processedCount = 0;
+      const processedEmails = [];
+      const maxEmails = Math.max(100, unprocessedCount);
+
+      // Process emails one at a time until no more unprocessed emails
+      while (processedCount < maxEmails) {
+        // Fetch one unprocessed email
+        const messages = await gmailService.getMessages();
+        
+        // Find first unprocessed email
+        let messageToProcess = null;
+        for (const message of messages) {
+          const hasProcessedLabel = message.labelIds?.includes('processed');
+          if (!hasProcessedLabel) {
+            messageToProcess = message;
+            break;
+          }
+        }
+        
+        // No more unprocessed emails
+        if (!messageToProcess) {
+          console.log(`📧 AUTO PROCESSING: No more unprocessed emails found`);
+          break;
+        }
+
+        console.log(`\n📧 AUTO PROCESSING EMAIL ${processedCount + 1}: "${messageToProcess.subject}"`);
+        
+        try {
+          // Full processing pipeline similar to manual processing
+          const gmailMessage = messageToProcess;
+
+          // Email preservation
+          try {
+            const { ObjectStorageService } = await import("./objectStorage");
+            const objectStorage = new ObjectStorageService();
+            await objectStorage.preserveEmailAsEML(messageToProcess);
+          } catch (error) {
+            console.error(`   ❌ Failed to preserve email:`, error);
+          }
+
+          // Two-step AI processing
+          const preprocessing = await openaiService.preProcessEmail(gmailMessage);
+          console.log(`   └─ Pre-processing: ${preprocessing.classification} (Continue: ${preprocessing.shouldProceed})`);
+
+          let classification = null;
+          if (preprocessing.shouldProceed) {
+            classification = await openaiService.classifyEmail(gmailMessage, preprocessing);
+            console.log(`   └─ Detailed route: ${classification.route} (${Math.round(classification.confidence)}%)`);
+          }
+
+          const poNumber = `PO-${new Date().getFullYear()}-${String(Date.now()).slice(-6)}`;
+          
+          let purchaseOrder = null;
+          if (preprocessing.shouldProceed && classification) {
+            // Process based on classification route
+            if (classification.route === "ATTACHMENT_PO" || classification.route === "ATTACHMENT_SAMPLE") {
+              if (gmailMessage.attachments && gmailMessage.attachments.length > 0) {
+                const prioritizedAttachment = gmailMessage.attachments[0];
+                
+                if (prioritizedAttachment && prioritizedAttachment.data) {
+                  const extractedData = await aiService.extractPOFromDocument(
+                    prioritizedAttachment.data,
+                    prioritizedAttachment.mimeType,
+                    prioritizedAttachment.filename
+                  );
+                  
+                  if (extractedData) {
+                    purchaseOrder = await storage.createPurchaseOrder({
+                      poNumber,
+                      messageId: messageToProcess.id,
+                      subject: messageToProcess.subject || '',
+                      sender: messageToProcess.sender || '',
+                      extractedData: extractedData as any,
+                      status: 'pending_review'
+                    });
+                  }
+                }
+              }
+            } else if (classification.route === "TEXT_PO" || classification.route === "TEXT_SAMPLE") {
+              const extractedData = await aiService.extractPOFromText(
+                gmailMessage.body || "",
+                gmailMessage.sender,
+                gmailMessage.subject || ""
+              );
+              
+              if (extractedData) {
+                purchaseOrder = await storage.createPurchaseOrder({
+                  poNumber,
+                  messageId: messageToProcess.id,
+                  subject: messageToProcess.subject || '',
+                  sender: messageToProcess.sender || '',
+                  extractedData: extractedData as any,
+                  status: 'pending_review'
+                });
+              }
+            }
+
+            // Customer and SKU processing if PO was created
+            if (purchaseOrder) {
+              const updatedPO = await openaiCustomerFinderService.processPurchaseOrder(purchaseOrder.id);
+              console.log(`   ✅ Updated purchase order ${poNumber} (Status: ${updatedPO?.status || 'unknown'})`);
+            }
+          }
+
+          // Update Gmail labels
+          try {
+            const aiLabelName = `ai-${preprocessing.classification.toLowerCase().replace(/\s+/g, '-')}`;
+            await gmailService.addLabelToMessage(messageToProcess.id, aiLabelName);
+            await gmailService.addLabelToMessage(messageToProcess.id, 'processed');
+            console.log(`   ✅ Successfully updated Gmail labels`);
+          } catch (error) {
+            console.error(`   ❌ Failed to update Gmail labels:`, error);
+          }
+
+          console.log(`   ✅ Completed auto-processing email ${processedCount + 1}`);
+          
+        } catch (error) {
+          console.error(`❌ AUTO Error processing email ${messageToProcess?.id}:`, error);
+        }
+
+        processedCount++;
+        
+        // Small delay between emails to prevent overwhelming the system
+        await new Promise(resolve => setTimeout(resolve, 1000));
+      }
+
+      console.log(`🔄 AUTO PROCESSING: Completed processing ${processedCount} emails`);
+      
+    } catch (error) {
+      console.error('❌ AUTO Background processing error:', error);
+    }
+  }
 
   // Email processing - Sequential processing like single email but iterate through all
   app.post("/api/emails/process", async (req, res) => {
