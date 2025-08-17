@@ -280,14 +280,15 @@ Provide your answer as a JSON object with two keys:
    (item descriptions **and** explicit quantities **and** total / price figures).
 4. **Sample Request in Body** – If Task 3 is true, check whether the **sum of all explicit quantities mentioned** is **< 5**.
 5. **Overall PO Nature** – Assess how likely the email's main intent is a new, transactable PO (including sample requests).
-6. **Recommended Route**  
-   * **"TEXT_PO"** – use if \`po_details_in_body_sufficient\` is \`true\` **and not** \`is_sample_request_in_body\`  
-     **and** (attachments are absent **or** artwork‑only **or** don't look like a PO).  
-   * **"TEXT_SAMPLE"** – use if \`is_sample_request_in_body\` is \`true\` **and** \`po_details_in_body_sufficient\` is \`true\`.  
+6. **Recommended Route** (PRIORITY ORDER - check in this exact sequence)  
    * **"ATTACHMENT_PO"** – use if \`has_attachments\` is \`true\` **and not** \`attachments_all_artwork_files\`  
-     **and** attachments look like a PO **and** \`is_sample_request_in_body\` is \`false\`.  
+     **and** attachments look like a PO **and** \`is_sample_request_in_body\` is \`false\`. **HIGHEST PRIORITY**
    * **"ATTACHMENT_SAMPLE"** – use if \`has_attachments\` is \`true\` **and not** \`attachments_all_artwork_files\`  
      **and** attachments look like a PO **and** \`is_sample_request_in_body\` is \`true\`.  
+   * **"TEXT_PO"** – use if \`po_details_in_body_sufficient\` is \`true\` **and not** \`is_sample_request_in_body\`  
+     **and** attachments are absent **or** artwork‑only **or** don't look like a PO.  
+   * **"TEXT_SAMPLE"** – use if \`is_sample_request_in_body\` is \`true\` **and** \`po_details_in_body_sufficient\` is \`true\`  
+     **and** attachments are absent **or** artwork‑only **or** don't look like a PO.
    * **"REVIEW"** – use for all other cases (ambiguous or low PO intent).
 
 ### JSON SCHEMA (STRICT)
