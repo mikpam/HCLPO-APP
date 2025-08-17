@@ -17,6 +17,8 @@ export const purchaseOrders = pgTable("purchase_orders", {
   customerMeta: jsonb("customer_meta"),
   contactMeta: jsonb("contact_meta"), // Contact information extracted and validated
   contact: text("contact"), // Contact person name for NetSuite (required field)
+  lineItems: jsonb("line_items"), // Validated line items with finalSKU
+  clientPONumber: text("client_po_number"), // Customer's original PO number
   shippingCarrier: text("shipping_carrier"),
   shippingMethod: text("shipping_method"),
   originalJson: jsonb("original_json"),

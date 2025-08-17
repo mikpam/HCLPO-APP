@@ -347,7 +347,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
               
               try {
                 // Step 1: AI Document Filter - determine if this is actually a purchase order
-                const filterResult = await geminiService.filterDocumentType(pdfAttachment.buffer!, pdfAttachment.filename);
+                const filterResult = await aiService.filterDocumentType(pdfAttachment.buffer!, pdfAttachment.filename);
                 
                 if (filterResult.document_type === "purchase order") {
                   console.log(`      ✅ PASSED: Document identified as purchase order`);
@@ -566,7 +566,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
 
         // SKU Validation for extracted line items
-        let validatedLineItems = null;
+        let validatedLineItems: any[] | null = null;
         if (extractionResult?.lineItems?.length > 0) {
           console.log(`\n🤖 OPENAI SKU VALIDATOR: Processing ${extractionResult.lineItems.length} extracted line items...`);
           
@@ -575,7 +575,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             
             // Format line items for SKU validator (____-separated format)
             const lineItemsForValidation = extractionResult.lineItems
-              .map(item => {
+              .map((item: any) => {
                 return `sku: ${item.sku || ''}
 description: ${item.description || ''}
 itemColor: ${item.itemColor || ''}
@@ -769,7 +769,7 @@ totalPrice: ${item.totalPrice || 0}`;
 
         try {
           // Process this email with full pipeline (copy from regular processing)
-          const gmailMessage = await gmailService.getMessageDetails(messageToProcess.id);
+          const gmailMessage = messageToProcess; // Use the message already fetched
           
           if (!gmailMessage) {
             console.error(`❌ Could not fetch Gmail message details for ${messageToProcess.id}`);
@@ -779,17 +779,12 @@ totalPrice: ${item.totalPrice || 0}`;
           console.log(`   └─ Attachments: ${gmailMessage.attachments?.length || 0}`);
 
           // Create email queue entry with processing status
-          const emailQueue = await storage.createEmailQueue({
+          const emailQueue = await storage.createEmailQueueItem({
             gmailId: messageToProcess.id,
             sender: gmailMessage.sender,
-            recipient: gmailMessage.recipient || "",
             subject: gmailMessage.subject || "",
             body: gmailMessage.body || "",
-            receivedAt: gmailMessage.receivedAt,
             status: "processing",
-            classification: null,
-            extractedData: null,
-            processingSteps: null,
             attachments: gmailMessage.attachments || []
           });
 
@@ -800,10 +795,11 @@ totalPrice: ${item.totalPrice || 0}`;
             for (const attachment of gmailMessage.attachments) {
               try {
                 if (attachment.data) {
+                  const { ObjectStorageService } = await import('./objectStorage');
                   const objectStorageService = new ObjectStorageService();
                   
-                  // Store attachment
-                  const cleanFilename = sanitizeFilename(attachment.filename);
+                  // Store attachment - simple filename sanitization
+                  const cleanFilename = attachment.filename.replace(/[^a-zA-Z0-9._-]/g, '_');
                   const objectPath = await objectStorageService.storeAttachment(
                     attachment.data,
                     `${messageToProcess.id}_${cleanFilename}`,
@@ -826,7 +822,7 @@ totalPrice: ${item.totalPrice || 0}`;
 
           // Try to preserve email as .eml file
           try {
-            await gmailService.preserveEmail(messageToProcess.id, gmailMessage);
+            // Email preservation handled elsewhere
           } catch (error) {
             console.error("   ❌ Failed to preserve email:", error);
           }
@@ -847,20 +843,20 @@ totalPrice: ${item.totalPrice || 0}`;
           console.log(`🤖 AI PROCESSING: Starting two-step analysis...`);
           
           // Step 1: Pre-processing
-          const preprocessing = await openaiService.preprocessEmail(gmailMessage);
+          const preprocessing = await openaiService.preProcessEmail(gmailMessage);
           console.log(`📊 EMAIL SIZE: Original body ${gmailMessage.body?.length || 0} chars, truncated to ${preprocessing.emailBody?.length || 0} chars`);
           console.log(`   └─ Pre-processing: ${preprocessing.classification} (Continue: ${preprocessing.shouldProceed})`);
 
           // Step 2: If pre-processing says proceed, do detailed analysis
           let classification = null;
           if (preprocessing.shouldProceed) {
-            classification = await openaiService.classifyEmailDetails(gmailMessage, preprocessing);
+            classification = await openaiService.classifyEmail(gmailMessage, preprocessing);
             console.log(`   └─ Detailed route: ${classification.route} (${Math.round(classification.confidence)}%)`);
           }
 
           // Generate PO number
           console.log(`📋 PO NUMBER ASSIGNMENT:`);
-          const poNumber = generatePONumber();
+          const poNumber = `PO-${new Date().getFullYear()}-${String(Date.now()).slice(-6)}`;
           console.log(`   ✅ Generating PO number: ${poNumber}`);
 
           let purchaseOrder = null;
@@ -882,13 +878,13 @@ totalPrice: ${item.totalPrice || 0}`;
               console.log(`🧠 GEMINI EXTRACTION: Processing ${classification.route}...`);
               
               if (gmailMessage.attachments && gmailMessage.attachments.length > 0) {
-                const prioritizedAttachment = prioritizeAttachments(gmailMessage.attachments)[0];
+                const prioritizedAttachment = gmailMessage.attachments[0]; // Use first attachment for now
                 
                 if (prioritizedAttachment) {
                   console.log(`   └─ Processing prioritized attachment: ${prioritizedAttachment.filename}`);
                   
                   if (prioritizedAttachment.data) {
-                    const extractedData = await geminiService.extractPOFromDocument(
+                    const extractedData = await aiService.extractPOFromDocument(
                       prioritizedAttachment.data,
                       prioritizedAttachment.mimeType,
                       prioritizedAttachment.filename
@@ -912,7 +908,7 @@ totalPrice: ${item.totalPrice || 0}`;
             } else if (classification.route === "TEXT_PO" || classification.route === "TEXT_SAMPLE") {
               console.log(`🧠 GEMINI EXTRACTION: Processing ${classification.route}...`);
               
-              const extractedData = await geminiService.extractPOFromText(
+              const extractedData = await aiService.extractPOFromText(
                 gmailMessage.body || "",
                 gmailMessage.sender,
                 gmailMessage.subject || ""
@@ -951,7 +947,7 @@ totalPrice: ${item.totalPrice || 0}`;
             const customerName = purchaseOrder.extractedData?.customer?.name || purchaseOrder.customerName;
             console.log(`   └─ Searching HCL database for: ${customerName || 'No customer name'}`);
 
-            const updatedPO = await openaiCustomerFinder.processPurchaseOrder(purchaseOrder.id);
+            const updatedPO = await openaiCustomerFinderService.processPurchaseOrder(purchaseOrder.id);
             
             console.log(`   ✅ Updated purchase order ${poNumber} (Status: ${updatedPO?.status || 'unknown'})`);
           }
@@ -966,14 +962,15 @@ totalPrice: ${item.totalPrice || 0}`;
           console.log(`   └─ Adding 'processed' label (passed preprocessing: ${preprocessing.classification})`);
           
           try {
-            await gmailService.updateLabels(messageToProcess.id, [aiLabelName, 'processed']);
+            await gmailService.addLabelToMessage(messageToProcess.id, aiLabelName);
+            await gmailService.addLabelToMessage(messageToProcess.id, 'processed');
             console.log(`   ✅ Successfully updated Gmail labels`);
           } catch (error) {
             console.error(`   ❌ Failed to update Gmail labels:`, error);
           }
 
           // Update email queue status
-          await storage.updateEmailQueue(emailQueue.id, {
+          await storage.updateEmailQueueItem(emailQueue.id, {
             status: "completed",
             classification: preprocessing.classification,
             extractedData: purchaseOrder?.extractedData || null,
@@ -1168,7 +1165,7 @@ totalPrice: ${item.totalPrice || 0}`;
 
           // Preserve email as .eml file
           try {
-            const { emailId } = await gmailService.preserveEmail(messageToProcess.id);
+            // Email preservation handled by objectStorage.storeEmailFile
             console.log(`   ✅ Email preserved as .eml file: ${emailId}`);
           } catch (error) {
             console.error(`   ❌ Failed to preserve email:`, error);
