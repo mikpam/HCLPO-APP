@@ -28,6 +28,8 @@ export const purchaseOrders = pgTable("purchase_orders", {
   nsExternalId: text("ns_external_id"),
   nsInternalId: text("ns_internal_id"),
   status: text("status").notNull().default("pending"),
+  retryCount: integer("retry_count").notNull().default(0), // Track processing attempts
+  lastRetryAt: timestamp("last_retry_at"), // When last retry occurred
   comments: text("comments"),
   pokey: text("pokey").unique(),
   emailId: text("email_id"),

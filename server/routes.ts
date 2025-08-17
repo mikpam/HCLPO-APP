@@ -10,6 +10,9 @@ import { netsuiteService } from "./services/netsuite";
 import { openaiCustomerFinderService } from "./services/openai-customer-finder";
 import { skuValidator } from "./services/openai-sku-validator";
 import { ContactFinderService } from "./services/contact-finder";
+import { db } from "./db";
+import { purchaseOrders, errorLogs } from "@shared/schema";
+import { eq, desc, and, or, lt } from "drizzle-orm";
 
 import { insertPurchaseOrderSchema, insertErrorLogSchema, classificationResultSchema } from "@shared/schema";
 import { z } from "zod";
@@ -34,6 +37,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
   setTimeout(async () => {
     console.log('🔄 AUTO-PROCESSING: Disabled while fixing data quality issues');
     console.log('💡 Use POST /api/emails/process to manually trigger processing');
+    
+    // Check for stuck purchase orders every 10 minutes
+    setInterval(async () => {
+      try {
+        await retryStuckPurchaseOrders();
+      } catch (error) {
+        console.error('Error in periodic stuck PO check:', error);
+      }
+    }, 10 * 60 * 1000); // 10 minutes
   }, 2000);
   
   // Test endpoint for Gmail labels
@@ -1058,6 +1070,88 @@ totalPrice: ${item.totalPrice || 0}`;
     res.end();
   });
 
+  // Helper function to handle retry logic for stuck purchase orders
+  async function handlePurchaseOrderRetry(poId: string, status: string, error?: string) {
+    try {
+      // Get current PO details including retry count
+      const po = await storage.getPurchaseOrder(poId);
+      if (!po) return false;
+
+      const currentRetryCount = po.retryCount || 0;
+      
+      // If max retries exceeded, mark as error
+      if (currentRetryCount >= 3) {
+        await storage.updatePurchaseOrder(poId, {
+          status: 'max_retries_exceeded',
+          comments: `Processing failed after 3 attempts. Last error: ${error || 'Unknown error'}`,
+          updatedAt: new Date()
+        });
+        
+        // Log the permanent failure
+        await storage.createErrorLog({
+          type: 'processing_retry_exceeded',
+          message: `PO ${po.poNumber} exceeded max retries (3). Status was: ${status}`,
+          relatedPoId: poId,
+          relatedPoNumber: po.poNumber,
+          metadata: { 
+            finalStatus: status, 
+            retryCount: currentRetryCount,
+            error: error 
+          }
+        });
+        
+        console.log(`❌ RETRY EXCEEDED: ${po.poNumber} failed after 3 attempts - marked as max_retries_exceeded`);
+        return false;
+      }
+
+      // Increment retry count and update status
+      await storage.updatePurchaseOrder(poId, {
+        retryCount: currentRetryCount + 1,
+        lastRetryAt: new Date(),
+        status: status === 'ready_for_extraction' ? 'extraction_in_progress' : status,
+        comments: error ? `Retry ${currentRetryCount + 1}/3: ${error}` : `Retry ${currentRetryCount + 1}/3`,
+        updatedAt: new Date()
+      });
+
+      console.log(`🔄 RETRY: ${po.poNumber} attempt ${currentRetryCount + 1}/3`);
+      return true;
+    } catch (error) {
+      console.error('Error in retry handler:', error);
+      return false;
+    }
+  }
+
+  // Function to check for and retry stuck purchase orders
+  async function retryStuckPurchaseOrders() {
+    try {
+      // Find POs that are stuck in certain statuses for more than 5 minutes
+      const stuckPOs = await db
+        .select()
+        .from(purchaseOrders)
+        .where(
+          and(
+            or(
+              eq(purchaseOrders.status, 'ready_for_extraction'),
+              eq(purchaseOrders.status, 'extraction_in_progress')
+            ),
+            lt(purchaseOrders.updatedAt, new Date(Date.now() - 5 * 60 * 1000)), // 5 minutes ago
+            lt(purchaseOrders.retryCount, 3) // Haven't exceeded max retries
+          )
+        );
+
+      if (stuckPOs.length > 0) {
+        console.log(`🔄 STUCK PO RETRY: Found ${stuckPOs.length} stuck purchase orders to retry`);
+        
+        for (const po of stuckPOs) {
+          console.log(`🔄 RETRYING STUCK PO: ${po.poNumber} (Status: ${po.status})`);
+          await handlePurchaseOrderRetry(po.id, po.status, 'Stuck processing timeout');
+        }
+      }
+    } catch (error) {
+      console.error('Error checking stuck purchase orders:', error);
+    }
+  }
+
   // Background processing function for auto-start - FULL PIPELINE
   async function processEmailsInBackground() {
     try {
@@ -1959,6 +2053,17 @@ totalPrice: ${item.totalPrice || 0}`;
       res.status(500).json({ 
         message: error instanceof Error ? error.message : 'Failed to update purchase order' 
       });
+    }
+  });
+
+  // API endpoint to manually trigger stuck purchase order retries
+  app.post("/api/purchase-orders/retry-stuck", async (req, res) => {
+    try {
+      await retryStuckPurchaseOrders();
+      res.json({ message: "Stuck purchase order retry completed" });
+    } catch (error) {
+      console.error('Error manually triggering stuck PO retry:', error);
+      res.status(500).json({ error: 'Failed to retry stuck purchase orders' });
     }
   });
 
