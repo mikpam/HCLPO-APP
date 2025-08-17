@@ -35,10 +35,17 @@ import {
   MapPin,
   Eye,
   Filter,
-  Download
+  Download,
+  Plus,
+  Edit,
+  Trash2
 } from "lucide-react";
+import { CustomerFormModal } from "@/components/customers/CustomerFormModal";
+import { DeleteCustomerModal } from "@/components/customers/DeleteCustomerModal";
+import type { Customer as CustomerType } from "@shared/schema";
 
-interface Customer {
+// Use the Customer interface from shared schema, but create a mapping for the API response
+interface CustomerApiResponse {
   id: string;
   customer_number: string;
   company_name: string;
@@ -52,7 +59,25 @@ interface Customer {
   updated_at: string;
 }
 
-function CustomerModal({ customer }: { customer: Customer }) {
+// Helper function to convert API response to schema format
+function convertToCustomer(apiCustomer: CustomerApiResponse): CustomerType {
+  return {
+    id: apiCustomer.id,
+    customerNumber: apiCustomer.customer_number,
+    companyName: apiCustomer.company_name,
+    alternateNames: apiCustomer.alternate_names,
+    email: apiCustomer.email,
+    phone: apiCustomer.phone,
+    address: apiCustomer.address,
+    netsuiteId: apiCustomer.netsuite_id,
+    isActive: apiCustomer.is_active,
+    searchVector: null,
+    createdAt: new Date(apiCustomer.created_at),
+    updatedAt: new Date(apiCustomer.updated_at),
+  };
+}
+
+function CustomerModal({ customer }: { customer: CustomerApiResponse }) {
   return (
     <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
       <DialogHeader>
@@ -148,8 +173,14 @@ export default function CustomersPage() {
   const [statusFilter, setStatusFilter] = useState<"all" | "active" | "inactive">("all");
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 50;
+  
+  // CRUD modal states
+  const [createModalOpen, setCreateModalOpen] = useState(false);
+  const [editModalOpen, setEditModalOpen] = useState(false);
+  const [deleteModalOpen, setDeleteModalOpen] = useState(false);
+  const [selectedCustomer, setSelectedCustomer] = useState<CustomerType | null>(null);
 
-  const { data: customers = [], isLoading, error } = useQuery<Customer[]>({
+  const { data: customers = [], isLoading, error } = useQuery<CustomerApiResponse[]>({
     queryKey: ["/api/customers"],
   });
 
@@ -159,7 +190,7 @@ export default function CustomersPage() {
         customer.company_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
         customer.customer_number.toLowerCase().includes(searchTerm.toLowerCase()) ||
         customer.email?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        customer.alternate_names?.some(name => 
+        customer.alternate_names?.some((name: string) => 
           name.toLowerCase().includes(searchTerm.toLowerCase())
         );
       
@@ -203,6 +234,14 @@ export default function CustomersPage() {
         </div>
         
         <div className="flex items-center gap-2">
+          <Button 
+            onClick={() => setCreateModalOpen(true)}
+            size="sm" 
+            className="flex items-center gap-2"
+          >
+            <Plus className="h-4 w-4" />
+            Create Customer
+          </Button>
           <Button variant="outline" size="sm" className="flex items-center gap-2">
             <Download className="h-4 w-4" />
             Export
@@ -319,14 +358,38 @@ export default function CustomersPage() {
                         </Badge>
                       </div>
                       
-                      <Dialog>
-                        <DialogTrigger asChild>
-                          <Button variant="outline" size="sm">
-                            <Eye className="h-4 w-4" />
-                          </Button>
-                        </DialogTrigger>
-                        <CustomerModal customer={customer} />
-                      </Dialog>
+                      <div className="flex gap-1">
+                        <Dialog>
+                          <DialogTrigger asChild>
+                            <Button variant="outline" size="sm">
+                              <Eye className="h-4 w-4" />
+                            </Button>
+                          </DialogTrigger>
+                          <CustomerModal customer={customer} />
+                        </Dialog>
+                        
+                        <Button 
+                          variant="outline" 
+                          size="sm"
+                          onClick={() => {
+                            setSelectedCustomer(convertToCustomer(customer));
+                            setEditModalOpen(true);
+                          }}
+                        >
+                          <Edit className="h-4 w-4" />
+                        </Button>
+                        
+                        <Button 
+                          variant="outline" 
+                          size="sm"
+                          onClick={() => {
+                            setSelectedCustomer(convertToCustomer(customer));
+                            setDeleteModalOpen(true);
+                          }}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </div>
                     </div>
                   </Card>
                 ))}
@@ -366,14 +429,38 @@ export default function CustomersPage() {
                           {customer.netsuite_id || "—"}
                         </TableCell>
                         <TableCell className="text-right">
-                          <Dialog>
-                            <DialogTrigger asChild>
-                              <Button variant="outline" size="sm">
-                                <Eye className="h-4 w-4" />
-                              </Button>
-                            </DialogTrigger>
-                            <CustomerModal customer={customer} />
-                          </Dialog>
+                          <div className="flex items-center justify-end gap-1">
+                            <Dialog>
+                              <DialogTrigger asChild>
+                                <Button variant="outline" size="sm">
+                                  <Eye className="h-4 w-4" />
+                                </Button>
+                              </DialogTrigger>
+                              <CustomerModal customer={customer} />
+                            </Dialog>
+                            
+                            <Button 
+                              variant="outline" 
+                              size="sm"
+                              onClick={() => {
+                                setSelectedCustomer(convertToCustomer(customer));
+                                setEditModalOpen(true);
+                              }}
+                            >
+                              <Edit className="h-4 w-4" />
+                            </Button>
+                            
+                            <Button 
+                              variant="outline" 
+                              size="sm"
+                              onClick={() => {
+                                setSelectedCustomer(convertToCustomer(customer));
+                                setDeleteModalOpen(true);
+                              }}
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </div>
                         </TableCell>
                       </TableRow>
                     ))}
@@ -412,6 +499,32 @@ export default function CustomersPage() {
           </div>
         </div>
       )}
+
+      {/* CRUD Modals */}
+      <CustomerFormModal
+        isOpen={createModalOpen}
+        onClose={() => setCreateModalOpen(false)}
+        mode="create"
+      />
+      
+      <CustomerFormModal
+        isOpen={editModalOpen}
+        onClose={() => {
+          setEditModalOpen(false);
+          setSelectedCustomer(null);
+        }}
+        customer={selectedCustomer}
+        mode="edit"
+      />
+      
+      <DeleteCustomerModal
+        isOpen={deleteModalOpen}
+        onClose={() => {
+          setDeleteModalOpen(false);
+          setSelectedCustomer(null);
+        }}
+        customer={selectedCustomer}
+      />
     </div>
   );
 }

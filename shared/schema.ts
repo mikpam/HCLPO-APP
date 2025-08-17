@@ -143,6 +143,8 @@ export const insertErrorLogSchema = createInsertSchema(errorLogs).omit({
   createdAt: true,
 });
 
+
+
 export const insertEmailQueueSchema = createInsertSchema(emailQueue).omit({
   id: true,
   createdAt: true,
@@ -157,7 +159,12 @@ export type User = typeof users.$inferSelect;
 export type InsertUser = z.infer<typeof insertUserSchema>;
 
 export type Customer = typeof customers.$inferSelect;
-export const insertCustomerSchema = createInsertSchema(customers);
+export const insertCustomerSchema = createInsertSchema(customers).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+export const updateCustomerSchema = insertCustomerSchema.partial();
 
 export type Contact = typeof contacts.$inferSelect;
 export const insertContactSchema = createInsertSchema(contacts).omit({
@@ -174,6 +181,7 @@ export const insertItemSchema = createInsertSchema(items).omit({
 });
 
 export type InsertCustomer = z.infer<typeof insertCustomerSchema>;
+export type UpdateCustomer = z.infer<typeof updateCustomerSchema>;
 export type InsertContact = z.infer<typeof insertContactSchema>;
 export type InsertItem = z.infer<typeof insertItemSchema>;
 

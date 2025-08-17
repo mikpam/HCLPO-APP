@@ -1,8 +1,9 @@
 import type { Express } from "express";
 import { customerLookupService } from "../services/customer-lookup";
 import { db } from "../db";
-import { customers } from "@shared/schema";
+import { customers, insertCustomerSchema, updateCustomerSchema } from "@shared/schema";
 import { eq } from "drizzle-orm";
+import { z } from "zod";
 
 export function registerCustomerRoutes(app: Express): void {
   // Get all customers (with optional pagination)
@@ -160,23 +161,196 @@ export function registerCustomerRoutes(app: Express): void {
     }
   });
 
-  // Create/update single customer
+
+
+  // Create a new customer (Admin only)
   app.post("/api/customers", async (req, res) => {
     try {
-      const customerData = req.body;
+      // Basic validation - in a real app, you'd want proper authentication middleware
+      const userRole = req.headers['user-role'] || 'operator';
+      if (userRole !== 'admin') {
+        return res.status(403).json({ error: "Admin access required" });
+      }
+
+      const validatedData = insertCustomerSchema.parse(req.body);
       
-      const [newCustomer] = await db
+      // Check if customer number already exists
+      const existingCustomer = await db
+        .select()
+        .from(customers)
+        .where(eq(customers.customerNumber, validatedData.customerNumber))
+        .limit(1);
+
+      if (existingCustomer.length > 0) {
+        return res.status(400).json({ error: "Customer number already exists" });
+      }
+
+      const newCustomer = await db
         .insert(customers)
-        .values(customerData)
+        .values({
+          ...validatedData,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        })
         .returning();
 
-      // Refresh cache after adding new customer
+      // Refresh customer cache after creation
       await customerLookupService.refreshCache();
-      
-      res.json(newCustomer);
+
+      res.status(201).json(newCustomer[0]);
     } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ 
+          error: "Validation error", 
+          details: error.errors 
+        });
+      }
       console.error("Error creating customer:", error);
       res.status(500).json({ error: "Failed to create customer" });
+    }
+  });
+
+  // Update an existing customer (Admin only)
+  app.put("/api/customers/:id", async (req, res) => {
+    try {
+      // Basic validation - in a real app, you'd want proper authentication middleware
+      const userRole = req.headers['user-role'] || 'operator';
+      if (userRole !== 'admin') {
+        return res.status(403).json({ error: "Admin access required" });
+      }
+
+      const customerId = req.params.id;
+      const validatedData = updateCustomerSchema.parse(req.body);
+
+      // Check if customer exists
+      const existingCustomer = await db
+        .select()
+        .from(customers)
+        .where(eq(customers.id, customerId))
+        .limit(1);
+
+      if (existingCustomer.length === 0) {
+        return res.status(404).json({ error: "Customer not found" });
+      }
+
+      // If customer number is being changed, check for duplicates
+      if (validatedData.customerNumber) {
+        const duplicateCustomer = await db
+          .select()
+          .from(customers)
+          .where(eq(customers.customerNumber, validatedData.customerNumber))
+          .limit(1);
+
+        if (duplicateCustomer.length > 0 && duplicateCustomer[0].id !== customerId) {
+          return res.status(400).json({ error: "Customer number already exists" });
+        }
+      }
+
+      const updatedCustomer = await db
+        .update(customers)
+        .set({
+          ...validatedData,
+          updatedAt: new Date(),
+        })
+        .where(eq(customers.id, customerId))
+        .returning();
+
+      // Refresh customer cache after update
+      await customerLookupService.refreshCache();
+
+      res.json(updatedCustomer[0]);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ 
+          error: "Validation error", 
+          details: error.errors 
+        });
+      }
+      console.error("Error updating customer:", error);
+      res.status(500).json({ error: "Failed to update customer" });
+    }
+  });
+
+  // Delete a customer (Admin only)
+  app.delete("/api/customers/:id", async (req, res) => {
+    try {
+      // Basic validation - in a real app, you'd want proper authentication middleware
+      const userRole = req.headers['user-role'] || 'operator';
+      if (userRole !== 'admin') {
+        return res.status(403).json({ error: "Admin access required" });
+      }
+
+      const customerId = req.params.id;
+
+      // Check if customer exists
+      const existingCustomer = await db
+        .select()
+        .from(customers)
+        .where(eq(customers.id, customerId))
+        .limit(1);
+
+      if (existingCustomer.length === 0) {
+        return res.status(404).json({ error: "Customer not found" });
+      }
+
+      // Instead of hard delete, mark as inactive (soft delete)
+      // This preserves data integrity for historical records
+      const updatedCustomer = await db
+        .update(customers)
+        .set({
+          isActive: false,
+          updatedAt: new Date(),
+        })
+        .where(eq(customers.id, customerId))
+        .returning();
+
+      // Refresh customer cache after deletion
+      await customerLookupService.refreshCache();
+
+      res.json({ 
+        message: "Customer deactivated successfully",
+        customer: updatedCustomer[0]
+      });
+    } catch (error) {
+      console.error("Error deleting customer:", error);
+      res.status(500).json({ error: "Failed to delete customer" });
+    }
+  });
+
+  // Reactivate a customer (Admin only)
+  app.patch("/api/customers/:id/reactivate", async (req, res) => {
+    try {
+      // Basic validation - in a real app, you'd want proper authentication middleware
+      const userRole = req.headers['user-role'] || 'operator';
+      if (userRole !== 'admin') {
+        return res.status(403).json({ error: "Admin access required" });
+      }
+
+      const customerId = req.params.id;
+
+      const updatedCustomer = await db
+        .update(customers)
+        .set({
+          isActive: true,
+          updatedAt: new Date(),
+        })
+        .where(eq(customers.id, customerId))
+        .returning();
+
+      if (updatedCustomer.length === 0) {
+        return res.status(404).json({ error: "Customer not found" });
+      }
+
+      // Refresh customer cache after reactivation
+      await customerLookupService.refreshCache();
+
+      res.json({ 
+        message: "Customer reactivated successfully",
+        customer: updatedCustomer[0]
+      });
+    } catch (error) {
+      console.error("Error reactivating customer:", error);
+      res.status(500).json({ error: "Failed to reactivate customer" });
     }
   });
 }
