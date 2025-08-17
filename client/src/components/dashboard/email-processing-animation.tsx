@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Mail, Brain, Route, Zap, Search, UserCheck, CheckCircle2, ArrowRight } from "lucide-react";
+import { Mail, Brain, Route, Zap, Search, UserCheck, CheckCircle2, ArrowRight, Filter, ShieldCheck, Database } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 
@@ -53,7 +53,7 @@ function EmailProcessingAnimation({
       id: "email",
       icon: "Mail",
       label: "Email Received", 
-      description: "New email detected",
+      description: "Gmail ingestion & labeling",
       status: "pending" as "pending" | "processing" | "completed" | "failed",
       duration: 500
     },
@@ -63,13 +63,21 @@ function EmailProcessingAnimation({
       label: "Preprocessing",
       description: "OpenAI intent classification",
       status: "pending" as "pending" | "processing" | "completed" | "failed",
-      duration: 2000
+      duration: 2500
     },
     {
       id: "classification",
       icon: "Route", 
       label: "Route Classification",
-      description: "Detailed analysis & routing",
+      description: "Advanced gate logic & routing",
+      status: "pending" as "pending" | "processing" | "completed" | "failed",
+      duration: 1500
+    },
+    {
+      id: "attachment_filter",
+      icon: "Filter",
+      label: "Attachment Processing",
+      description: "Prioritize PO over proof files",
       status: "pending" as "pending" | "processing" | "completed" | "failed",
       duration: 1000
     },
@@ -77,23 +85,39 @@ function EmailProcessingAnimation({
       id: "extraction",
       icon: "Zap",
       label: "Data Extraction",
-      description: "Gemini PO parsing",
+      description: "Gemini 2.5 Pro PO parsing",
       status: "pending" as "pending" | "processing" | "completed" | "failed", 
-      duration: 3000
+      duration: 4000
     },
     {
       id: "customer_lookup",
       icon: "UserCheck",
       label: "Customer Lookup",
-      description: "HCL database matching",
+      description: "OpenAI customer finder",
       status: "pending" as "pending" | "processing" | "completed" | "failed",
-      duration: 1000
+      duration: 2000
+    },
+    {
+      id: "sku_validation",
+      icon: "ShieldCheck",
+      label: "SKU Validation",
+      description: "OpenAI line item validator",
+      status: "pending" as "pending" | "processing" | "completed" | "failed",
+      duration: 2500
+    },
+    {
+      id: "database_storage",
+      icon: "Database",
+      label: "Database Storage",
+      description: "Save to PostgreSQL",
+      status: "pending" as "pending" | "processing" | "completed" | "failed",
+      duration: 800
     },
     {
       id: "final_status",
       icon: "CheckCircle2", 
       label: "Status Assignment",
-      description: "Final processing status",
+      description: "NetSuite ready or review needed",
       status: "pending" as "pending" | "processing" | "completed" | "failed",
       duration: 500
     }
@@ -207,9 +231,12 @@ function EmailProcessingAnimation({
       case "Mail": return Mail;
       case "Brain": return Brain;
       case "Route": return Route;
+      case "Filter": return Filter;
       case "Zap": return Zap;
       case "Search": return Search;
       case "UserCheck": return UserCheck;
+      case "ShieldCheck": return ShieldCheck;
+      case "Database": return Database;
       case "CheckCircle2": return CheckCircle2;
       default: return Mail;
     }
@@ -236,7 +263,7 @@ function EmailProcessingAnimation({
       <CardContent>
         <div className="space-y-4">
           {/* Processing Steps */}
-          <div className="grid grid-cols-1 md:grid-cols-7 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 xl:grid-cols-9 gap-3">
             {steps.map((step, index) => {
               const IconComponent = getIcon(step.icon);
               const isActive = step.status === "processing";
@@ -246,23 +273,23 @@ function EmailProcessingAnimation({
                 <div key={`${step.id}-${animationKey}-${index}`} className="relative">
                   {/* Connection Line */}
                   {index < steps.length - 1 && (
-                    <div className="hidden md:block absolute top-6 left-full w-4 h-0.5 bg-gray-300 z-0">
-                      <ArrowRight className="absolute -right-2 -top-2 h-4 w-4 text-gray-400" />
+                    <div className="hidden xl:block absolute top-6 left-full w-3 h-0.5 bg-gray-300 z-0">
+                      <ArrowRight className="absolute -right-2 -top-2 h-3 w-3 text-gray-400" />
                     </div>
                   )}
                   
                   {/* Step */}
-                  <div className={`relative z-10 p-3 rounded-lg border transition-all duration-300 ${
+                  <div className={`relative z-10 p-2 rounded-lg border transition-all duration-300 ${
                     isActive 
                       ? "border-blue-500 bg-blue-50 shadow-lg scale-105" 
                       : isCompleted 
                         ? "border-green-500 bg-green-50" 
                         : "border-gray-200 bg-white"
                   }`}>
-                    <div className="flex flex-col items-center text-center space-y-2">
+                    <div className="flex flex-col items-center text-center space-y-1">
                       {/* Icon */}
-                      <div className={`w-8 h-8 rounded-full flex items-center justify-center ${getStepStatusColor(step.status)}`}>
-                        <IconComponent className={`h-4 w-4 ${
+                      <div className={`w-7 h-7 rounded-full flex items-center justify-center ${getStepStatusColor(step.status)}`}>
+                        <IconComponent className={`h-3 w-3 ${
                           step.status === "completed" || step.status === "processing" 
                             ? "text-white" 
                             : "text-gray-600"
@@ -271,10 +298,10 @@ function EmailProcessingAnimation({
                       
                       {/* Label */}
                       <div>
-                        <div className={`text-sm font-medium ${getStepTextColor(step.status)}`}>
+                        <div className={`text-xs font-medium ${getStepTextColor(step.status)}`}>
                           {step.label}
                         </div>
-                        <div className="text-xs text-gray-500 mt-1">
+                        <div className="text-[10px] text-gray-500 mt-0.5 leading-tight">
                           {step.description}
                         </div>
                       </div>
