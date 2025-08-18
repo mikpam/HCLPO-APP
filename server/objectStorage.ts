@@ -305,80 +305,107 @@ export class ObjectStorageService {
 
   // Store any attachment from email processing
   async storeAttachment(buffer: Buffer, filename: string, contentType: string): Promise<string> {
-    const privateObjectDir = this.getPrivateObjectDir();
-    const sanitizedFilename = filename.replace(/[^a-zA-Z0-9.-]/g, '_');
-    const timestamp = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
-    const fullPath = `${privateObjectDir}/attachments/${timestamp}_${sanitizedFilename}`;
+    try {
+      const privateObjectDir = this.getPrivateObjectDir();
+      const sanitizedFilename = filename.replace(/[^a-zA-Z0-9.-]/g, '_');
+      const timestamp = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
+      const fullPath = `${privateObjectDir}/attachments/${timestamp}_${sanitizedFilename}`;
 
-    const { bucketName, objectName } = parseObjectPath(fullPath);
-    const bucket = objectStorageClient.bucket(bucketName);
-    const file = bucket.file(objectName);
+      const { bucketName, objectName } = parseObjectPath(fullPath);
+      const bucket = objectStorageClient.bucket(bucketName);
+      const file = bucket.file(objectName);
 
-    // Upload the buffer
-    await file.save(buffer, {
-      metadata: {
-        contentType: contentType || 'application/octet-stream',
+      // Upload the buffer
+      await file.save(buffer, {
         metadata: {
-          originalFilename: filename,
-          uploadedAt: new Date().toISOString(),
+          contentType: contentType || 'application/octet-stream',
+          metadata: {
+            originalFilename: filename,
+            uploadedAt: new Date().toISOString(),
+          },
         },
-      },
-    });
+      });
 
-    return `/objects/attachments/${timestamp}_${sanitizedFilename}`;
+      return `/objects/attachments/${timestamp}_${sanitizedFilename}`;
+    } catch (error) {
+      console.log(`⚠️  Object storage failed for ${filename}: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      console.log(`   📝 Continuing processing without object storage...`);
+      // Return a placeholder path to indicate storage failed but processing continues
+      const timestamp = new Date().toISOString().slice(0, 10);
+      const sanitizedFilename = filename.replace(/[^a-zA-Z0-9.-]/g, '_');
+      return `/local-fallback/attachments/${timestamp}_${sanitizedFilename}`;
+    }
   }
 
   // Store PDF attachment from email processing
   async storePdfAttachment(emailId: string, filename: string, buffer: Buffer): Promise<string> {
-    const privateObjectDir = this.getPrivateObjectDir();
-    const sanitizedFilename = filename.replace(/[^a-zA-Z0-9.-]/g, '_');
-    const fullPath = `${privateObjectDir}/pdfs/${emailId}_${sanitizedFilename}`;
+    try {
+      const privateObjectDir = this.getPrivateObjectDir();
+      const sanitizedFilename = filename.replace(/[^a-zA-Z0-9.-]/g, '_');
+      const fullPath = `${privateObjectDir}/pdfs/${emailId}_${sanitizedFilename}`;
 
-    const { bucketName, objectName } = parseObjectPath(fullPath);
-    const bucket = objectStorageClient.bucket(bucketName);
-    const file = bucket.file(objectName);
+      const { bucketName, objectName } = parseObjectPath(fullPath);
+      const bucket = objectStorageClient.bucket(bucketName);
+      const file = bucket.file(objectName);
 
-    // Upload the buffer
-    await file.save(buffer, {
-      metadata: {
-        contentType: 'application/pdf',
+      // Upload the buffer
+      await file.save(buffer, {
         metadata: {
-          emailId,
-          originalFilename: filename,
-          uploadedAt: new Date().toISOString(),
+          contentType: 'application/pdf',
+          metadata: {
+            emailId,
+            originalFilename: filename,
+            uploadedAt: new Date().toISOString(),
+          },
         },
-      },
-    });
+      });
 
-    return `/objects/pdfs/${emailId}_${sanitizedFilename}`;
+      return `/objects/pdfs/${emailId}_${sanitizedFilename}`;
+    } catch (error) {
+      console.log(`⚠️  Object storage failed for PDF ${filename}: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      console.log(`   📝 Continuing processing without object storage...`);
+      // Return a placeholder path to indicate storage failed but processing continues
+      const sanitizedFilename = filename.replace(/[^a-zA-Z0-9.-]/g, '_');
+      return `/local-fallback/pdfs/${emailId}_${sanitizedFilename}`;
+    }
   }
 
   // Store original email as .eml file for classified emails
   async storeEmailFile(emailId: string, subject: string, emailContent: string): Promise<string> {
-    const privateObjectDir = this.getPrivateObjectDir();
-    const sanitizedSubject = subject.replace(/[^a-zA-Z0-9\s-]/g, '').slice(0, 50);
-    const timestamp = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
-    const filename = `${emailId}_${timestamp}_${sanitizedSubject || 'email'}.eml`;
-    const fullPath = `${privateObjectDir}/emails/${filename}`;
+    try {
+      const privateObjectDir = this.getPrivateObjectDir();
+      const sanitizedSubject = subject.replace(/[^a-zA-Z0-9\s-]/g, '').slice(0, 50);
+      const timestamp = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
+      const filename = `${emailId}_${timestamp}_${sanitizedSubject || 'email'}.eml`;
+      const fullPath = `${privateObjectDir}/emails/${filename}`;
 
-    const { bucketName, objectName } = parseObjectPath(fullPath);
-    const bucket = objectStorageClient.bucket(bucketName);
-    const file = bucket.file(objectName);
+      const { bucketName, objectName } = parseObjectPath(fullPath);
+      const bucket = objectStorageClient.bucket(bucketName);
+      const file = bucket.file(objectName);
 
-    // Upload the email content as .eml file
-    await file.save(Buffer.from(emailContent, 'utf-8'), {
-      metadata: {
-        contentType: 'message/rfc822',
+      // Upload the email content as .eml file
+      await file.save(Buffer.from(emailContent, 'utf-8'), {
         metadata: {
-          emailId,
-          subject,
-          preservedAt: new Date().toISOString(),
-          fileType: 'original_email',
+          contentType: 'message/rfc822',
+          metadata: {
+            emailId,
+            subject,
+            preservedAt: new Date().toISOString(),
+            fileType: 'original_email',
+          },
         },
-      },
-    });
+      });
 
-    return `/objects/emails/${filename}`;
+      return `/objects/emails/${filename}`;
+    } catch (error) {
+      console.log(`⚠️  Object storage failed for email ${emailId}: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      console.log(`   📝 Continuing processing without object storage...`);
+      // Return a placeholder path to indicate storage failed but processing continues
+      const sanitizedSubject = subject.replace(/[^a-zA-Z0-9\s-]/g, '').slice(0, 50);
+      const timestamp = new Date().toISOString().slice(0, 10);
+      const filename = `${emailId}_${timestamp}_${sanitizedSubject || 'email'}.eml`;
+      return `/local-fallback/emails/${filename}`;
+    }
   }
 
   // Clear all files from object storage for testing purposes
