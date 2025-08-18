@@ -1747,11 +1747,14 @@ ${messageToProcess.body || ''}`;
                 extractedData.forwardedEmail = forwardedEmail;
               }
 
+              // Use original sender for forwarded emails, otherwise use messageToProcess.sender
+              const effectiveSender = forwardedEmail?.originalSender || messageToProcess.sender || '';
+              
               purchaseOrder = await storage.createPurchaseOrder({
                 poNumber,
                 messageId: messageToProcess.id,
                 subject: messageToProcess.subject || '',
-                sender: messageToProcess.sender || '',
+                sender: effectiveSender,
                 extractedData: extractedData as any,
                 status: 'pending_review',
                 route: classification.route,
@@ -1884,10 +1887,15 @@ ${messageToProcess.body || ''}`;
                   
                   // Create fresh validator instance for this email to prevent race conditions
                   const contactValidator = new OpenAIContactValidatorService();
+                  
+                  // Use original sender email for forwarded emails, otherwise use messageToProcess.sender
+                  const effectiveSenderEmail = forwardedEmail?.originalSender || messageToProcess.sender;
+                  console.log(`   🔍 DEBUG: Using effective sender email: "${effectiveSenderEmail}"`);
+                  
                   validationContext.contactMeta = await contactValidator.validateContact({
                     extractedData: extractedData,
                     senderName: senderName,
-                    senderEmail: messageToProcess.sender,
+                    senderEmail: effectiveSenderEmail,
                     resolvedCustomerId: extractedData?.customer?.customernumber,
                     companyId: extractedData?.customer?.customernumber
                   });

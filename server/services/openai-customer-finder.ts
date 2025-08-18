@@ -504,8 +504,9 @@ Please analyze the input and return the correct customer match.`;
         console.log(`   🔍 DEBUG: Storage call - purchaseOrderId: ${purchaseOrderId}`);
         console.log(`   🔍 DEBUG: Storage call - customerMeta type: ${typeof customerMeta}`);
         
+        let updatedPO;
         try {
-          const updatedPO = await storage.updatePurchaseOrder(purchaseOrderId, {
+          updatedPO = await storage.updatePurchaseOrder(purchaseOrderId, {
             extractedData: updatedData,
             customerMeta: customerMeta,  // IMMEDIATE STORAGE: Store in customerMeta (camelCase)
             status: 'customer_found'

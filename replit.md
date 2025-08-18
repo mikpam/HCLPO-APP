@@ -34,6 +34,7 @@ System Behavior: Automated email processing should start immediately when server
 - **Major Classification Priority Fix (2025-08-18)**: Fixed systematic routing issue where 47 emails incorrectly went to TEXT_PO instead of ATTACHMENT_PO. Updated OpenAI classification prompt to prioritize ATTACHMENT_PO over TEXT_PO and made artwork-only detection more conservative.
 - **Bulletproof Attachment Routing (2025-08-18)**: Implemented double-layer protection ensuring ANY email with attachments routes to ATTACHMENT_PO/ATTACHMENT_SAMPLE. Added code-level override that forces correct routing even if OpenAI classification gets confused.
 - **Domain-Specific Routing Exception (2025-08-18)**: Added special handling for @4allpromos.com domain - emails from this domain route to TEXT_PO/TEXT_SAMPLE even when attachments are present, since their PO details are typically in email body text.
+- **Complete Forwarded Email Processing Fix (2025-08-18)**: Fixed critical validation issue where contact validator and customer finder were using HCL forwarder emails instead of original sender emails. All validation services now correctly use original sender data for forwarded emails, ensuring accurate customer/contact matching.
 - **Customer Indexing**: Multi-strategy lookup with database indexes, in-memory caching, and fuzzy matching.
 - **Error Tracking**: Comprehensive error logging system with detailed metadata, step tracking, and resolution status.
 
