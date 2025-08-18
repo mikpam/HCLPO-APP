@@ -92,12 +92,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
     console.error('Failed to initialize Gmail labels:', error);
   }
 
-  // Auto-start with retry mechanism - FRESH SYSTEM TEST
+  // Auto-start with retry mechanism - SEQUENTIAL PROCESSING ARCHITECTURE
   setTimeout(async () => {
-    console.log('🔄 AUTO-PROCESSING: Starting fresh system with retry mechanism enabled');
-    console.log('📊 Database cleared - testing retry logic on fresh emails');
+    console.log('🔄 AUTO-PROCESSING: Starting sequential email processing architecture');
+    console.log('⚡ ARCHITECTURE: Strict per-email processing with health monitoring control');
     
-    // Start processing emails immediately
+    // Start health monitoring system with pausing capability
+    validatorHealthService.startMonitoring();
+    
+    // Start processing emails immediately with sequential architecture
     processEmailsInBackground();
     
     // Check for stuck purchase orders every 5 minutes for faster testing
@@ -1348,7 +1351,7 @@ ${messageToProcess.body || ''}`;
       let processedCount = 0;
       const maxEmails = Math.max(100, unprocessedMessages.length);
 
-      // Process emails one at a time until no more unprocessed emails
+      // SEQUENTIAL PROCESSING: Process emails one at a time with complete validation
       while (processedCount < maxEmails && unprocessedMessages.length > 0) {
         // Process emails from our filtered list sequentially
         const messageToProcess = unprocessedMessages.shift(); // Take first email from queue
@@ -1362,6 +1365,9 @@ ${messageToProcess.body || ''}`;
         console.log(`\n📧 PROCESSING EMAIL ${processedCount + 1}: "${messageToProcess.subject}"`);
         console.log(`   └─ From: ${messageToProcess.sender}`);
         console.log(`   └─ Attachments: ${messageToProcess.attachments ? messageToProcess.attachments.length : 0}`);
+        
+        // CRITICAL: Pause health checks during email processing to ensure sequential architecture
+        validatorHealthService.pauseHealthChecks();
         
         // Update processing status for email start
         updateProcessingStatus({
@@ -2005,8 +2011,24 @@ ${messageToProcess.body || ''}`;
               validationContext.currentPO = purchaseOrder;
               console.log(`🏁 VALIDATION COMPLETED: All validators finished for PO ${poNumber}`);
 
-              // CRITICAL: Final deterministic update with ALL validator results (ONLY for validated emails)
-              if (validationContext.validationCompleted) {
+              // SEQUENTIAL VALIDATION COMPLETION: Ensure ALL validators finished before final update
+              const allValidatorsComplete = !!(
+                validationContext.customerMeta && 
+                validationContext.contactMeta && 
+                validationContext.lineItemsMeta &&
+                validationContext.validationCompleted
+              );
+              
+              console.log(`🔍 VALIDATION STATUS CHECK:`);
+              console.log(`   └─ Customer: ${!!validationContext.customerMeta ? '✅' : '❌'}`);
+              console.log(`   └─ Contact: ${!!validationContext.contactMeta ? '✅' : '❌'}`);
+              console.log(`   └─ Line Items: ${!!validationContext.lineItemsMeta ? '✅' : '❌'}`);
+              console.log(`   └─ Completion Flag: ${validationContext.validationCompleted ? '✅' : '❌'}`);
+              console.log(`   └─ All Complete: ${allValidatorsComplete ? '✅' : '❌'}`);
+              
+              // CRITICAL: Final deterministic update with ALL validator results (ONLY for fully validated emails)
+              if (allValidatorsComplete) {
+                console.log(`🏁 SEQUENTIAL COMPLETION: All validators finished - proceeding with final update`);
                 console.log(`🔍 FINAL UPDATE CHECK: validationCompleted=${validationContext.validationCompleted}, processingId=${validationContext.processingId}`);
                 console.log(`🔄 FINAL UPDATE: Storing all validator results to main database fields`);
                 
@@ -2015,8 +2037,10 @@ ${messageToProcess.body || ''}`;
                 const finalUpdateData: any = {};
                 
                 // CUSTOMER DATA: Extract from customer_lookup (where OpenAI customer finder stores results)
-                if (currentPO?.status === 'customer_found' && currentPO?.extractedData?.customer_lookup?.customer_number) {
-                  const customerLookup = currentPO.extractedData.customer_lookup;
+                // CRITICAL: Re-fetch the latest PO to ensure we have the most recent customer_lookup data
+                const latestPO = await storage.getPurchaseOrder(purchaseOrder.id);
+                if (latestPO?.status === 'customer_found' && latestPO?.extractedData?.customer_lookup?.customer_number) {
+                  const customerLookup = latestPO.extractedData.customer_lookup;
                   const customerMeta = {
                     customer_name: customerLookup.customer_name || 'Unknown',
                     customer_number: customerLookup.customer_number
@@ -2029,9 +2053,16 @@ ${messageToProcess.body || ''}`;
                 } else if (currentPO?.status === 'customer_found' && currentPO?.extractedData?.purchaseOrder?.customer?.customerNumber) {
                   // Fallback: Check original extraction data location
                   const customerData = currentPO.extractedData.purchaseOrder.customer;
+                  
+                  // CRITICAL FIX: Ensure customer number has proper "C" prefix format
+                  let customerNumber = customerData.customerNumber;
+                  if (customerNumber && !customerNumber.startsWith('C')) {
+                    customerNumber = `C${customerNumber}`;
+                  }
+                  
                   const customerMeta = {
                     customer_name: customerData.company || 'Unknown',
-                    customer_number: customerData.customerNumber
+                    customer_number: customerNumber
                   };
                   finalUpdateData.customerMeta = customerMeta;
                   // CRITICAL FIX: Also set the main customer fields that the API returns
@@ -2077,7 +2108,12 @@ ${messageToProcess.body || ''}`;
                   console.log(`   ⚠️  No validator results to store in final update`);
                 }
               } else {
-                console.log(`   ⚠️  Skipping final update - email did not go through complete validation process`);
+                console.log(`   ⚠️  SEQUENTIAL SKIP: Email did not complete ALL validation steps - skipping final update`);
+                console.log(`   📋 Missing validation steps:`);
+                if (!validationContext.customerMeta) console.log(`      └─ Customer validation incomplete`);
+                if (!validationContext.contactMeta) console.log(`      └─ Contact validation incomplete`);
+                if (!validationContext.lineItemsMeta) console.log(`      └─ Line items validation incomplete`);
+                if (!validationContext.validationCompleted) console.log(`      └─ Validation completion flag not set`);
               }
 
             } else {
@@ -2152,11 +2188,15 @@ ${messageToProcess.body || ''}`;
           
         } catch (error) {
           console.error(`❌ Error processing email ${messageToProcess?.id}:`, error);
+        } finally {
+          // CRITICAL: Resume health checks between emails to maintain sequential architecture
+          validatorHealthService.resumeHealthChecks();
         }
 
         processedCount++;
         
         // Small delay between emails to prevent overwhelming the system
+        console.log(`⏸️  SEQUENTIAL PAUSE: Waiting 1 second before next email`);
         await new Promise(resolve => setTimeout(resolve, 1000));
       }
 

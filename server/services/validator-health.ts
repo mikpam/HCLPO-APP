@@ -34,10 +34,12 @@ export class ValidatorHealthService {
   private readonly maxConsecutiveFailures = 3;
   private readonly healthCheckInterval = 30000; // 30 seconds
   private healthCheckTimer?: NodeJS.Timeout;
+  private healthChecksPaused = false; // NEW: Support for pausing during email processing
 
   constructor() {
     this.initializeHealthData();
-    this.startHealthMonitoring();
+    // DON'T start automatically - only start between emails
+    // this.startHealthMonitoring();
   }
 
   static getInstance(): ValidatorHealthService {
@@ -64,12 +66,44 @@ export class ValidatorHealthService {
   }
 
   private startHealthMonitoring(): void {
+    if (this.healthCheckTimer) {
+      clearInterval(this.healthCheckTimer);
+    }
     this.healthCheckTimer = setInterval(() => {
-      this.performHealthChecks();
+      if (!this.healthChecksPaused) {
+        this.performHealthChecks();
+      }
     }, this.healthCheckInterval);
   }
 
+  // NEW: Methods to control health monitoring during email processing
+  public pauseHealthChecks(): void {
+    console.log('⏸️  VALIDATOR HEALTH: Pausing health checks during email processing');
+    this.healthChecksPaused = true;
+  }
+
+  public resumeHealthChecks(): void {
+    console.log('▶️  VALIDATOR HEALTH: Resuming health checks between emails');
+    this.healthChecksPaused = false;
+  }
+
+  public startMonitoring(): void {
+    console.log('🔄 VALIDATOR HEALTH: Starting health monitoring system');
+    this.startHealthMonitoring();
+  }
+
+  public stopMonitoring(): void {
+    console.log('🛑 VALIDATOR HEALTH: Stopping health monitoring system');
+    if (this.healthCheckTimer) {
+      clearInterval(this.healthCheckTimer);
+      this.healthCheckTimer = undefined;
+    }
+  }
+
   private async performHealthChecks(): Promise<void> {
+    if (this.healthChecksPaused) {
+      return; // Skip if paused
+    }
     console.log('🏥 VALIDATOR HEALTH: Performing routine health checks...');
 
     // Check each validator type

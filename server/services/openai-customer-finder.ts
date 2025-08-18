@@ -393,6 +393,7 @@ Please analyze the input and return the correct customer match.`;
           }
           
           console.log(`   ✅ Successfully parsed OpenAI response: ${result.customer_name} (${result.customer_number})`);
+          console.log(`   🔍 Debug: Raw OpenAI content was: "${content}"`);
           return result;
         } else {
           console.log(`   ⚠️  Invalid response format from OpenAI:`, result);
@@ -401,6 +402,7 @@ Please analyze the input and return the correct customer match.`;
       } catch (parseError) {
         console.log(`   ⚠️  Failed to parse OpenAI response as JSON:`, content);
         console.log(`   🔍 Raw content:`, content);
+        console.log(`   🔍 Parse error:`, parseError);
         return { customer_number: "", customer_name: "" };
       }
       
@@ -424,14 +426,21 @@ Please analyze the input and return the correct customer match.`;
       
       // Extract customer information from the extracted data
       const extractedData = purchaseOrder.extractedData as any;
+      console.log(`   🔍 DEBUG: extractedData structure:`, JSON.stringify(extractedData, null, 2));
+      
       if (!extractedData || !extractedData.purchaseOrder) {
         console.log(`   ❌ No extracted data found for PO ${purchaseOrderId}`);
+        console.log(`   🔍 DEBUG: extractedData exists:`, !!extractedData);
+        console.log(`   🔍 DEBUG: extractedData.purchaseOrder exists:`, !!extractedData?.purchaseOrder);
         return purchaseOrder;
       }
       
       const customerData = extractedData.purchaseOrder.customer;
+      console.log(`   🔍 DEBUG: customerData from extractedData:`, JSON.stringify(customerData, null, 2));
       if (!customerData) {
         console.log(`   ❌ No customer data found in PO ${purchaseOrderId}`);
+        console.log(`   🔍 DEBUG: Available extractedData keys:`, Object.keys(extractedData));
+        console.log(`   🔍 DEBUG: Available purchaseOrder keys:`, Object.keys(extractedData.purchaseOrder || {}));
         return purchaseOrder;
       }
       
@@ -462,10 +471,14 @@ Please analyze the input and return the correct customer match.`;
         };
         
         // Update the purchase order
+        console.log(`   🔍 DEBUG: About to store customer_lookup:`, JSON.stringify(updatedData.customer_lookup, null, 2));
         const updatedPO = await storage.updatePurchaseOrder(purchaseOrderId, {
           extractedData: updatedData,
           status: 'customer_found'
         });
+        
+        console.log(`   ✅ Storing customer data from lookup: ${foundCustomer.customer_name} (${foundCustomer.customer_number})`);
+        console.log(`   🔍 DEBUG: Updated PO status:`, updatedPO?.status);
         
         return updatedPO;
       } else {
