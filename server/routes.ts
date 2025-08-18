@@ -3046,7 +3046,33 @@ totalPrice: ${item.totalPrice || 0}`;
     }
   });
 
+  // NetSuite object storage integration test endpoint
+  app.post('/api/netsuite/test-object-storage', async (req, res) => {
+    try {
+      const { attachmentUrls } = req.body;
+      
+      if (!attachmentUrls || !Array.isArray(attachmentUrls)) {
+        return res.status(400).json({
+          success: false,
+          error: 'attachmentUrls array is required'
+        });
+      }
 
+      const result = await netsuiteService.testObjectStorageIntegration(attachmentUrls);
+      
+      if (result.success) {
+        res.json(result);
+      } else {
+        res.status(400).json(result);
+      }
+    } catch (error) {
+      res.status(500).json({
+        success: false,
+        message: 'NetSuite object storage test failed',
+        error: error instanceof Error ? error.message : 'Unknown error'
+      });
+    }
+  });
 
   // NetSuite import
   app.post("/api/purchase-orders/:id/import-netsuite", async (req, res) => {

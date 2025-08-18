@@ -150,7 +150,7 @@ export class NetSuiteService {
     }
   }
 
-  async createSalesOrder(orderData: NetSuiteSalesOrder): Promise<NetSuiteCreateResult> {
+  async createSalesOrder(orderData: NetSuiteSalesOrder, attachmentUrls?: string[]): Promise<NetSuiteCreateResult> {
     try {
       let customerId: string;
 
@@ -173,7 +173,8 @@ export class NetSuiteService {
         shipMethod,
         shipDate: orderData.shipDate,
         memo: orderData.memo,
-        externalId: orderData.externalId
+        externalId: orderData.externalId,
+        attachmentUrls: attachmentUrls || []  // Include object storage URLs
       };
 
       const result = await this.makeRestletCall('POST', salesOrderData);
@@ -386,6 +387,44 @@ export class NetSuiteService {
     } catch (error) {
       console.error('NetSuite RESTlet call failed:', error);
       throw error;
+    }
+  }
+
+  async testObjectStorageIntegration(attachmentUrls: string[]): Promise<{ success: boolean; error?: string; details?: any }> {
+    try {
+      console.log('🔧 Testing NetSuite with object storage URLs...');
+      console.log('📎 Attachment URLs:', attachmentUrls);
+      
+      const testData = {
+        operation: 'testWithAttachments',
+        timestamp: new Date().toISOString(),
+        attachmentUrls: attachmentUrls,
+        message: 'Test request with object storage URLs'
+      };
+
+      const result = await this.makeRestletCall('POST', testData);
+      
+      console.log('✅ NetSuite object storage integration test successful!');
+      return {
+        success: true,
+        details: {
+          accountId: this.accountId,
+          restletUrl: this.restletUrl,
+          attachmentUrls: attachmentUrls,
+          response: result
+        }
+      };
+    } catch (error) {
+      console.error('❌ NetSuite object storage integration test failed:', error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Unknown error',
+        details: {
+          accountId: this.accountId,
+          restletUrl: this.restletUrl,
+          attachmentUrls: attachmentUrls
+        }
+      };
     }
   }
 }
