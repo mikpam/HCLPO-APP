@@ -340,14 +340,26 @@ BEGIN JSON OUTPUT NOW:`
       const isSampleRequest = result.analysis_flags?.is_sample_request_in_body || false;
       let recommendedRoute = result.recommended_route || 'REVIEW';
       
-      // CRITICAL ROUTING OVERRIDE: If attachments exist, force ATTACHMENT routes
-      if (hasAttachments) {
+      // Check for domain-specific exceptions
+      const senderDomain = input.sender.toLowerCase().includes('@4allpromos.com');
+      
+      // CRITICAL ROUTING OVERRIDE: If attachments exist, force ATTACHMENT routes (with exceptions)
+      if (hasAttachments && !senderDomain) {
         if (isSampleRequest) {
           recommendedRoute = 'ATTACHMENT_SAMPLE';
           console.log(`🔧 ROUTING OVERRIDE: Has attachments + sample request → ATTACHMENT_SAMPLE`);
         } else {
           recommendedRoute = 'ATTACHMENT_PO';
           console.log(`🔧 ROUTING OVERRIDE: Has attachments + not sample → ATTACHMENT_PO`);
+        }
+      } else if (hasAttachments && senderDomain) {
+        // Domain exception: 4allpromos.com emails go to TEXT routes even with attachments
+        if (isSampleRequest) {
+          recommendedRoute = 'TEXT_SAMPLE';
+          console.log(`🔧 DOMAIN EXCEPTION: 4allpromos.com + attachments + sample → TEXT_SAMPLE`);
+        } else {
+          recommendedRoute = 'TEXT_PO';
+          console.log(`🔧 DOMAIN EXCEPTION: 4allpromos.com + attachments → TEXT_PO`);
         }
       }
       
