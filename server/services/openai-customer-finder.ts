@@ -460,22 +460,37 @@ Please analyze the input and return the correct customer match.`;
       if (foundCustomer && foundCustomer.customer_number) {
         console.log(`   ✅ Customer found: ${foundCustomer.customer_name} (${foundCustomer.customer_number})`);
         
-        // Update the purchase order with customer information
-        const updatedData = {
-          ...extractedData,
-          customer_lookup: {
-            customer_number: foundCustomer.customer_number,
-            customer_name: foundCustomer.customer_name,
-            matched_at: new Date().toISOString()
-          }
+        // IMMEDIATE STORAGE: Store customer data in both places for compatibility
+        const customerMeta = {
+          customer_number: foundCustomer.customer_number,
+          customer_name: foundCustomer.customer_name,
+          matched_at: new Date().toISOString(),
+          confidence: foundCustomer.confidence || 0.95
         };
         
-        // Update the purchase order
-        console.log(`   🔍 DEBUG: About to store customer_lookup:`, JSON.stringify(updatedData.customer_lookup, null, 2));
-        const updatedPO = await storage.updatePurchaseOrder(purchaseOrderId, {
-          extractedData: updatedData,
-          status: 'customer_found'
-        });
+        const updatedData = {
+          ...extractedData,
+          customer_lookup: customerMeta  // For backwards compatibility
+        };
+        
+        // Update the purchase order with IMMEDIATE customer storage
+        console.log(`   🔍 DEBUG: About to store customer_lookup:`, JSON.stringify(customerMeta, null, 2));
+        console.log(`   🔍 DEBUG: Storage call - purchaseOrderId: ${purchaseOrderId}`);
+        console.log(`   🔍 DEBUG: Storage call - customerMeta type: ${typeof customerMeta}`);
+        
+        try {
+          const updatedPO = await storage.updatePurchaseOrder(purchaseOrderId, {
+            extractedData: updatedData,
+            customerMeta: customerMeta,  // IMMEDIATE STORAGE: Store in customerMeta (camelCase)
+            status: 'customer_found'
+          });
+          console.log(`   ✅ STORAGE SUCCESS: Customer data stored successfully`);
+          console.log(`   🔍 DEBUG: Updated PO status after storage: ${updatedPO?.status}`);
+          console.log(`   🔍 DEBUG: Updated PO customerMeta exists: ${!!updatedPO?.customerMeta}`);
+        } catch (storageError) {
+          console.error(`   ❌ STORAGE ERROR: Failed to store customer data:`, storageError);
+          throw storageError;
+        }
         
         console.log(`   ✅ Storing customer data from lookup: ${foundCustomer.customer_name} (${foundCustomer.customer_number})`);
         console.log(`   🔍 DEBUG: Updated PO status:`, updatedPO?.status);

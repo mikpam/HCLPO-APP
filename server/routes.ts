@@ -1896,14 +1896,24 @@ ${messageToProcess.body || ''}`;
                   console.log(`   └─ Method: ${validationContext.contactMeta.match_method} (Confidence: ${validationContext.contactMeta.confidence})`);
                   console.log(`   └─ Role: ${validationContext.contactMeta.role}`);
                   
-                  // Update purchase order with validated contact info
-                  await storage.updatePurchaseOrder(purchaseOrder.id, {
-                    extractedData: {
-                      ...extractedData,
-                      validatedContact: validationContext.contactMeta,
-                      contactValidationCompleted: true
-                    }
-                  });
+                  // IMMEDIATE STORAGE: Store contact data per validator step
+                  console.log(`   🔍 DEBUG: Contact storage - PO ID: ${purchaseOrder.id}`);
+                  console.log(`   🔍 DEBUG: Contact storage - contactMeta type: ${typeof validationContext.contactMeta}`);
+                  
+                  try {
+                    await storage.updatePurchaseOrder(purchaseOrder.id, {
+                      extractedData: {
+                        ...extractedData,
+                        validatedContact: validationContext.contactMeta,
+                        contactValidationCompleted: true
+                      },
+                      contactMeta: validationContext.contactMeta  // IMMEDIATE STORAGE: Store in contactMeta field
+                    });
+                    console.log(`   ✅ IMMEDIATE STORAGE: Contact data stored in database`);
+                  } catch (storageError) {
+                    console.error(`   ❌ CONTACT STORAGE ERROR:`, storageError);
+                    throw storageError;
+                  }
                   
                 } catch (error) {
                   console.error(`   ❌ Contact validation failed:`, error);
@@ -1946,7 +1956,10 @@ ${messageToProcess.body || ''}`;
                     console.log(`   └─ Item ${index + 1}: ${item.finalSKU} - ${item.description} (Qty: ${item.quantity})`);
                   });
                   
-                  // Update purchase order with validated line items
+                  // Store validated line items for validation context
+                  validationContext.lineItemsMeta = validatedItems;
+                  
+                  // IMMEDIATE STORAGE: Store line items per validator step
                   if (validatedItems.length > 0) {
                     // CRITICAL FIX: Get current PO data to preserve customer_lookup that was added by customer finder
                     const currentPO = await storage.getPurchaseOrder(purchaseOrder.id);
@@ -1959,8 +1972,11 @@ ${messageToProcess.body || ''}`;
                     };
                     
                     await storage.updatePurchaseOrder(purchaseOrder.id, {
-                      extractedData: updatedDataWithSKUs
+                      extractedData: updatedDataWithSKUs,
+                      lineItems: validatedItems  // IMMEDIATE STORAGE: Store in lineItems field
                     });
+                    
+                    console.log(`   ✅ IMMEDIATE STORAGE: Line items stored in database`);
                   }
                   
                 } catch (error) {
