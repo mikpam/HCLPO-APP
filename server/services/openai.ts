@@ -339,27 +339,30 @@ BEGIN JSON OUTPUT NOW:`
       const hasAttachments = result.analysis_flags?.has_attachments || (input.attachments && input.attachments.length > 0);
       const isSampleRequest = result.analysis_flags?.is_sample_request_in_body || false;
       let recommendedRoute = result.recommended_route || 'REVIEW';
+      const originalRoute = recommendedRoute;
       
       // Check for domain-specific exceptions
       const senderDomain = input.sender.toLowerCase().includes('@4allpromos.com');
+      
+      console.log(`🔍 ROUTING DEBUG: hasAttachments=${hasAttachments}, attachmentCount=${input.attachments?.length || 0}, originalRoute=${originalRoute}, senderDomain=${senderDomain}`);
       
       // CRITICAL ROUTING OVERRIDE: If attachments exist, force ATTACHMENT routes (with exceptions)
       if (hasAttachments && !senderDomain) {
         if (isSampleRequest) {
           recommendedRoute = 'ATTACHMENT_SAMPLE';
-          console.log(`🔧 ROUTING OVERRIDE: Has attachments + sample request → ATTACHMENT_SAMPLE`);
+          console.log(`🔧 ROUTING OVERRIDE: Has attachments + sample request → ATTACHMENT_SAMPLE (was: ${originalRoute})`);
         } else {
           recommendedRoute = 'ATTACHMENT_PO';
-          console.log(`🔧 ROUTING OVERRIDE: Has attachments + not sample → ATTACHMENT_PO`);
+          console.log(`🔧 ROUTING OVERRIDE: Has attachments + not sample → ATTACHMENT_PO (was: ${originalRoute})`);
         }
       } else if (hasAttachments && senderDomain) {
         // Domain exception: 4allpromos.com emails go to TEXT routes even with attachments
         if (isSampleRequest) {
           recommendedRoute = 'TEXT_SAMPLE';
-          console.log(`🔧 DOMAIN EXCEPTION: 4allpromos.com + attachments + sample → TEXT_SAMPLE`);
+          console.log(`🔧 DOMAIN EXCEPTION: 4allpromos.com + attachments + sample → TEXT_SAMPLE (was: ${originalRoute})`);
         } else {
           recommendedRoute = 'TEXT_PO';
-          console.log(`🔧 DOMAIN EXCEPTION: 4allpromos.com + attachments → TEXT_PO`);
+          console.log(`🔧 DOMAIN EXCEPTION: 4allpromos.com + attachments → TEXT_PO (was: ${originalRoute})`);
         }
       }
       
