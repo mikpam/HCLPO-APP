@@ -2,7 +2,7 @@ import type { Express } from "express";
 import { customerLookupService } from "../services/customer-lookup";
 import { db } from "../db";
 import { customers, insertCustomerSchema, updateCustomerSchema } from "@shared/schema";
-import { eq, or, ilike, sql } from "drizzle-orm";
+import { eq, or, ilike, sql, and } from "drizzle-orm";
 import { z } from "zod";
 
 export function registerCustomerRoutes(app: Express): void {
@@ -10,9 +10,10 @@ export function registerCustomerRoutes(app: Express): void {
   app.get("/api/customers", async (req, res) => {
     try {
       const page = parseInt(req.query.page as string) || 1;
-      const limit = parseInt(req.query.limit as string) || 50000; // Allow fetching all customers - increased to 50k
+      const limit = parseInt(req.query.limit as string) || 50; // Default to 50 for better performance
       const offset = (page - 1) * limit;
       const search = req.query.search as string;
+      const status = req.query.status as string; // "all", "active", "inactive"
 
       let query = db
         .select({
@@ -30,16 +31,31 @@ export function registerCustomerRoutes(app: Express): void {
         })
         .from(customers);
 
+      // Build where conditions with proper types
+      let whereCondition: any = undefined;
+
       // Add search filtering if search parameter provided
       if (search && search.trim()) {
         const searchTerm = `%${search.trim()}%`;
-        query = query.where(
-          or(
-            ilike(customers.companyName, searchTerm),
-            ilike(customers.email, searchTerm),
-            sql`${customers.alternateNames}::text ILIKE ${searchTerm}`
-          )
+        const searchCondition = or(
+          ilike(customers.companyName, searchTerm),
+          ilike(customers.email, searchTerm),
+          sql`${customers.alternateNames}::text ILIKE ${searchTerm}`
         );
+        whereCondition = whereCondition ? and(whereCondition, searchCondition) : searchCondition;
+      }
+
+      // Add status filtering
+      if (status && status !== "all") {
+        const statusCondition = status === "active" 
+          ? eq(customers.isActive, true)
+          : eq(customers.isActive, false);
+        whereCondition = whereCondition ? and(whereCondition, statusCondition) : statusCondition;
+      }
+
+      // Apply where condition if it exists
+      if (whereCondition) {
+        query = query.where(whereCondition);
       }
 
       const allCustomers = await query

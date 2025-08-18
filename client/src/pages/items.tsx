@@ -65,7 +65,7 @@ export default function ItemsPage() {
     queryFn: async () => {
       const params = new URLSearchParams({
         page: currentPage.toString(),
-        limit: "50000",
+        limit: "50",
         search: searchTerm,
         sortBy,
         sortOrder,

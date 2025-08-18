@@ -178,36 +178,27 @@ export default function CustomersPage() {
   const [createModalOpen, setCreateModalOpen] = useState(false);
   const [editModalOpen, setEditModalOpen] = useState(false);
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
-  const [selectedCustomer, setSelectedCustomer] = useState<CustomerType | null>(null);
+  const [selectedCustomer, setSelectedCustomer] = useState<CustomerType | undefined>(undefined);
 
   const { data: customers = [], isLoading, error } = useQuery<CustomerApiResponse[]>({
-    queryKey: ["/api/customers"],
+    queryKey: ["/api/customers", currentPage, searchTerm, statusFilter],
+    queryFn: async () => {
+      const params = new URLSearchParams({
+        page: currentPage.toString(),
+        limit: itemsPerPage.toString(),
+        search: searchTerm,
+        status: statusFilter,
+      });
+      const response = await fetch(`/api/customers?${params}`);
+      if (!response.ok) {
+        throw new Error("Failed to fetch customers");
+      }
+      return response.json();
+    },
   });
 
-  const filteredCustomers = useMemo(() => {
-    return customers.filter(customer => {
-      const matchesSearch = searchTerm === "" || 
-        customer.company_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        customer.customer_number.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        customer.email?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        customer.alternate_names?.some((name: string) => 
-          name.toLowerCase().includes(searchTerm.toLowerCase())
-        );
-      
-      const matchesStatus = statusFilter === "all" || 
-        (statusFilter === "active" && customer.is_active) ||
-        (statusFilter === "inactive" && !customer.is_active);
-      
-      return matchesSearch && matchesStatus;
-    });
-  }, [customers, searchTerm, statusFilter]);
-
-  const paginatedCustomers = useMemo(() => {
-    const startIndex = (currentPage - 1) * itemsPerPage;
-    return filteredCustomers.slice(startIndex, startIndex + itemsPerPage);
-  }, [filteredCustomers, currentPage]);
-
-  const totalPages = Math.ceil(filteredCustomers.length / itemsPerPage);
+  // Server-side filtering and pagination - no client-side processing needed
+  const totalPages = Math.ceil((customers?.length || 0) / itemsPerPage);
 
   if (error) {
     return (
@@ -285,7 +276,7 @@ export default function CustomersPage() {
               <div>
                 <p className="text-sm font-medium text-gray-600">Filtered Results</p>
                 <p className="text-2xl font-bold">
-                  {isLoading ? "..." : filteredCustomers.length.toLocaleString()}
+                  {isLoading ? "..." : customers.length.toLocaleString()}
                 </p>
               </div>
               <Filter className="h-8 w-8 text-orange-600" />
@@ -331,7 +322,7 @@ export default function CustomersPage() {
           <CardTitle className="flex items-center justify-between">
             <span>Customer Directory</span>
             <span className="text-sm font-normal text-gray-500">
-              Showing {paginatedCustomers.length} of {filteredCustomers.length} customers
+              Showing {customers.length} customers (page {currentPage})
             </span>
           </CardTitle>
         </CardHeader>
@@ -344,7 +335,7 @@ export default function CustomersPage() {
             <>
               {/* Mobile View */}
               <div className="block md:hidden space-y-3">
-                {paginatedCustomers.map((customer) => (
+                {customers.map((customer: CustomerApiResponse) => (
                   <Card key={customer.id} className="p-4">
                     <div className="flex items-start justify-between">
                       <div className="space-y-1">
@@ -410,7 +401,7 @@ export default function CustomersPage() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {paginatedCustomers.map((customer) => (
+                    {customers.map((customer: CustomerApiResponse) => (
                       <TableRow key={customer.id}>
                         <TableCell className="font-mono">{customer.customer_number}</TableCell>
                         <TableCell className="font-medium">{customer.company_name}</TableCell>
@@ -511,7 +502,7 @@ export default function CustomersPage() {
         isOpen={editModalOpen}
         onClose={() => {
           setEditModalOpen(false);
-          setSelectedCustomer(null);
+          setSelectedCustomer(undefined);
         }}
         customer={selectedCustomer}
         mode="edit"
@@ -521,7 +512,7 @@ export default function CustomersPage() {
         isOpen={deleteModalOpen}
         onClose={() => {
           setDeleteModalOpen(false);
-          setSelectedCustomer(null);
+          setSelectedCustomer(undefined);
         }}
         customer={selectedCustomer}
       />
