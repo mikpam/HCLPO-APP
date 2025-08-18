@@ -3074,6 +3074,160 @@ totalPrice: ${item.totalPrice || 0}`;
     }
   });
 
+  // NetSuite complete order integration test with sample data
+  app.post('/api/netsuite/test-sample-order', async (req, res) => {
+    try {
+      // Sample complete order data with object storage URLs
+      const sampleOrderData = {
+        poNumber: "8601EVWD",
+        extractedData: {
+          lineItems: [
+            {
+              sku: "H710",
+              description: "Very Kool Cooling Towel: East Valley Water District Logo Navy with White Imprint",
+              quantity: 225,
+              unitPrice: 4.95,
+              totalPrice: 1113.75,
+              color: "Navy"
+            },
+            {
+              sku: "SETUP",
+              description: "Set-Up",
+              quantity: 1,
+              unitPrice: 60.00,
+              totalPrice: 60.00,
+              color: "N/A"
+            }
+          ],
+          purchaseOrder: {
+            asiNumber: "",
+            orderDate: "08/18/2025",
+            inHandsDate: "",
+            shippingMethod: "FEDEX / UPS",
+            purchaseOrderNumber: "8601EVWD"
+          },
+          customer: {
+            company: "Stubbies Promotions",
+            email: "darren@stubbiespromos.com",
+            phone: "(626) 446-2448",
+            address1: "890 South Myrtle Ave",
+            city: "Monrovia",
+            state: "California",
+            zipCode: "91016"
+          }
+        },
+        customerData: {
+          customer_number: "C141650",
+          customer_name: "Stubbies Promotions"
+        },
+        contactData: {
+          name: "Darren",
+          email: "darren@stubbiespromos.com",
+          phone: "(626) 446-2448"
+        },
+        status: "customer_found"
+      };
+
+      const attachmentUrls = [
+        "http://localhost:5000/objects/emails/198bea055f5b5055_2025-08-18_Purchase Order 8601EVWD from Stubbies Promotions.eml",
+        "http://localhost:5000/objects/attachments/2025-08-18_198bea055f5b5055_PO_8601EVWD_from_Stubbies_Promotions_18388.pdf"
+      ];
+
+      const result = await netsuiteService.testCompleteOrderIntegration(sampleOrderData, attachmentUrls);
+      
+      if (result.success) {
+        res.json(result);
+      } else {
+        res.status(400).json(result);
+      }
+    } catch (error) {
+      res.status(500).json({
+        success: false,
+        message: 'NetSuite sample order test failed',
+        error: error instanceof Error ? error.message : 'Unknown error'
+      });
+    }
+  });
+
+  // NetSuite complete order integration test with extracted data and files
+  app.post('/api/netsuite/test-complete-order', async (req, res) => {
+    try {
+      const { poNumber } = req.body;
+      
+      if (!poNumber) {
+        return res.status(400).json({
+          success: false,
+          error: 'poNumber is required'
+        });
+      }
+
+      // Get the purchase order and related data
+      const purchaseOrders = await storage.getPurchaseOrders();
+      const po = purchaseOrders.find(p => p.poNumber === poNumber);
+      
+      if (!po) {
+        return res.status(404).json({
+          success: false,
+          error: `Purchase order ${poNumber} not found`
+        });
+      }
+
+      // Get the email queue record to find file paths
+      const emailQueue = await storage.getEmailQueue();
+      const emailRecord = emailQueue.find(e => e.gmailId && po.gmailId && e.gmailId === po.gmailId);
+      
+      if (!emailRecord) {
+        return res.status(404).json({
+          success: false,
+          error: `Email record for PO ${poNumber} not found`
+        });
+      }
+
+      // Build attachment URLs based on email processing
+      const attachmentUrls = [];
+      
+      // Add email file if available
+      if (po.emailPath) {
+        attachmentUrls.push(`http://localhost:5000${po.emailPath}`);
+      }
+      
+      // Add attachment files if available  
+      if (po.attachmentPath) {
+        attachmentUrls.push(`http://localhost:5000${po.attachmentPath}`);
+      }
+
+      // Prepare the order data for NetSuite
+      const orderData = {
+        poNumber: po.poNumber,
+        extractedData: po.extractedData,
+        customerData: po.customerMeta,
+        contactData: po.contactMeta,
+        lineItems: po.lineItems,
+        status: po.status,
+        processingMetadata: {
+          gmailId: po.gmailId,
+          route: emailRecord.route,
+          confidence: emailRecord.confidence,
+          processedAt: po.updatedAt
+        }
+      };
+
+      const result = await netsuiteService.testCompleteOrderIntegration(orderData, attachmentUrls);
+      
+      if (result.success) {
+        res.json(result);
+      } else {
+        res.status(400).json(result);
+      }
+    } catch (error) {
+      res.status(500).json({
+        success: false,
+        message: 'NetSuite complete order test failed',
+        error: error instanceof Error ? error.message : 'Unknown error'
+      });
+    }
+  });
+
   // NetSuite import
   app.post("/api/purchase-orders/:id/import-netsuite", async (req, res) => {
     try {

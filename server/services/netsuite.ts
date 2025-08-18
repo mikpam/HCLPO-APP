@@ -427,6 +427,48 @@ export class NetSuiteService {
       };
     }
   }
+
+  async testCompleteOrderIntegration(orderData: any, attachmentUrls: string[]): Promise<{ success: boolean; error?: string; details?: any }> {
+    try {
+      console.log('🔧 Testing NetSuite with complete order data and object storage URLs...');
+      console.log('📋 Order Data:', JSON.stringify(orderData, null, 2));
+      console.log('📎 Attachment URLs:', attachmentUrls);
+      
+      const testData = {
+        operation: 'createOrderWithAttachments',
+        timestamp: new Date().toISOString(),
+        orderData: orderData,
+        attachmentUrls: attachmentUrls,
+        message: 'Complete order test with extracted data and file URLs'
+      };
+
+      const result = await this.makeRestletCall('POST', testData);
+      
+      console.log('✅ NetSuite complete order integration test successful!');
+      return {
+        success: true,
+        details: {
+          accountId: this.accountId,
+          restletUrl: this.restletUrl,
+          orderData: orderData,
+          attachmentUrls: attachmentUrls,
+          response: result
+        }
+      };
+    } catch (error) {
+      console.error('❌ NetSuite complete order integration test failed:', error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Unknown error',
+        details: {
+          accountId: this.accountId,
+          restletUrl: this.restletUrl,
+          orderData: orderData,
+          attachmentUrls: attachmentUrls
+        }
+      };
+    }
+  }
 }
 
 export const netsuiteService = new NetSuiteService();

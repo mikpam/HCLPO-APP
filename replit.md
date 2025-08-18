@@ -84,3 +84,4 @@ System Behavior: Automated email processing should start immediately when server
 
 ### ERP Integration
 - **NetSuite REST API**: For sales order creation, including customer lookup/creation, shipping method mapping, and line item matching.
+- **Object Storage Integration (2025-08-18)**: Successfully implemented complete NetSuite integration using object storage URLs instead of OAuth file uploads. NetSuite RESTlet now receives structured JSON data plus object storage URLs for downloading original email and PDF files. This approach bypasses OAuth complexity while maintaining complete data integrity and audit trails.
