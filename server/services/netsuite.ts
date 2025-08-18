@@ -1,4 +1,5 @@
-// Updated to use TBA NLAuth headers instead of OAuth 1.0 signatures
+// Updated to use OAuth 1.0 authentication with HMAC-SHA256 signatures
+import crypto from 'crypto';
 
 export interface NetSuiteCustomer {
   id?: string;
@@ -60,34 +61,71 @@ export class NetSuiteService {
     }
   }
 
-  private generateNLAuthHeader(otp?: string): string {
-    // RFC 3986 percent encoding function
-    const encodeParam = (str: string): string => {
-      return encodeURIComponent(str);
+  private generateOAuth1Header(method: string, url: string, otp?: string): string {
+    
+    // OAuth 1.0 parameters
+    const consumerKey = process.env.NETSUITE_CONSUMER_KEY!;
+    const consumerSecret = process.env.NETSUITE_CONSUMER_SECRET!;
+    const accessToken = process.env.NETSUITE_TOKEN_ID!;
+    const accessTokenSecret = process.env.NETSUITE_TOKEN_SECRET!;
+    
+    const timestamp = Math.floor(Date.now() / 1000).toString();
+    const nonce = crypto.randomBytes(32).toString('hex');
+    
+    // OAuth parameters
+    const oauthParams: Record<string, string> = {
+      oauth_consumer_key: consumerKey,
+      oauth_nonce: nonce,
+      oauth_signature_method: 'HMAC-SHA256',
+      oauth_timestamp: timestamp,
+      oauth_token: accessToken,
+      oauth_version: '1.0'
     };
 
-    const authParams = [
-      `nlauth_account=${encodeParam(this.accountId)}`,
-      `nlauth_email=${encodeParam(this.email)}`,
-      `nlauth_signature=${encodeParam(this.password)}`,
-      `nlauth_role=${encodeParam(this.roleId)}`,
-      `nlauth_application_id=${encodeParam(this.applicationId)}`
-    ];
-
-    // Add OTP for 2FA if provided
+    // Add NetSuite specific parameters
     if (otp) {
-      authParams.push(`nlauth_otp=${encodeParam(otp)}`);
+      oauthParams.oauth_otp = otp;
     }
 
-    const authHeader = 'NLAuth ' + authParams.join(',');
-    
-    console.log('🔐 TBA NLAuth Header Generated:');
-    console.log('  Account:', this.accountId);
-    console.log('  Email:', this.email);
-    console.log('  Role ID:', this.roleId);
-    console.log('  Application ID:', this.applicationId);
+    // Create parameter string for signature
+    const paramString = Object.keys(oauthParams)
+      .sort()
+      .map(key => `${encodeURIComponent(key)}=${encodeURIComponent(oauthParams[key])}`)
+      .join('&');
+
+    // Create signature base string
+    const signatureBaseString = [
+      method.toUpperCase(),
+      encodeURIComponent(url),
+      encodeURIComponent(paramString)
+    ].join('&');
+
+    // Create signing key
+    const signingKey = `${encodeURIComponent(consumerSecret)}&${encodeURIComponent(accessTokenSecret)}`;
+
+    // Generate signature
+    const signature = crypto
+      .createHmac('sha256', signingKey)
+      .update(signatureBaseString)
+      .digest('base64');
+
+    // Add signature to parameters
+    oauthParams.oauth_signature = signature;
+
+    // Create authorization header
+    const authHeader = 'OAuth realm="' + this.accountId + '",' +
+      Object.keys(oauthParams)
+        .sort()
+        .map(key => `${encodeURIComponent(key)}="${encodeURIComponent(oauthParams[key])}"`)
+        .join(',');
+
+    console.log('🔐 OAuth 1.0 Header Generated:');
+    console.log('  Consumer Key:', consumerKey);
+    console.log('  Access Token:', accessToken);
+    console.log('  Timestamp:', timestamp);
+    console.log('  Nonce:', nonce);
     console.log('  2FA OTP:', otp ? 'Provided' : 'Not provided');
-    console.log('  Header:', authHeader);
+    console.log('  Signature Method: HMAC-SHA256');
 
     return authHeader;
   }
@@ -326,7 +364,7 @@ export class NetSuiteService {
 
   private async makeRestletCall(method: string, data: any, otp?: string): Promise<any> {
     try {
-      const authHeader = this.generateNLAuthHeader(otp);
+      const authHeader = this.generateOAuth1Header(method, this.restletUrl, otp);
       
       const fetchOptions: RequestInit = {
         method: method,
