@@ -2192,10 +2192,11 @@ ${messageToProcess.body || ''}`;
               gmailId: messageToProcess.id,
               sender: messageToProcess.sender || 'Unknown',
               subject: messageToProcess.subject || 'No Subject',
-              route: preprocessing.shouldProceed ? (classification?.route || 'TEXT_PO') : 'FILTERED',
+              route: preprocessing.shouldProceed ? (classification?.recommended_route || 'TEXT_PO') : 'FILTERED',
               status: preprocessing.shouldProceed ? 'processed' : 'filtered',
-              confidence: preprocessing.shouldProceed ? (classification?.confidence || 0) : 0,
+              confidence: preprocessing.shouldProceed ? (classification?.analysis_flags?.confidence_score || 0) : 0,
               processedAt: new Date(),
+              classificationResult: classification || null,
               metadata: {
                 classification: preprocessing.classification || preprocessing.response,
                 shouldProceed: preprocessing.shouldProceed,
