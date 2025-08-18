@@ -112,12 +112,15 @@ export class NetSuiteService {
     // Add signature to parameters
     oauthParams.oauth_signature = signature;
 
-    // Create authorization header
-    const authHeader = 'OAuth realm="' + this.accountId + '",' +
-      Object.keys(oauthParams)
+    // Create authorization header with proper OAuth 1.0 format
+    const headerParams = [
+      `realm="${this.accountId}"`,
+      ...Object.keys(oauthParams)
         .sort()
-        .map(key => `${encodeURIComponent(key)}="${encodeURIComponent(oauthParams[key])}"`)
-        .join(',');
+        .map(key => `${key}="${encodeURIComponent(oauthParams[key])}"`)
+    ];
+    
+    const authHeader = `OAuth ${headerParams.join(', ')}`;
 
     console.log('🔐 OAuth 1.0 Header Generated:');
     console.log('  Consumer Key:', consumerKey);
