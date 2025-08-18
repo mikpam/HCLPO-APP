@@ -23,7 +23,6 @@ export const purchaseOrders = pgTable("purchase_orders", {
   shippingCarrier: text("shipping_carrier"),
   shippingMethod: text("shipping_method"),
   originalJson: jsonb("original_json"),
-  validatedJson: jsonb("validated_json"),
   extractedData: jsonb("extracted_data"), // Gemini PDF extraction results
   originalPdfFilename: text("original_pdf_filename"),
   nsExternalId: text("ns_external_id"),

@@ -3031,14 +3031,14 @@ totalPrice: ${item.totalPrice || 0}`;
         return res.status(400).json({ message: 'Order not ready for NetSuite import' });
       }
 
-      // Extract PO data if needed
-      let poData = order.validatedJson;
+      // Extract PO data from extractedData field
+      let poData = order.extractedData;
       if (!poData && order.route === 'TEXT_PO') {
         const queueItem = await storage.getEmailQueueByGmailId(order.emailId || '');
         if (queueItem) {
           // Use AI service for extraction (will automatically choose appropriate engine)
           poData = await aiService.extractPOData(queueItem.body || '');
-          await storage.updatePurchaseOrder(order.id, { validatedJson: poData });
+          await storage.updatePurchaseOrder(order.id, { extractedData: poData });
         }
       }
 
