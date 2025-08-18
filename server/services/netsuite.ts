@@ -1,3 +1,5 @@
+import crypto from 'crypto';
+
 export interface NetSuiteCustomer {
   id?: string;
   name: string;
@@ -67,22 +69,37 @@ export class NetSuiteService {
       oauth_version: '1.0'
     };
 
-    // This is a simplified OAuth implementation
-    // In production, you should use a proper OAuth library
-    const baseString = `${method}&${encodeURIComponent(url)}&${encodeURIComponent(
-      Object.entries(parameters)
-        .map(([key, value]) => `${key}=${encodeURIComponent(value)}`)
-        .sort()
-        .join('&')
-    )}`;
+    // Create base string for signature (NetSuite specific formatting)
+    const sortedParams = Object.entries(parameters)
+      .map(([key, value]) => `${encodeURIComponent(key)}=${encodeURIComponent(value)}`)
+      .sort()
+      .join('&');
+    
+    const baseString = `${method.toUpperCase()}&${encodeURIComponent(url)}&${encodeURIComponent(sortedParams)}`;
+    
+    console.log('🔐 OAuth Debug:');
+    console.log('  Base String:', baseString);
 
-    // Note: This signature generation is simplified
-    // Use a proper OAuth library in production
-    const signature = 'placeholder_signature';
+    // Generate proper HMAC-SHA1 signature for OAuth 1.0
+    const signingKey = `${encodeURIComponent(this.consumerSecret)}&${encodeURIComponent(this.tokenSecret)}`;
+    const signature = crypto.createHmac('sha1', signingKey).update(baseString).digest('base64');
+    
+    console.log('  Signing Key Length:', signingKey.length);
+    console.log('  Signature:', signature);
 
-    return `OAuth ${Object.entries({...parameters, oauth_signature: signature})
+    // Create authorization header (NetSuite format)
+    const authParams = {
+      ...parameters,
+      oauth_signature: signature
+    };
+
+    const authHeader = 'OAuth ' + Object.entries(authParams)
       .map(([key, value]) => `${key}="${encodeURIComponent(value)}"`)
-      .join(', ')}`;
+      .join(', ');
+    
+    console.log('  Auth Header:', authHeader);
+
+    return authHeader;
   }
 
   async findOrCreateCustomer(customerData: NetSuiteCustomer): Promise<string> {
@@ -244,25 +261,109 @@ export class NetSuiteService {
     }
   }
 
+  async testConnection(): Promise<{ success: boolean; error?: string; details?: any }> {
+    try {
+      console.log('🔧 Testing NetSuite connection...');
+      
+      // Check if credentials are present
+      if (!this.accountId || !this.consumerKey || !this.consumerSecret || !this.tokenId || !this.tokenSecret || !this.restletUrl) {
+        return { 
+          success: false, 
+          error: 'Missing required NetSuite credentials' 
+        };
+      }
+
+      // Try different HTTP methods to see which RESTlet functions are configured
+      const testMethods = [
+        { method: 'GET', description: 'GET method (getfunction)' },
+        { method: 'POST', description: 'POST method (postfunction)' }
+      ];
+
+      let lastError = '';
+      
+      for (const test of testMethods) {
+        try {
+          console.log(`🔍 Testing ${test.description}...`);
+          
+          // Simple test request that RESTlets commonly handle
+          const testData = test.method === 'GET' ? null : {
+            operation: 'test',
+            timestamp: new Date().toISOString()
+          };
+
+          const result = await this.makeRestletCall(test.method, testData);
+          
+          console.log(`✅ NetSuite connection successful with ${test.method}!`);
+          return {
+            success: true,
+            details: {
+              accountId: this.accountId,
+              restletUrl: this.restletUrl,
+              method: test.method,
+              response: result
+            }
+          };
+        } catch (error) {
+          console.log(`❌ ${test.method} failed:`, error instanceof Error ? error.message : error);
+          lastError = error instanceof Error ? error.message : 'Unknown error';
+          continue;
+        }
+      }
+      
+      // If all methods failed, return the last error
+      throw new Error(lastError);
+    } catch (error) {
+      console.error('❌ NetSuite connection test failed:', error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Unknown error',
+        details: {
+          accountId: this.accountId,
+          restletUrl: this.restletUrl,
+          possibleIssues: [
+            'RESTlet script may not have getfunction/postfunction configured',
+            'OAuth credentials may be incorrect',
+            'RESTlet deployment may be inactive',
+            'Account/domain restrictions may be blocking access'
+          ]
+        }
+      };
+    }
+  }
+
   private async makeRestletCall(method: string, data: any): Promise<any> {
     try {
       const authHeader = this.generateOAuthHeader(method, this.restletUrl);
       
-      const response = await fetch(this.restletUrl, {
-        method: 'POST', // RESTlets typically use POST
+      const fetchOptions: RequestInit = {
+        method: method,
         headers: {
           'Authorization': authHeader,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify(data)
-      });
+          'Content-Type': 'application/json',
+          'Accept': 'application/json'
+        }
+      };
 
-      if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`NetSuite API error: ${response.status} ${errorText}`);
+      // Only add body for methods that support it
+      if (data && (method === 'POST' || method === 'PUT' || method === 'PATCH')) {
+        fetchOptions.body = JSON.stringify(data);
       }
 
-      return await response.json();
+      const response = await fetch(this.restletUrl, fetchOptions);
+
+      const responseText = await response.text();
+      console.log(`📊 NetSuite Response [${response.status}]:`, responseText);
+
+      if (!response.ok) {
+        throw new Error(`NetSuite API error: ${response.status} ${response.statusText} - ${responseText}`);
+      }
+
+      try {
+        return JSON.parse(responseText);
+      } catch (parseError) {
+        // If response is not JSON, return the text
+        return { text: responseText };
+      }
     } catch (error) {
       console.error('NetSuite RESTlet call failed:', error);
       throw error;

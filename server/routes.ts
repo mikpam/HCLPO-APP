@@ -3017,6 +3017,35 @@ totalPrice: ${item.totalPrice || 0}`;
     }
   });
 
+  // NetSuite connection test endpoint
+  app.get("/api/netsuite/test-connection", async (req, res) => {
+    try {
+      const result = await netsuiteService.testConnection();
+      
+      if (result.success) {
+        res.json({
+          success: true,
+          message: 'NetSuite connection successful',
+          details: result.details
+        });
+      } else {
+        res.status(400).json({
+          success: false,
+          message: 'NetSuite connection failed',
+          error: result.error,
+          details: result.details
+        });
+      }
+    } catch (error) {
+      console.error('Error testing NetSuite connection:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Error testing NetSuite connection',
+        error: error instanceof Error ? error.message : 'Unknown error'
+      });
+    }
+  });
+
 
 
   // NetSuite import
