@@ -60,7 +60,7 @@ export class NetSuiteService {
     const timestamp = Math.floor(Date.now() / 1000).toString();
     const nonce = Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
 
-    const parameters = {
+    const oauthParameters = {
       oauth_consumer_key: this.consumerKey,
       oauth_nonce: nonce,
       oauth_signature_method: 'HMAC-SHA1',
@@ -69,27 +69,46 @@ export class NetSuiteService {
       oauth_version: '1.0'
     };
 
-    // Create base string for signature (NetSuite specific formatting)
-    const sortedParams = Object.entries(parameters)
+    // Parse URL to extract query parameters (required for OAuth 1.0 signature)
+    const urlObj = new URL(url);
+    const baseUrl = `${urlObj.protocol}//${urlObj.host}${urlObj.pathname}`;
+    
+    // Combine OAuth parameters with URL query parameters
+    const allParameters: Record<string, string> = { ...oauthParameters };
+    
+    // Add URL query parameters to signature parameters
+    urlObj.searchParams.forEach((value, key) => {
+      allParameters[key] = value;
+    });
+
+    // Create parameter string for signature (all parameters sorted)
+    const sortedParams = Object.entries(allParameters)
       .map(([key, value]) => `${encodeURIComponent(key)}=${encodeURIComponent(value)}`)
       .sort()
       .join('&');
     
-    const baseString = `${method.toUpperCase()}&${encodeURIComponent(url)}&${encodeURIComponent(sortedParams)}`;
+    const baseString = `${method.toUpperCase()}&${encodeURIComponent(baseUrl)}&${encodeURIComponent(sortedParams)}`;
     
-    console.log('🔐 OAuth Debug:');
+    console.log('🔐 OAuth Debug - Detailed Breakdown:');
+    console.log('  Method:', method.toUpperCase());
+    console.log('  Base URL:', baseUrl);
+    console.log('  All Parameters:', allParameters);
+    console.log('  Sorted Params String:', sortedParams);
     console.log('  Base String:', baseString);
 
     // Generate proper HMAC-SHA1 signature for OAuth 1.0
     const signingKey = `${encodeURIComponent(this.consumerSecret)}&${encodeURIComponent(this.tokenSecret)}`;
     const signature = crypto.createHmac('sha1', signingKey).update(baseString).digest('base64');
     
+    console.log('  Consumer Secret (first 8 chars):', this.consumerSecret.substring(0, 8) + '...');
+    console.log('  Token Secret (first 8 chars):', this.tokenSecret.substring(0, 8) + '...');
     console.log('  Signing Key Length:', signingKey.length);
-    console.log('  Signature:', signature);
+    console.log('  Raw Signature:', signature);
+    console.log('  Encoded Signature:', encodeURIComponent(signature));
 
-    // Create authorization header (NetSuite format)
+    // Create authorization header (NetSuite format) - only include OAuth parameters
     const authParams = {
-      ...parameters,
+      ...oauthParameters,
       oauth_signature: signature
     };
 
