@@ -2942,6 +2942,62 @@ totalPrice: ${item.totalPrice || 0}`;
   });
 
   // API endpoint to manually trigger stuck purchase order retries
+  // Reprocess email with correct routing (for emails misrouted before fix)
+  app.post("/api/purchase-orders/reprocess-routing", async (req, res) => {
+    try {
+      const { poNumber } = req.body;
+      if (!poNumber) {
+        return res.status(400).json({ error: "PO number is required" });
+      }
+
+      const purchaseOrder = await storage.getPurchaseOrderByNumber(poNumber);
+      if (!purchaseOrder) {
+        return res.status(404).json({ error: "Purchase order not found" });
+      }
+
+      // Find the original email in email_queue
+      const emailQueue = await storage.getEmailQueueByGmailId(purchaseOrder.emailId);
+      if (!emailQueue) {
+        return res.status(404).json({ error: "Original email not found in queue" });
+      }
+
+      console.log(`🔄 REPROCESS ROUTING: Starting reprocessing for PO ${poNumber}`);
+      console.log(`   └─ Original route: ${emailQueue.route}`);
+      console.log(`   └─ Has attachments: ${emailQueue.attachments ? emailQueue.attachments.length : 0}`);
+      
+      // Force reprocess with attachment route if attachments exist
+      if (emailQueue.attachments && emailQueue.attachments.length > 0) {
+        console.log(`   └─ Forcing ATTACHMENT_PO route due to ${emailQueue.attachments.length} attachments`);
+        // This would require implementing the full reprocessing logic
+        // For now, just update the route in the database
+        await storage.updatePurchaseOrder(purchaseOrder.id, {
+          route: 'ATTACHMENT_PO',
+          status: 'needs_reprocessing'
+        });
+        
+        res.json({ 
+          success: true, 
+          poNumber, 
+          message: "Routing corrected to ATTACHMENT_PO - manual reprocessing required",
+          originalRoute: emailQueue.route,
+          newRoute: 'ATTACHMENT_PO',
+          attachmentCount: emailQueue.attachments.length
+        });
+      } else {
+        res.json({ 
+          success: false, 
+          poNumber, 
+          message: "No attachments found - routing appears correct",
+          route: emailQueue.route
+        });
+      }
+      
+    } catch (error) {
+      console.error('❌ Routing reprocessing error:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
   app.post("/api/purchase-orders/retry-stuck", async (req, res) => {
     try {
       await retryStuckPurchaseOrders();
