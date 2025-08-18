@@ -1,9 +1,19 @@
 import OpenAI from "openai";
 
-// the newest OpenAI model is "gpt-4o" which was released May 13, 2024. do not change this unless explicitly requested by the user
-const openai = new OpenAI({ 
-  apiKey: process.env.OPENAI_API_KEY || process.env.OPENAI_API_KEY_ENV_VAR || ""
-});
+// Lazy initialization of OpenAI client
+let openai: OpenAI | null = null;
+
+function getOpenAIClient(): OpenAI {
+  if (!openai) {
+    const apiKey = process.env.OPENAI_API_KEY || process.env.OPENAI_API_KEY_ENV_VAR;
+    if (!apiKey) {
+      throw new Error("OPENAI_API_KEY environment variable is required");
+    }
+    // the newest OpenAI model is "gpt-4o" which was released May 13, 2024. do not change this unless explicitly requested by the user
+    openai = new OpenAI({ apiKey });
+  }
+  return openai;
+}
 
 export interface EmailClassificationInput {
   sender: string;
@@ -41,7 +51,7 @@ export class OpenAIService {
     reason: string;
   }> {
     try {
-      const response = await openai.chat.completions.create({
+      const response = await getOpenAIClient().chat.completions.create({
         model: "gpt-4o",
         messages: [
           {
@@ -205,7 +215,7 @@ Classify as purchase order document or artwork/proof file.`
       
       console.log(`📊 EMAIL SIZE: Original body ${input.body.length} chars, truncated to ${truncatedBody.length} chars`);
 
-      const response = await openai.chat.completions.create({
+      const response = await getOpenAIClient().chat.completions.create({
         model: "gpt-4o", // the newest OpenAI model is "gpt-4o" which was released May 13, 2024. do not change this unless explicitly requested by the user
         messages: [
           {
@@ -262,7 +272,7 @@ Provide your answer as a JSON object with two keys:
       const attachmentFilenames = input.attachments?.map(a => a.filename).join(', ') || '';
       const attachmentContentTypes = input.attachments?.map(a => a.contentType).join(', ') || '';
 
-      const response = await openai.chat.completions.create({
+      const response = await getOpenAIClient().chat.completions.create({
         model: "gpt-4o", // the newest OpenAI model is "gpt-4o" which was released May 13, 2024. do not change this unless explicitly requested by the user
         messages: [
           {
@@ -405,7 +415,7 @@ BEGIN JSON OUTPUT NOW:`
         Respond with structured JSON containing this information.
       `;
 
-      const response = await openai.chat.completions.create({
+      const response = await getOpenAIClient().chat.completions.create({
         model: "gpt-4o",
         messages: [
           {
@@ -431,7 +441,7 @@ BEGIN JSON OUTPUT NOW:`
 
   async testConnection(): Promise<{ success: boolean; error?: string }> {
     try {
-      const response = await openai.chat.completions.create({
+      const response = await getOpenAIClient().chat.completions.create({
         model: "gpt-4o",
         messages: [{ role: "user", content: "Respond with 'OK' to test the connection." }],
         max_tokens: 10,

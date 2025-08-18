@@ -4,9 +4,19 @@ import { sql, ilike, or } from "drizzle-orm";
 import OpenAI from "openai";
 import { storage } from "../storage";
 
-const openai = new OpenAI({ 
-  apiKey: process.env.OPENAI_API_KEY 
-});
+// Lazy initialization of OpenAI client
+let openai: OpenAI | null = null;
+
+function getOpenAIClient(): OpenAI {
+  if (!openai) {
+    const apiKey = process.env.OPENAI_API_KEY;
+    if (!apiKey) {
+      throw new Error("OPENAI_API_KEY environment variable is required");
+    }
+    openai = new OpenAI({ apiKey });
+  }
+  return openai;
+}
 
 interface CustomerFinderInput {
   customerEmail?: string;
@@ -341,7 +351,8 @@ Please analyze the input and return the correct customer match.`;
 
     try {
       // the newest OpenAI model is "gpt-4o" which was released May 13, 2024. do not change this unless explicitly requested by the user
-      const response = await openai.chat.completions.create({
+      const openaiClient = getOpenAIClient();
+      const response = await openaiClient.chat.completions.create({
         model: "gpt-4o",
         messages: [
           {
