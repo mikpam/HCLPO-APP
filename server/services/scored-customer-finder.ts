@@ -252,57 +252,171 @@ export class ScoredCustomerFinderService {
   }
 
   private async useConstrainedLLM(input: CustomerFinderInput, candidates: ScoredCandidate[]): Promise<CustomerFinderResult> {
-    // TODO: Implement constrained LLM that can only choose from provided candidates
-    console.log(`   🤖 Constrained LLM not implemented yet - returning top candidate`);
+    console.log(`   🤖 CONSTRAINED LLM: Analyzing ${candidates.length} ambiguous candidates`);
     
-    if (candidates.length > 0) {
-      const topCandidate = candidates[0];
-      return {
-        status: 'found',
-        customer_number: topCandidate.candidate.customerNumber,
-        customer_name: topCandidate.candidate.companyName,
-        confidence: topCandidate.score,
-        candidates: candidates
-      };
-    }
+    try {
+      const { OpenAI } = await import('openai');
+      const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
-    return { status: 'not_found' };
+      // Create constrained prompt with only provided candidates
+      const candidatesList = candidates.map((c, i) => 
+        `${i + 1}. ID: ${c.candidate.customerNumber} | Company: ${c.candidate.companyName} | Email: ${c.candidate.email || 'N/A'} | Score: ${c.score} | Rationale: ${c.rationale.join(', ')}`
+      ).join('\n');
+
+      const prompt = `You are a customer matching assistant. Given this customer search input and scored candidates, choose the BEST match.
+
+INPUT:
+- Customer Name: ${input.customerName || 'N/A'}
+- Customer Email: ${input.customerEmail || 'N/A'}
+- Sender Email: ${input.senderEmail || 'N/A'}
+- ASI Number: ${input.asiNumber || 'N/A'}
+- PPAI Number: ${input.ppaiNumber || 'N/A'}
+
+CANDIDATES:
+${candidatesList}
+
+INSTRUCTIONS:
+1. You MUST choose exactly ONE candidate from the list above
+2. Consider exact matches (email, customer number) as highest priority
+3. Consider company name similarity and business logic
+4. Return ONLY valid JSON in this exact format:
+{
+  "selected_id": "C12345",
+  "confidence": 0.85,
+  "reasoning": "Brief explanation"
+}
+
+RESPOND WITH ONLY THE JSON OBJECT:`;
+
+      const response = await openai.chat.completions.create({
+        model: "gpt-4o", // the newest OpenAI model is "gpt-4o" which was released May 13, 2024. do not change this unless explicitly requested by the user
+        messages: [{ role: "user", content: prompt }],
+        response_format: { type: "json_object" },
+        temperature: 0.1
+      });
+
+      const result = JSON.parse(response.choices[0].message.content || '{}');
+      const selectedCandidate = candidates.find(c => c.candidate.customerNumber === result.selected_id);
+
+      if (selectedCandidate) {
+        console.log(`   ✅ LLM selected: ${selectedCandidate.candidate.companyName} (${selectedCandidate.candidate.customerNumber})`);
+        console.log(`   📝 Reasoning: ${result.reasoning}`);
+        
+        return {
+          status: 'found',
+          customer_number: selectedCandidate.candidate.customerNumber,
+          customer_name: selectedCandidate.candidate.companyName,
+          confidence: result.confidence || selectedCandidate.score
+        };
+      } else {
+        console.log(`   ❌ LLM selected invalid ID: ${result.selected_id}`);
+        return { status: 'not_found' };
+      }
+
+    } catch (error) {
+      console.error(`   ❌ Constrained LLM error: ${error}`);
+      
+      // Fallback to top candidate
+      if (candidates.length > 0) {
+        const topCandidate = candidates[0];
+        return {
+          status: 'found',
+          customer_number: topCandidate.candidate.customerNumber,
+          customer_name: topCandidate.candidate.companyName,
+          confidence: topCandidate.score,
+          candidates: candidates
+        };
+      }
+
+      return { status: 'not_found' };
+    }
   }
 
-  // Database search methods
+  // Database search methods - DETERMINISTIC POSTGRES LOOKUPS
   private async searchByCustomerNumber(customerNumber: string): Promise<CustomerCandidate[]> {
-    // TODO: Implement actual database search
-    return [];
+    try {
+      const customers = await storage.searchCustomers('customer_number', customerNumber);
+      return customers.map(c => this.mapToCandidate(c));
+    } catch (error) {
+      console.error(`   ❌ Error searching by customer number: ${error}`);
+      return [];
+    }
   }
 
   private async searchByEmail(email: string): Promise<CustomerCandidate[]> {
-    // TODO: Implement actual database search
-    return [];
+    try {
+      const customers = await storage.searchCustomers('email', email);
+      return customers.map(c => this.mapToCandidate(c));
+    } catch (error) {
+      console.error(`   ❌ Error searching by email: ${error}`);
+      return [];
+    }
   }
 
   private async searchByDomain(domain: string): Promise<CustomerCandidate[]> {
-    // TODO: Implement actual database search
-    return [];
+    try {
+      // Search for customers with emails containing this domain
+      const customers = await storage.searchCustomers('domain', domain);
+      return customers.map(c => this.mapToCandidate(c));
+    } catch (error) {
+      console.error(`   ❌ Error searching by domain: ${error}`);
+      return [];
+    }
   }
 
   private async searchByASI(asiNumber: string): Promise<CustomerCandidate[]> {
-    // TODO: Implement actual database search
-    return [];
+    try {
+      const customers = await storage.searchCustomers('asi_number', asiNumber);
+      return customers.map(c => this.mapToCandidate(c));
+    } catch (error) {
+      console.error(`   ❌ Error searching by ASI: ${error}`);
+      return [];
+    }
   }
 
   private async searchByPPAI(ppaiNumber: string): Promise<CustomerCandidate[]> {
-    // TODO: Implement actual database search
-    return [];
+    try {
+      const customers = await storage.searchCustomers('ppai_number', ppaiNumber);
+      return customers.map(c => this.mapToCandidate(c));
+    } catch (error) {
+      console.error(`   ❌ Error searching by PPAI: ${error}`);
+      return [];
+    }
   }
 
   private async searchByCompanyName(companyName: string): Promise<CustomerCandidate[]> {
-    // TODO: Implement actual database search
-    return [];
+    try {
+      const customers = await storage.searchCustomers('company_name', companyName);
+      return customers.map(c => this.mapToCandidate(c));
+    } catch (error) {
+      console.error(`   ❌ Error searching by company name: ${error}`);
+      return [];
+    }
   }
 
   private async searchByRootBrand(rootBrand: string): Promise<CustomerCandidate[]> {
-    // TODO: Implement actual database search
-    return [];
+    try {
+      const customers = await storage.searchCustomers('root_brand', rootBrand);
+      return customers.map(c => this.mapToCandidate(c));
+    } catch (error) {
+      console.error(`   ❌ Error searching by root brand: ${error}`);
+      return [];
+    }
+  }
+
+  private mapToCandidate(customer: any): CustomerCandidate {
+    return {
+      customerNumber: customer.customer_number,
+      companyName: customer.company_name,
+      email: customer.email,
+      domain: customer.email?.split('@')[1],
+      asiNumber: customer.asi_number,
+      ppaiNumber: customer.ppai_number,
+      address: customer.address,
+      city: customer.city,
+      state: customer.state,
+      zip: customer.zip
+    };
   }
 }
 

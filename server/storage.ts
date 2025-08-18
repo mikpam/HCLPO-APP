@@ -55,6 +55,9 @@ export interface IStorage {
     pendingReview: number;
     processingErrors: number;
   }>;
+
+  // Customer search for tools-first approach
+  searchCustomers(searchType: 'customer_number' | 'email' | 'domain' | 'asi_number' | 'ppai_number' | 'company_name' | 'root_brand', searchValue: string): Promise<any[]>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -322,6 +325,14 @@ export class DatabaseStorage implements IStorage {
       pendingReview: reviewResult?.count || 0,
       processingErrors: errorsResult?.count || 0,
     };
+  }
+
+  // Customer search for tools-first approach
+  async searchCustomers(searchType: 'customer_number' | 'email' | 'domain' | 'asi_number' | 'ppai_number' | 'company_name' | 'root_brand', searchValue: string): Promise<any[]> {
+    // For now, return empty array since customers table doesn't exist yet
+    // This will be implemented when customer database schema is added
+    console.log(`🔍 Customer search: ${searchType} = "${searchValue}" (not yet implemented)`);
+    return [];
   }
 }
 
