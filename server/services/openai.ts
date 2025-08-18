@@ -281,13 +281,11 @@ Provide your answer as a JSON object with two keys:
    (item descriptions **and** explicit quantities **and** total / price figures).
 4. **Sample Request in Body** – If Task 3 is true, check whether the **sum of all explicit quantities mentioned** is **< 5**.
 5. **Overall PO Nature** – Assess how likely the email's main intent is a new, transactable PO (including sample requests).
-6. **Recommended Route** (CHECK IN THIS EXACT ORDER - ATTACHMENT FIRST!)  
-   * **"ATTACHMENT_PO"** – **FIRST PRIORITY**: use if \`has_attachments\` is \`true\` **and not** \`attachments_all_artwork_files\`  
-     **and** \`is_sample_request_in_body\` is \`false\` (IGNORE body content quality - attachments take priority!)  
-   * **"ATTACHMENT_SAMPLE"** – use if \`has_attachments\` is \`true\` **and not** \`attachments_all_artwork_files\`  
-     **and** \`is_sample_request_in_body\` is \`true\`.  
-   * **"TEXT_PO"** – use **ONLY** if no non-artwork attachments exist **and** \`po_details_in_body_sufficient\` is \`true\` **and not** \`is_sample_request_in_body\`.  
-   * **"TEXT_SAMPLE"** – use **ONLY** if no non-artwork attachments exist **and** \`is_sample_request_in_body\` is \`true\` **and** \`po_details_in_body_sufficient\` is \`true\`.  
+6. **Recommended Route** (CHECK IN THIS EXACT ORDER - ATTACHMENTS ALWAYS WIN!)  
+   * **"ATTACHMENT_PO"** – **ABSOLUTE FIRST PRIORITY**: use if \`has_attachments\` is \`true\` **and** \`is_sample_request_in_body\` is \`false\`. **IGNORE artwork detection - ANY attachment goes to ATTACHMENT_PO!**  
+   * **"ATTACHMENT_SAMPLE"** – use if \`has_attachments\` is \`true\` **and** \`is_sample_request_in_body\` is \`true\`. **IGNORE artwork detection - ANY attachment with sample goes to ATTACHMENT_SAMPLE!**  
+   * **"TEXT_PO"** – use **ONLY** if \`has_attachments\` is \`false\` **and** \`po_details_in_body_sufficient\` is \`true\` **and** \`is_sample_request_in_body\` is \`false\`.  
+   * **"TEXT_SAMPLE"** – use **ONLY** if \`has_attachments\` is \`false\` **and** \`is_sample_request_in_body\` is \`true\` **and** \`po_details_in_body_sufficient\` is \`true\`.  
    * **"REVIEW"** – use for all other cases (ambiguous or low PO intent).
 
 ### JSON SCHEMA (STRICT)
@@ -337,17 +335,33 @@ BEGIN JSON OUTPUT NOW:`
 
       const result = JSON.parse(response.choices[0].message.content || '{}');
       
+      // Extract base values
+      const hasAttachments = result.analysis_flags?.has_attachments || (input.attachments && input.attachments.length > 0);
+      const isSampleRequest = result.analysis_flags?.is_sample_request_in_body || false;
+      let recommendedRoute = result.recommended_route || 'REVIEW';
+      
+      // CRITICAL ROUTING OVERRIDE: If attachments exist, force ATTACHMENT routes
+      if (hasAttachments) {
+        if (isSampleRequest) {
+          recommendedRoute = 'ATTACHMENT_SAMPLE';
+          console.log(`🔧 ROUTING OVERRIDE: Has attachments + sample request → ATTACHMENT_SAMPLE`);
+        } else {
+          recommendedRoute = 'ATTACHMENT_PO';
+          console.log(`🔧 ROUTING OVERRIDE: Has attachments + not sample → ATTACHMENT_PO`);
+        }
+      }
+      
       // Validate and return the exact response structure
       return {
         analysis_flags: {
-          has_attachments: result.analysis_flags?.has_attachments || false,
+          has_attachments: hasAttachments,
           attachments_all_artwork_files: result.analysis_flags?.attachments_all_artwork_files || false,
           po_details_in_body_sufficient: result.analysis_flags?.po_details_in_body_sufficient || false,
-          is_sample_request_in_body: result.analysis_flags?.is_sample_request_in_body || false,
+          is_sample_request_in_body: isSampleRequest,
           overall_po_nature_probability: result.analysis_flags?.overall_po_nature_probability || "low",
           confidence_score: result.analysis_flags?.confidence_score || 0.5
         },
-        recommended_route: result.recommended_route || 'REVIEW',
+        recommended_route: recommendedRoute,
         suggested_tags: result.suggested_tags || []
       };
     } catch (error) {

@@ -32,6 +32,7 @@ System Behavior: Automated email processing should start immediately when server
 - **Enhanced Customer Lookup Fallback (2025-08-18)**: Improved customer finder to handle cases where Gemini extraction has missing/incomplete customer data by falling back to sender email analysis.
 - **Critical Routing Fix Analysis (2025-08-18)**: Confirmed PO 138261 failed extraction due to incorrect TEXT_PO routing instead of ATTACHMENT_PO, bypassing attachment screening entirely. This demonstrates the routing fix prevents future misclassifications.
 - **Major Classification Priority Fix (2025-08-18)**: Fixed systematic routing issue where 47 emails incorrectly went to TEXT_PO instead of ATTACHMENT_PO. Updated OpenAI classification prompt to prioritize ATTACHMENT_PO over TEXT_PO and made artwork-only detection more conservative.
+- **Bulletproof Attachment Routing (2025-08-18)**: Implemented double-layer protection ensuring ANY email with attachments routes to ATTACHMENT_PO/ATTACHMENT_SAMPLE. Added code-level override that forces correct routing even if OpenAI classification gets confused.
 - **Customer Indexing**: Multi-strategy lookup with database indexes, in-memory caching, and fuzzy matching.
 - **Error Tracking**: Comprehensive error logging system with detailed metadata, step tracking, and resolution status.
 
