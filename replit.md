@@ -83,5 +83,14 @@ System Behavior: Automated email processing should start immediately when server
 - **Object Storage**: Replit's built-in object storage for PDF and document storage.
 
 ### ERP Integration
-- **NetSuite REST API**: For sales order creation, including customer lookup/creation, shipping method mapping, and line item matching.
+- **NetSuite REST API**: For sales order creation using TBA NLAuth authentication.
+- **Environment Variables Required**:
+  - `NETSUITE_ACCOUNT_ID`: NetSuite account identifier
+  - `NETSUITE_EMAIL`: User email for authentication
+  - `NETSUITE_PASSWORD`: User password
+  - `NETSUITE_ROLE_ID`: Internal role ID with required permissions
+  - `NETSUITE_APPLICATION_ID`: Integration application ID
+  - `NETSUITE_RESTLET_URL`: RESTlet deployment URL
+- **TBA NLAuth Authentication (2025-08-18)**: Successfully migrated from complex OAuth 1.0 signature generation to simplified TBA NLAuth headers. Authentication now uses simple header-based approach with account ID, email, password, role ID, and application ID - eliminating HMAC-SHA1 signature complexity while maintaining security.
+- **Two-Factor Authentication Support (2025-08-18)**: Added complete 2FA support for NetSuite TBA authentication. System now handles accounts with required 2FA by accepting OTP tokens from authenticator apps. Includes dedicated API endpoint `/api/netsuite/test-connection-2fa` for testing with 2FA codes.
 - **Object Storage Integration (2025-08-18)**: Successfully implemented complete NetSuite integration using object storage URLs instead of OAuth file uploads. NetSuite RESTlet now receives structured JSON data plus object storage URLs for downloading original email and PDF files. This approach bypasses OAuth complexity while maintaining complete data integrity and audit trails.

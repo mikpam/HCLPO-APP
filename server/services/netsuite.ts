@@ -1,4 +1,4 @@
-import crypto from 'crypto';
+// Updated to use TBA NLAuth headers instead of OAuth 1.0 signatures
 
 export interface NetSuiteCustomer {
   id?: string;
@@ -41,82 +41,53 @@ export interface NetSuiteCreateResult {
 
 export class NetSuiteService {
   private accountId: string;
-  private consumerKey: string;
-  private consumerSecret: string;
-  private tokenId: string;
-  private tokenSecret: string;
+  private email: string;
+  private password: string;
+  private roleId: string;
+  private applicationId: string;
   private restletUrl: string;
 
   constructor() {
     this.accountId = process.env.NETSUITE_ACCOUNT_ID || '';
-    this.consumerKey = process.env.NETSUITE_CONSUMER_KEY || '';
-    this.consumerSecret = process.env.NETSUITE_CONSUMER_SECRET || '';
-    this.tokenId = process.env.NETSUITE_TOKEN_ID || '';
-    this.tokenSecret = process.env.NETSUITE_TOKEN_SECRET || '';
+    this.email = process.env.NETSUITE_EMAIL || '';
+    this.password = process.env.NETSUITE_PASSWORD || '';
+    this.roleId = process.env.NETSUITE_ROLE_ID || '';
+    this.applicationId = process.env.NETSUITE_APPLICATION_ID || '';
     this.restletUrl = process.env.NETSUITE_RESTLET_URL || '';
+
+    if (!this.accountId || !this.email || !this.password || !this.roleId || !this.applicationId || !this.restletUrl) {
+      console.warn('⚠️ NetSuite TBA credentials not fully configured');
+    }
   }
 
-  private generateOAuthHeader(method: string, url: string): string {
-    const timestamp = Math.floor(Date.now() / 1000).toString();
-    const nonce = Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
-
-    const oauthParameters = {
-      oauth_consumer_key: this.consumerKey,
-      oauth_nonce: nonce,
-      oauth_signature_method: 'HMAC-SHA1',
-      oauth_timestamp: timestamp,
-      oauth_token: this.tokenId,
-      oauth_version: '1.0'
+  private generateNLAuthHeader(otp?: string): string {
+    // RFC 3986 percent encoding function
+    const encodeParam = (str: string): string => {
+      return encodeURIComponent(str);
     };
 
-    // Parse URL to extract query parameters (required for OAuth 1.0 signature)
-    const urlObj = new URL(url);
-    const baseUrl = `${urlObj.protocol}//${urlObj.host}${urlObj.pathname}`;
-    
-    // Combine OAuth parameters with URL query parameters
-    const allParameters: Record<string, string> = { ...oauthParameters };
-    
-    // Add URL query parameters to signature parameters
-    urlObj.searchParams.forEach((value, key) => {
-      allParameters[key] = value;
-    });
+    const authParams = [
+      `nlauth_account=${encodeParam(this.accountId)}`,
+      `nlauth_email=${encodeParam(this.email)}`,
+      `nlauth_signature=${encodeParam(this.password)}`,
+      `nlauth_role=${encodeParam(this.roleId)}`,
+      `nlauth_application_id=${encodeParam(this.applicationId)}`
+    ];
 
-    // Create parameter string for signature (all parameters sorted)
-    const sortedParams = Object.entries(allParameters)
-      .map(([key, value]) => `${encodeURIComponent(key)}=${encodeURIComponent(value)}`)
-      .sort()
-      .join('&');
-    
-    const baseString = `${method.toUpperCase()}&${encodeURIComponent(baseUrl)}&${encodeURIComponent(sortedParams)}`;
-    
-    console.log('🔐 OAuth Debug - Detailed Breakdown:');
-    console.log('  Method:', method.toUpperCase());
-    console.log('  Base URL:', baseUrl);
-    console.log('  All Parameters:', allParameters);
-    console.log('  Sorted Params String:', sortedParams);
-    console.log('  Base String:', baseString);
+    // Add OTP for 2FA if provided
+    if (otp) {
+      authParams.push(`nlauth_otp=${encodeParam(otp)}`);
+    }
 
-    // Generate proper HMAC-SHA1 signature for OAuth 1.0
-    const signingKey = `${encodeURIComponent(this.consumerSecret)}&${encodeURIComponent(this.tokenSecret)}`;
-    const signature = crypto.createHmac('sha1', signingKey).update(baseString).digest('base64');
+    const authHeader = 'NLAuth ' + authParams.join(',');
     
-    console.log('  Consumer Secret (first 8 chars):', this.consumerSecret.substring(0, 8) + '...');
-    console.log('  Token Secret (first 8 chars):', this.tokenSecret.substring(0, 8) + '...');
-    console.log('  Signing Key Length:', signingKey.length);
-    console.log('  Raw Signature:', signature);
-    console.log('  Encoded Signature:', encodeURIComponent(signature));
-
-    // Create authorization header (NetSuite format) - only include OAuth parameters
-    const authParams = {
-      ...oauthParameters,
-      oauth_signature: signature
-    };
-
-    const authHeader = 'OAuth ' + Object.entries(authParams)
-      .map(([key, value]) => `${key}="${encodeURIComponent(value)}"`)
-      .join(', ');
-    
-    console.log('  Auth Header:', authHeader);
+    console.log('🔐 TBA NLAuth Header Generated:');
+    console.log('  Account:', this.accountId);
+    console.log('  Email:', this.email);
+    console.log('  Role ID:', this.roleId);
+    console.log('  Application ID:', this.applicationId);
+    console.log('  2FA OTP:', otp ? 'Provided' : 'Not provided');
+    console.log('  Header:', authHeader);
 
     return authHeader;
   }
@@ -281,15 +252,15 @@ export class NetSuiteService {
     }
   }
 
-  async testConnection(): Promise<{ success: boolean; error?: string; details?: any }> {
+  async testConnection(otp?: string): Promise<{ success: boolean; error?: string; details?: any }> {
     try {
       console.log('🔧 Testing NetSuite connection...');
       
       // Check if credentials are present
-      if (!this.accountId || !this.consumerKey || !this.consumerSecret || !this.tokenId || !this.tokenSecret || !this.restletUrl) {
+      if (!this.accountId || !this.email || !this.password || !this.roleId || !this.applicationId || !this.restletUrl) {
         return { 
           success: false, 
-          error: 'Missing required NetSuite credentials' 
+          error: 'Missing required NetSuite TBA credentials' 
         };
       }
 
@@ -311,7 +282,7 @@ export class NetSuiteService {
             timestamp: new Date().toISOString()
           };
 
-          const result = await this.makeRestletCall(test.method, testData);
+          const result = await this.makeRestletCall(test.method, testData, otp);
           
           console.log(`✅ NetSuite connection successful with ${test.method}!`);
           return {
@@ -342,18 +313,20 @@ export class NetSuiteService {
           restletUrl: this.restletUrl,
           possibleIssues: [
             'RESTlet script may not have getfunction/postfunction configured',
-            'OAuth credentials may be incorrect',
+            'TBA NLAuth credentials may be incorrect',
             'RESTlet deployment may be inactive',
-            'Account/domain restrictions may be blocking access'
+            'Account/domain restrictions may be blocking access',
+            'User role may not have sufficient permissions',
+            'Application ID may not be properly configured'
           ]
         }
       };
     }
   }
 
-  private async makeRestletCall(method: string, data: any): Promise<any> {
+  private async makeRestletCall(method: string, data: any, otp?: string): Promise<any> {
     try {
-      const authHeader = this.generateOAuthHeader(method, this.restletUrl);
+      const authHeader = this.generateNLAuthHeader(otp);
       
       const fetchOptions: RequestInit = {
         method: method,
@@ -375,7 +348,11 @@ export class NetSuiteService {
       console.log(`📊 NetSuite Response [${response.status}]:`, responseText);
 
       if (!response.ok) {
-        throw new Error(`NetSuite API error: ${response.status} ${response.statusText} - ${responseText}`);
+        // Check if it's a 2FA error
+        if (response.status === 401 && responseText.includes('TWO_FA_REQD')) {
+          throw new Error('TWO_FA_REQUIRED');
+        }
+        throw new Error(`NetSuite TBA API error: ${response.status} ${response.statusText} - ${responseText}`);
       }
 
       try {
@@ -385,7 +362,7 @@ export class NetSuiteService {
         return { text: responseText };
       }
     } catch (error) {
-      console.error('NetSuite RESTlet call failed:', error);
+      console.error('NetSuite TBA RESTlet call failed:', error);
       throw error;
     }
   }
