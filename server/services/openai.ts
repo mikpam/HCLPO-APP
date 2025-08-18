@@ -275,20 +275,19 @@ Provide your answer as a JSON object with two keys:
 ### TASKS
 1. **Attachment Presence** – Detect any attachment.  
 2. **Artwork‑Only Attachments** – If attachments exist, decide if **all** are artwork / proof files  
-   (filename ends in \`.ai|.eps|.svg|.png|.jpg|.jpeg|.tif|.gif\` **or** contentType matches \`image/.*\` or \`application/(illustrator|postscript|eps)\`).
+   (filename ends in \`.ai|.eps|.svg|.png|.jpg|.jpeg|.tif|.gif\` **or** contentType matches \`image/.*\` or \`application/(illustrator|postscript|eps)\`).  
+   **CRITICAL**: Be very conservative - only mark as artwork-only if 100% certain ALL attachments are purely graphics/art files.
 3. **PO Details in Body** – Decide if the body alone supplies enough structured info to act as a purchase order  
    (item descriptions **and** explicit quantities **and** total / price figures).
 4. **Sample Request in Body** – If Task 3 is true, check whether the **sum of all explicit quantities mentioned** is **< 5**.
 5. **Overall PO Nature** – Assess how likely the email's main intent is a new, transactable PO (including sample requests).
-6. **Recommended Route** (PRIORITY ORDER - check in this exact sequence)  
-   * **"ATTACHMENT_PO"** – use if \`has_attachments\` is \`true\` **and not** \`attachments_all_artwork_files\`  
-     **and** attachments look like a PO **and** \`is_sample_request_in_body\` is \`false\`. **HIGHEST PRIORITY**
+6. **Recommended Route** (CHECK IN THIS EXACT ORDER - ATTACHMENT FIRST!)  
+   * **"ATTACHMENT_PO"** – **FIRST PRIORITY**: use if \`has_attachments\` is \`true\` **and not** \`attachments_all_artwork_files\`  
+     **and** \`is_sample_request_in_body\` is \`false\` (IGNORE body content quality - attachments take priority!)  
    * **"ATTACHMENT_SAMPLE"** – use if \`has_attachments\` is \`true\` **and not** \`attachments_all_artwork_files\`  
-     **and** attachments look like a PO **and** \`is_sample_request_in_body\` is \`true\`.  
-   * **"TEXT_PO"** – use if \`po_details_in_body_sufficient\` is \`true\` **and not** \`is_sample_request_in_body\`  
-     **and** attachments are absent **or** artwork‑only **or** don't look like a PO.  
-   * **"TEXT_SAMPLE"** – use if \`is_sample_request_in_body\` is \`true\` **and** \`po_details_in_body_sufficient\` is \`true\`  
-     **and** attachments are absent **or** artwork‑only **or** don't look like a PO.
+     **and** \`is_sample_request_in_body\` is \`true\`.  
+   * **"TEXT_PO"** – use **ONLY** if no non-artwork attachments exist **and** \`po_details_in_body_sufficient\` is \`true\` **and not** \`is_sample_request_in_body\`.  
+   * **"TEXT_SAMPLE"** – use **ONLY** if no non-artwork attachments exist **and** \`is_sample_request_in_body\` is \`true\` **and** \`po_details_in_body_sufficient\` is \`true\`.  
    * **"REVIEW"** – use for all other cases (ambiguous or low PO intent).
 
 ### JSON SCHEMA (STRICT)

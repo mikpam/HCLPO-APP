@@ -31,6 +31,7 @@ System Behavior: Automated email processing should start immediately when server
 - **UUID Column Added (2025-08-18)**: Added dedicated UUID column to purchase_orders table for enhanced tracking and reference.
 - **Enhanced Customer Lookup Fallback (2025-08-18)**: Improved customer finder to handle cases where Gemini extraction has missing/incomplete customer data by falling back to sender email analysis.
 - **Critical Routing Fix Analysis (2025-08-18)**: Confirmed PO 138261 failed extraction due to incorrect TEXT_PO routing instead of ATTACHMENT_PO, bypassing attachment screening entirely. This demonstrates the routing fix prevents future misclassifications.
+- **Major Classification Priority Fix (2025-08-18)**: Fixed systematic routing issue where 47 emails incorrectly went to TEXT_PO instead of ATTACHMENT_PO. Updated OpenAI classification prompt to prioritize ATTACHMENT_PO over TEXT_PO and made artwork-only detection more conservative.
 - **Customer Indexing**: Multi-strategy lookup with database indexes, in-memory caching, and fuzzy matching.
 - **Error Tracking**: Comprehensive error logging system with detailed metadata, step tracking, and resolution status.
 
