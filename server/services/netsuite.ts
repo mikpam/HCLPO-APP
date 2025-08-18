@@ -367,6 +367,67 @@ export class NetSuiteService {
     }
   }
 
+  async testCompleteIntegration(payload: any, otp?: string): Promise<{ success: boolean; message: string; details?: any; error?: string }> {
+    try {
+      console.log('🔧 Testing complete NetSuite integration...');
+      console.log('📊 Testing with payload:', {
+        poNumber: payload.metadata?.poNumber,
+        customerNumber: payload.extractedData?.purchaseOrder?.customer?.customerNumber,
+        lineItems: payload.extractedData?.lineItems?.length || 0,
+        filesIncluded: !!(payload.files?.originalEmail || payload.files?.attachments?.length)
+      });
+
+      // Test both GET and POST methods with complete payload
+      const tests = [
+        { method: 'GET', name: 'getfunction' },
+        { method: 'POST', name: 'postfunction' }
+      ];
+
+      for (const test of tests) {
+        console.log(`🔍 Testing ${test.method} method (${test.name})...`);
+        
+        try {
+          const result = await this.makeRestletCall(test.method, payload, otp);
+          
+          console.log(`✅ Complete integration test successful with ${test.method}!`);
+          return {
+            success: true,
+            message: `Complete NetSuite integration test successful with ${test.method}`,
+            details: {
+              method: test.method,
+              payload: payload.metadata,
+              response: result,
+              timestamp: new Date().toISOString()
+            }
+          };
+        } catch (error) {
+          console.error(`❌ ${test.method} failed:`, error instanceof Error ? error.message : error);
+          if (error instanceof Error && error.message === 'TWO_FA_REQUIRED') {
+            return {
+              success: false,
+              error: 'TWO_FA_REQUIRED',
+              message: 'Two-Factor Authentication required. Please provide OTP.'
+            };
+          }
+        }
+      }
+
+      return {
+        success: false,
+        error: 'ALL_METHODS_FAILED',
+        message: 'All test methods failed'
+      };
+      
+    } catch (error) {
+      console.error('Complete integration test error:', error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Unknown error',
+        message: 'Complete integration test failed'
+      };
+    }
+  }
+
   async testObjectStorageIntegration(attachmentUrls: string[]): Promise<{ success: boolean; error?: string; details?: any }> {
     try {
       console.log('🔧 Testing NetSuite with object storage URLs...');

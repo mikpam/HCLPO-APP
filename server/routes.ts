@@ -3088,16 +3088,43 @@ totalPrice: ${item.totalPrice || 0}`;
   // NetSuite object storage integration test endpoint
   app.post('/api/netsuite/test-object-storage', async (req, res) => {
     try {
-      const { attachmentUrls } = req.body;
+      const { extractedData, files, metadata, otp } = req.body;
       
-      if (!attachmentUrls || !Array.isArray(attachmentUrls)) {
+      // Validate required data
+      if (!extractedData) {
         return res.status(400).json({
           success: false,
-          error: 'attachmentUrls array is required'
+          error: 'extractedData is required'
+        });
+      }
+      
+      if (!files || !files.originalEmail) {
+        return res.status(400).json({
+          success: false,
+          error: 'files.originalEmail URL is required'
         });
       }
 
-      const result = await netsuiteService.testObjectStorageIntegration(attachmentUrls);
+      console.log('🚀 Testing complete NetSuite integration with extracted data...');
+      console.log('📊 Payload received:', {
+        poNumber: metadata?.poNumber,
+        customerNumber: extractedData?.purchaseOrder?.customer?.customerNumber,
+        grandTotal: metadata?.grandTotal,
+        emailUrl: files?.originalEmail,
+        attachmentCount: files?.attachments?.length || 0
+      });
+
+      // Create complete payload for NetSuite RESTlet
+      const netsuitePayload = {
+        extractedData,
+        files,
+        metadata,
+        operation: 'complete_integration_test',
+        timestamp: new Date().toISOString()
+      };
+
+      // Test NetSuite connection with extracted data and 2FA
+      const result = await netsuiteService.testCompleteIntegration(netsuitePayload, otp);
       
       if (result.success) {
         res.json(result);

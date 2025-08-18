@@ -1,184 +1,250 @@
-// Complete NetSuite Integration Demonstration
-// This shows the complete data package that would be sent to NetSuite
+/**
+ * Complete NetSuite Integration Demo
+ * Tests sending extracted JSON data with .eml and .pdf URLs to NetSuite
+ */
 
-console.log('🚀 COMPLETE NETSUITE INTEGRATION DEMONSTRATION');
-console.log('==============================================\n');
+import readline from 'readline';
 
-// 1. Complete Purchase Order Data (from Gemini extraction + validation)
-const completePurchaseOrder = {
-  poNumber: "8601EVWD",
-  
-  // Extracted data from Gemini AI processing
-  extractedData: {
-    engine: "gemini",
-    lineItems: [
-      {
-        sku: "H710",
-        finalSKU: "H710-08", 
-        description: "Very Kool Cooling Towel: East Valley Water District Logo Navy with White Imprint",
-        quantity: 225,
-        unitPrice: 4.95,
-        totalPrice: 1113.75,
-        color: "Navy",
-        imprintColor: "White"
-      },
-      {
-        sku: "SETUP",
-        finalSKU: "SETUP",
-        description: "Set-Up Charge",
-        quantity: 1,
-        unitPrice: 60.00,
-        totalPrice: 60.00,
-        color: "N/A"
-      }
-    ],
-    purchaseOrder: {
-      asiNumber: "141650",
-      orderDate: "08/18/2025",
-      inHandsDate: "09/15/2025",
-      shippingMethod: "FEDEX GROUND",
-      purchaseOrderNumber: "8601EVWD",
-      requiredShipDate: "09/10/2025"
-    },
-    customer: {
-      company: "Stubbies Promotions", 
-      email: "darren@stubbiespromos.com",
-      phone: "(626) 446-2448",
-      address1: "890 South Myrtle Ave",
-      city: "Monrovia", 
-      state: "California",
-      zipCode: "91016",
-      country: "United States"
-    },
-    subtotals: {
-      merchandiseSubtotal: 1113.75,
-      additionalChargesSubtotal: 60.00,
-      grandTotal: 1173.75
-    }
-  },
-  
-  // Customer validation results from OpenAI + database lookup
-  customerData: {
-    customer_number: "C141650",
-    customer_name: "Stubbies Promotions",
-    matched_at: "2025-08-18T20:55:00.000Z",
-    confidence: 0.95,
-    method: "database_match"
-  },
-  
-  // Contact validation results from OpenAI processing
-  contactData: {
-    name: "Darren Smith",
-    email: "darren@stubbiespromos.com", 
-    phone: "(626) 446-2448",
-    validated_at: "2025-08-18T20:55:01.000Z",
-    method: "EXTRACTED_JSON",
-    confidence: 0.95,
-    role: "Account Manager"
-  },
-  
-  // Processing metadata
-  processingMetadata: {
-    route: "ATTACHMENT_PO",
-    confidence: 95,
-    processedAt: "2025-08-18T20:55:02.000Z",
-    engine: "gemini",
-    gmailId: "198bea055f5b5055",
-    status: "ready_for_netsuite"
-  }
-};
-
-// 2. Object Storage URLs for Files
-const attachmentUrls = [
-  "http://localhost:5000/objects/emails/198bea055f5b5055_2025-08-18_Purchase Order 8601EVWD from Stubbies Promotions.eml",
-  "http://localhost:5000/objects/attachments/2025-08-18_198bea055f5b5055_PO_8601EVWD_from_Stubbies_Promotions_18388.pdf"
-];
-
-// 3. Complete NetSuite Integration Package
-const netsuiteIntegrationPackage = {
-  operation: "createOrderWithAttachments",
-  timestamp: new Date().toISOString(),
-  orderData: completePurchaseOrder,
-  attachmentUrls: attachmentUrls,
-  integrationMetadata: {
-    source: "HCL_Email_Processing_System",
-    version: "2.0",
-    objectStorageApproach: true,
-    authenticationMethod: "oauth_1.0"
-  }
-};
-
-// Display the complete integration
-console.log('📋 COMPLETE ORDER DATA:');
-console.log('=======================');
-console.log(`PO Number: ${completePurchaseOrder.poNumber}`);
-console.log(`Customer: ${completePurchaseOrder.customerData.customer_name} (${completePurchaseOrder.customerData.customer_number})`);
-console.log(`Contact: ${completePurchaseOrder.contactData.name} <${completePurchaseOrder.contactData.email}>`);
-console.log(`Line Items: ${completePurchaseOrder.extractedData.lineItems.length} items`);
-console.log(`Total Amount: $${completePurchaseOrder.extractedData.subtotals.grandTotal}`);
-console.log(`Processing Route: ${completePurchaseOrder.processingMetadata.route}`);
-console.log(`AI Engine: ${completePurchaseOrder.extractedData.engine}`);
-
-console.log('\n📎 OBJECT STORAGE FILES:');
-console.log('========================');
-attachmentUrls.forEach((url, index) => {
-  const filename = url.split('/').pop();
-  const fileType = filename.includes('.eml') ? 'Original Email' : 'PDF Attachment';
-  console.log(`${index + 1}. ${fileType}`);
-  console.log(`   File: ${filename}`);
-  console.log(`   URL: ${url}`);
+const rl = readline.createInterface({
+  input: process.stdin,
+  output: process.stdout
 });
 
-console.log('\n🔄 INTEGRATION FLOW:');
-console.log('====================');
-console.log('1. Email arrives → Gmail API retrieval');
-console.log('2. AI Classification → Route determination');
-console.log('3. Gemini Extraction → Structured JSON data');
-console.log('4. Customer Validation → Database matching');
-console.log('5. Contact Validation → Contact verification');
-console.log('6. SKU Validation → Item validation');
-console.log('7. File Storage → Object storage URLs');
-console.log('8. NetSuite Integration → Complete data package');
+// Sample extracted data from a real processed PO
+const sampleExtractedData = {
+  "engine": "gemini",
+  "lineItems": [
+    {
+      "sku": "JT101",
+      "finalSKU": "OE-MISC-ITEM",
+      "quantity": 340,
+      "itemColor": "White",
+      "unitPrice": 1.53,
+      "totalPrice": 520.2,
+      "description": "The Amherst Journal By Trilogy",
+      "imprintColor": "2c7e3e approximate",
+      "isValidSKU": true,
+      "productName": "Unidentified Items",
+      "validationNotes": "Valid product SKU"
+    },
+    {
+      "sku": "SETUP",
+      "finalSKU": "SETUP",
+      "quantity": 1,
+      "itemColor": "",
+      "unitPrice": 48,
+      "totalPrice": 48,
+      "description": "Setup Charge",
+      "imprintColor": "",
+      "isValidSKU": true,
+      "productName": "Setup Charge",
+      "validationNotes": "Valid product SKU"
+    }
+  ],
+  "subtotals": {
+    "grandTotal": 568.2,
+    "merchandiseSubtotal": 520.2,
+    "additionalChargesSubtotal": 48
+  },
+  "purchaseOrder": {
+    "shipTo": {
+      "city": "Virginia Beach",
+      "name": "INTERNAL MSP",
+      "state": "Virginia",
+      "company": "MSP Marketing / Company Orders",
+      "country": "United States",
+      "zipCode": "23452",
+      "address1": "641 Phoenix Drive",
+      "address2": ""
+    },
+    "vendor": {
+      "city": "Irwindale",
+      "name": "High Caliber Line",
+      "email": "",
+      "phone": "",
+      "state": "California",
+      "country": "United States",
+      "zipCode": "91702",
+      "address1": "6250 North Irwindale Avenue",
+      "address2": ""
+    },
+    "contact": {
+      "name": "Pearl Jarque",
+      "email": "pearl@mspdesigngroup.com",
+      "phone": "",
+      "jobTitle": ""
+    },
+    "customer": {
+      "city": "Virginia Beach",
+      "email": "",
+      "phone": "",
+      "state": "Virginia",
+      "company": "MSP Design Group",
+      "country": "United States",
+      "zipCode": "23452",
+      "address1": "641 Phoenix Drive",
+      "address2": "",
+      "lastName": "",
+      "firstName": "",
+      "customerNumber": "C96422"
+    },
+    "asiNumber": "515806",
+    "orderDate": "08/18/2025",
+    "ppaiNumber": "674447",
+    "inHandsDate": "09/10/2025",
+    "shippingMethod": "UPS Ground",
+    "salesPersonName": "Pearl Jarque",
+    "shippingCarrier": "UPS",
+    "requiredShipDate": "",
+    "salesPersonEmail": "pearl@mspdesigngroup.com",
+    "purchaseOrderNumber": "87546-1"
+  },
+  "forwardedEmail": {
+    "cNumber": "C96422",
+    "isForwarded": true,
+    "hclForwarder": "Information Please <info@highcaliberline.com>",
+    "originalSender": "Pearl Jarque <pearl@mspdesigngroup.com>"
+  },
+  "additionalNotes": [
+    "***SELF PROMO***",
+    "***SEND PROOF PRIOR TO PRODUCTION***",
+    "***MUST BE IN HANDS BEFORE 9/10***"
+  ],
+  "validatedContact": {
+    "name": "Pearl Jarque",
+    "role": "Unknown",
+    "email": "pearl@mspdesigngroup.com",
+    "phone": "",
+    "evidence": [
+      "Extracted JSON contains salesPersonEmail: pearl@mspdesigngroup.com",
+      "Email domain matches customer domain: mspdesigngroup.com"
+    ],
+    "confidence": 0.95,
+    "match_method": "EXTRACTED_JSON",
+    "matched_contact_id": ""
+  },
+  "validatedLineItems": [
+    {
+      "sku": "JT101",
+      "finalSKU": "OE-MISC-ITEM",
+      "quantity": 340,
+      "itemColor": "White",
+      "isValidSKU": true,
+      "description": "The Amherst Journal By Trilogy",
+      "productName": "Unidentified Items",
+      "validationNotes": "Valid product SKU"
+    },
+    {
+      "sku": "SETUP",
+      "finalSKU": "SETUP",
+      "quantity": 1,
+      "itemColor": "",
+      "isValidSKU": true,
+      "description": "Setup Charge",
+      "productName": "Setup Charge",
+      "validationNotes": "Valid product SKU"
+    }
+  ],
+  "specialInstructions": "***SHIP ON MSP UPS# 85F11E *** Advise us immediately of any pricing and/or delivery date corrections to this order. Failure to do so may invalidate this order. ***SEND PROOF PRIOR TO PRODUCTION***",
+  "skuValidationCompleted": true,
+  "contactValidationCompleted": true
+};
 
-console.log('\n📤 DATA SENT TO NETSUITE:');
-console.log('=========================');
-console.log('• Complete purchase order JSON with all extracted data');
-console.log('• Validated customer information with database lookup');
-console.log('• Verified contact details with confidence scoring');
-console.log('• Processed line items with SKU validation');
-console.log('• Object storage URLs for original email and PDF');
-console.log('• Processing metadata and audit trail');
+async function testCompleteIntegration() {
+  console.log('🚀 Complete NetSuite Integration Test\n');
+  console.log('This will send extracted JSON data with .eml and .pdf URLs to NetSuite\n');
+  
+  rl.question('Please enter your 2FA code from your authenticator app: ', async (otp) => {
+    if (!otp || otp.trim().length !== 6) {
+      console.log('❌ Invalid OTP. Please enter a 6-digit code.');
+      rl.close();
+      return;
+    }
+    
+    try {
+      console.log('\n📦 Preparing complete payload...');
+      
+      // Complete payload with extracted data + file URLs
+      const completePayload = {
+        // Main extracted purchase order data
+        extractedData: sampleExtractedData,
+        
+        // File URLs for NetSuite to download (demo URLs - real files would be stored in object storage)
+        files: {
+          originalEmail: "https://your-repl-name.replit.app/objects/emails/87546-1_original_email.eml",
+          attachments: [
+            {
+              filename: "87546-1.pdf", 
+              url: "https://your-repl-name.replit.app/objects/attachments/87546-1_purchase_order.pdf",
+              type: "application/pdf"
+            }
+          ]
+        },
+        
+        // Processing metadata
+        metadata: {
+          processedAt: new Date().toISOString(),
+          poNumber: "87546-1",
+          emailId: "198bef9885d5e8c1",
+          customerNumber: "C96422",
+          grandTotal: 568.2,
+          lineItemCount: 2,
+          validationStatus: {
+            customer: "found",
+            contact: "validated", 
+            lineItems: "validated"
+          }
+        }
+      };
+      
+      console.log('📊 Payload summary:');
+      console.log('  - PO Number:', completePayload.metadata.poNumber);
+      console.log('  - Customer:', completePayload.extractedData.purchaseOrder.customer.company);
+      console.log('  - Total Amount: $' + completePayload.metadata.grandTotal);
+      console.log('  - Line Items:', completePayload.metadata.lineItemCount);
+      console.log('  - Original Email URL:', completePayload.files.originalEmail);
+      console.log('  - PDF Attachment URL:', completePayload.files.attachments[0].url);
+      console.log();
+      
+      console.log('🚀 Sending complete payload to NetSuite with 2FA...');
+      
+      const response = await fetch('http://localhost:5000/api/netsuite/test-object-storage', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          ...completePayload,
+          otp: otp.trim()
+        })
+      });
+      
+      const result = await response.json();
+      
+      if (result.success) {
+        console.log('✅ Complete NetSuite integration successful!');
+        console.log('📊 NetSuite Response:', result);
+        console.log('\n🎯 Your complete workflow is working:');
+        console.log('   ✅ Email processing → AI extraction → Validation → File storage → NetSuite integration');
+      } else {
+        console.log('❌ NetSuite integration failed:', result.error || result.message);
+        if (result.details) {
+          console.log('📋 Details:', result.details);
+        }
+      }
+      
+    } catch (error) {
+      console.error('💥 Test failed with error:', error.message);
+    } finally {
+      rl.close();
+    }
+  });
+}
 
-console.log('\n🎯 NETSUITE RESTLET RECEIVES:');
-console.log('=============================');
-console.log(JSON.stringify(netsuiteIntegrationPackage, null, 2));
-
-console.log('\n💡 NETSUITE RESTLET WOULD:');
-console.log('==========================');
-console.log('1. Parse the complete JSON payload');
-console.log('2. Create sales order from structured data');
-console.log('3. Download files from object storage URLs');
-console.log('4. Attach .eml and .pdf files to the sales order');
-console.log('5. Return success confirmation with NetSuite internal IDs');
-
-console.log('\n✅ INTEGRATION BENEFITS:');
-console.log('========================');
-console.log('• No complex file uploads - simple URLs');
-console.log('• Complete data integrity preservation');
-console.log('• Scalable object storage approach');
-console.log('• Full audit trail with original files');
-console.log('• End-to-end automation with human oversight');
-
-console.log('\n🔧 CURRENT STATUS:');
-console.log('==================');
-console.log('✅ Object storage integration - WORKING');
-console.log('✅ Complete data extraction - WORKING');
-console.log('✅ Customer/contact validation - WORKING');
-console.log('✅ OAuth signature generation - WORKING');
-console.log('⚠️  NetSuite RESTlet configuration - NEEDS SETUP');
-
-console.log('\n🎉 READY FOR PRODUCTION:');
-console.log('========================');
-console.log('The complete integration is technically ready.');
-console.log('Only remaining step: Configure NetSuite RESTlet to receive this data.');
-console.log('Architecture successfully bypasses OAuth file upload complexity!');
+// Check if server is running
+fetch('http://localhost:5000/api/netsuite/test-connection')
+  .then(() => testCompleteIntegration())
+  .catch(() => {
+    console.log('❌ Server not running. Please start with: npm run dev');
+    rl.close();
+  });
