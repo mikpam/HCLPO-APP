@@ -28,6 +28,8 @@ System Behavior: Automated email processing should start immediately when server
 - **Primary Database**: Neon PostgreSQL.
 - **Key Tables**: Users, Purchase Orders, Error Logs, Email Queue, System Health, Customers.
 - **Schema Features**: UUIDs, JSONB, timestamps, status enums, full-text search, array columns.
+- **UUID Column Added (2025-08-18)**: Added dedicated UUID column to purchase_orders table for enhanced tracking and reference.
+- **Enhanced Customer Lookup Fallback (2025-08-18)**: Improved customer finder to handle cases where Gemini extraction has missing/incomplete customer data by falling back to sender email analysis.
 - **Customer Indexing**: Multi-strategy lookup with database indexes, in-memory caching, and fuzzy matching.
 - **Error Tracking**: Comprehensive error logging system with detailed metadata, step tracking, and resolution status.
 

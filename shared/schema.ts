@@ -13,6 +13,7 @@ export const users = pgTable("users", {
 
 export const purchaseOrders = pgTable("purchase_orders", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  uuid: varchar("uuid").notNull().default(sql`gen_random_uuid()`).unique(),
   poNumber: text("po_number").notNull().unique(),
   customerMeta: jsonb("customer_meta"),
   contactMeta: jsonb("contact_meta"), // Contact information extracted and validated

@@ -437,22 +437,48 @@ Please analyze the input and return the correct customer match.`;
       
       const customerData = extractedData.purchaseOrder.customer;
       console.log(`   🔍 DEBUG: customerData from extractedData:`, JSON.stringify(customerData, null, 2));
-      if (!customerData) {
-        console.log(`   ❌ No customer data found in PO ${purchaseOrderId}`);
+      
+      // NEW LOGIC: Handle missing customer data by extracting from sender email
+      let customerFinderInput: CustomerFinderInput;
+      
+      if (!customerData || !customerData.company) {
+        console.log(`   ⚠️  No/insufficient customer data found in extraction - using sender fallback`);
         console.log(`   🔍 DEBUG: Available extractedData keys:`, Object.keys(extractedData));
         console.log(`   🔍 DEBUG: Available purchaseOrder keys:`, Object.keys(extractedData.purchaseOrder || {}));
-        return purchaseOrder;
+        console.log(`   🔍 DEBUG: Sender email:`, purchaseOrder.sender);
+        
+        // Extract customer info from sender email for Red Swag type cases
+        const senderMatch = purchaseOrder.sender?.match(/^(.+?)\s*<(.+)>$/);
+        const senderName = senderMatch ? senderMatch[1].trim() : '';
+        const senderEmail = senderMatch ? senderMatch[2].trim() : purchaseOrder.sender || '';
+        
+        // Extract company from email domain
+        const emailDomain = senderEmail.split('@')[1] || '';
+        const companyFromDomain = emailDomain.replace(/\.(com|net|org)$/, '').replace(/\./g, ' ');
+        
+        customerFinderInput = {
+          customerEmail: senderEmail,
+          senderEmail: purchaseOrder.sender || undefined,
+          customerName: companyFromDomain || senderName || 'Unknown',
+          asiNumber: extractedData.purchaseOrder?.asiNumber || '',
+          ppaiNumber: extractedData.purchaseOrder?.ppaiNumber || '',
+          address: ''
+        };
+        
+        console.log(`   🔧 FALLBACK: Generated customer input from sender:`, JSON.stringify(customerFinderInput, null, 2));
+      } else {
+        // Normal path with extracted customer data
+        customerFinderInput = {
+          customerEmail: customerData.email,
+          senderEmail: purchaseOrder.sender || undefined,
+          customerName: customerData.company || customerData.customerName,
+          asiNumber: extractedData.purchaseOrder.asiNumber,
+          ppaiNumber: extractedData.purchaseOrder.ppaiNumber,
+          address: `${customerData.address1 || ''} ${customerData.city || ''} ${customerData.state || ''}`.trim()
+        };
       }
       
-      // Prepare input for customer finder
-      const customerFinderInput: CustomerFinderInput = {
-        customerEmail: customerData.email,
-        senderEmail: purchaseOrder.sender || undefined,
-        customerName: customerData.company || customerData.customerName,
-        asiNumber: extractedData.purchaseOrder.asiNumber,
-        ppaiNumber: extractedData.purchaseOrder.ppaiNumber,
-        address: `${customerData.address1 || ''} ${customerData.city || ''} ${customerData.state || ''}`.trim()
-      };
+      // customerFinderInput is now prepared above in the conditional logic
       
       // Find the customer
       const foundCustomer = await this.findCustomer(customerFinderInput);

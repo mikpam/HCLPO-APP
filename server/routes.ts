@@ -2866,6 +2866,40 @@ totalPrice: ${item.totalPrice || 0}`;
   });
 
   // Purchase Orders
+  // Manual customer reprocessing endpoint for testing and fixes
+  app.post("/api/purchase-orders/reprocess-customer", async (req, res) => {
+    try {
+      const { poNumber } = req.body;
+      if (!poNumber) {
+        return res.status(400).json({ error: "PO number is required" });
+      }
+
+      const purchaseOrder = await storage.getPurchaseOrderByNumber(poNumber);
+      if (!purchaseOrder) {
+        return res.status(404).json({ error: "Purchase order not found" });
+      }
+
+      console.log(`🔧 MANUAL REPROCESS: Starting customer lookup for PO ${poNumber}`);
+      
+      // Import and create a new customer finder instance
+      const { OpenAICustomerFinderService } = await import("./services/openai-customer-finder.js");
+      const customerFinder = new OpenAICustomerFinderService();
+      
+      const result = await customerFinder.processPurchaseOrder(purchaseOrder.id);
+      
+      res.json({ 
+        success: true, 
+        poNumber, 
+        status: result?.status || 'completed',
+        message: "Customer reprocessing completed"
+      });
+      
+    } catch (error) {
+      console.error('❌ Customer reprocessing error:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
   app.get("/api/purchase-orders", async (req, res) => {
     try {
       const { status, limit } = req.query;
