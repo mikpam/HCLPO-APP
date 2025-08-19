@@ -1,10 +1,10 @@
 // Test to show exact OAuth header format
 import crypto from 'crypto';
 
-const consumerKey = '7d31a3871ef4052d08e3dba10107f80f320b668faac37aeee2f112023cee95f5';
-const consumerSecret = 'd36d4fbb69841286053939399f7714d4e130b38a5efefe58d3d';
-const accessToken = '754a82ebd8aa5da910a9d460c80c0ce0ea82f3f431d695be2d36a9b2a3c54b32';
-const accessTokenSecret = '8420c71d2e950cfd9ca7d486522b2780f30a29d3df557bd9624dade2b0509e39';
+const consumerKey = process.env.NETSUITE_CONSUMER_KEY || '';
+const consumerSecret = process.env.NETSUITE_CONSUMER_SECRET || '';
+const accessToken = process.env.NETSUITE_ACCESS_TOKEN || '';
+const accessTokenSecret = process.env.NETSUITE_ACCESS_TOKEN_SECRET || '';
 const accountId = '4423013_SB1';
 const url = 'https://4423013-sb1.restlets.api.netsuite.com/app/site/hosting/restlet.nl?script=2096&deploy=1';
 
