@@ -52,6 +52,7 @@ export class OpenAISKUValidatorService {
     this.chargeCodebook.set('48-RUSH', 'Rush charges');
     this.chargeCodebook.set('EC', 'Extra charges');
     this.chargeCodebook.set('P', 'Proof charges');
+    this.chargeCodebook.set('PROOF', 'Proof charges');
     this.chargeCodebook.set('OE-MISC-CHARGE', 'Miscellaneous charges');
     this.chargeCodebook.set('OE-MISC-ITEM', 'Unknown products');
   }
@@ -257,6 +258,9 @@ ${JSON.stringify(lineItems, null, 2)}`;
         // Handle common transformations
         if (processedSKU === 'SET UP') {
           processedSKU = 'SETUP';
+        }
+        if (processedSKU === 'PROOF') {
+          processedSKU = 'PROOF'; // Keep as PROOF for charge code recognition
         }
         
         console.log(`   ✅ Processed: "${item.sku}" → "${processedSKU}"`);

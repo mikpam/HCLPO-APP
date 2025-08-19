@@ -64,6 +64,7 @@ System Behavior: Automated email processing should start immediately when server
 - **Validator Health Monitoring**: Real-time health checks, circuit breaker pattern, performance metrics, and automatic recovery for all validators.
 - **Validation Tracking Database Schema (2025-08-19)**: Fixed critical database schema issue by adding missing validation tracking fields (customerValidated, contactValidated, lineItemsValidated, validationCompleted) to purchase_orders table. Sequential validation completion logic now properly stores validation flags when each validator completes, enabling real-time validation status monitoring.
 - **Charge Code Validation Fix (2025-08-19)**: Resolved critical issue where service charges (OE-MISC-CHARGE, SET UP, RUSH, freight) had empty finalSKU values causing validation failures. Updated SKU validator to properly recognize charge codes as valid without product database lookup. Fixed 163 purchase orders with retroactive line item validation flags. System now correctly handles mixed line items containing both products and service charges.
+- **Proof Charge Recognition Fix (2025-08-19)**: Fixed specific issue in PO# 6892111 where "PROOF" charges were incorrectly mapped to "OE-MISC-CHARGE" instead of being recognized as proof charges. Added "PROOF" to charge codebook and updated SKU validator to properly categorize proof charges with correct finalSKU and productName values.
 
 ### Authentication & Authorization
 - **Strategy**: Session-based authentication with role-based access control.
