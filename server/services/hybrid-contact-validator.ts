@@ -387,6 +387,9 @@ export class HybridContactValidator {
           alternatives: []
         };
 
+        // Mark contact as verified since we have a database match
+        await this.markContactAsVerified(result.matched_contact_id, result.match_method, result.confidence);
+
         console.log(`   ⏱️ Completed in ${Date.now() - startTime}ms`);
         return result;
       }
@@ -435,7 +438,7 @@ export class HybridContactValidator {
       if (topScore >= 0.85 && margin >= 0.03) {
         console.log(`   ✅ HIGH CONFIDENCE: Auto-accepting top candidate`);
         
-        return {
+        const result = {
           name: topCandidate.name,
           email: topCandidate.email || normalizedInput.contactEmail || normalizedInput.senderEmail || '',
           phone: topCandidate.phone || '',
@@ -450,6 +453,11 @@ export class HybridContactValidator {
             score: c.finalScore || 0
           }))
         };
+
+        // Mark contact as verified since we have a database match
+        await this.markContactAsVerified(result.matched_contact_id, result.match_method, result.confidence);
+        
+        return result;
       }
 
       // Borderline case - use LLM tiebreak
@@ -462,7 +470,7 @@ export class HybridContactValidator {
           const selectedCandidate = rankedCandidates.find(c => c.netsuiteInternalId === tiebreakResult.selectedId);
           
           if (selectedCandidate) {
-            return {
+            const result = {
               name: selectedCandidate.name,
               email: selectedCandidate.email || normalizedInput.contactEmail || normalizedInput.senderEmail || '',
               phone: selectedCandidate.phone || '',
@@ -477,6 +485,11 @@ export class HybridContactValidator {
                 score: c.finalScore || 0
               }))
             };
+
+            // Mark contact as verified since we have a database match
+            await this.markContactAsVerified(result.matched_contact_id, result.match_method, result.confidence);
+            
+            return result;
           }
         }
       }
@@ -484,7 +497,7 @@ export class HybridContactValidator {
       // Use top candidate with lower confidence
       console.log(`   ⚠️ LOWER CONFIDENCE: Using top candidate with reduced confidence`);
       
-      return {
+      const result = {
         name: topCandidate.name,
         email: topCandidate.email || normalizedInput.contactEmail || normalizedInput.senderEmail || '',
         phone: topCandidate.phone || '',
@@ -499,6 +512,11 @@ export class HybridContactValidator {
           score: c.finalScore || 0
         }))
       };
+
+      // Mark contact as verified since we have a database match (but may not meet threshold)
+      await this.markContactAsVerified(result.matched_contact_id, result.match_method, result.confidence);
+      
+      return result;
 
     } catch (error) {
       console.error(`   ❌ ERROR: ${error}`);
@@ -554,6 +572,45 @@ export class HybridContactValidator {
     if (title.includes('csr') || title.includes('customer service') || title.includes('support')) return 'CSR';
     
     return 'Unknown';
+  }
+
+  /**
+   * Mark contact as verified when database match is confirmed
+   * Only updates verification fields if contact has matched_contact_id
+   */
+  private async markContactAsVerified(
+    matched_contact_id: string, 
+    match_method: string, 
+    confidence: number
+  ): Promise<void> {
+    if (!matched_contact_id) {
+      console.log(`   ⏸️ VERIFICATION: No database match - skipping verification update`);
+      return;
+    }
+
+    try {
+      // Only mark as verified if confidence meets threshold (>=0.7)
+      const shouldVerify = confidence >= 0.7;
+      
+      if (shouldVerify) {
+        await db
+          .update(contacts)
+          .set({
+            verified: true,
+            lastVerifiedAt: new Date(),
+            lastVerifiedMethod: match_method,
+            verificationConfidence: confidence,
+            updatedAt: new Date()
+          })
+          .where(eq(contacts.netsuiteInternalId, matched_contact_id));
+
+        console.log(`   ✅ VERIFICATION: Contact ${matched_contact_id} marked as verified (${Math.round(confidence * 100)}% confidence, method: ${match_method})`);
+      } else {
+        console.log(`   ⚠️ VERIFICATION: Contact ${matched_contact_id} confidence too low for verification (${Math.round(confidence * 100)}%)`);
+      }
+    } catch (error) {
+      console.error(`   ❌ VERIFICATION ERROR: Failed to update verification status for contact ${matched_contact_id}:`, error);
+    }
   }
 }
 

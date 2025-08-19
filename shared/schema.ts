@@ -107,6 +107,10 @@ export const contacts = pgTable("contacts", {
   inactive: boolean("inactive").default(false),
   duplicate: boolean("duplicate").default(false),
   loginAccess: boolean("login_access").default(false),
+  verified: boolean("verified").default(false), // Contact has been verified through validation process
+  lastVerifiedAt: timestamp("last_verified_at"), // When contact was last verified
+  lastVerifiedMethod: text("last_verified_method"), // How contact was last verified (exact_email, vector, etc.)
+  verificationConfidence: real("verification_confidence"), // Confidence score of last verification (0.0-1.0)
   searchVector: text("search_vector"), // For full-text search
   contactText: text("contact_text"), // Concatenated text for embedding generation
   contactEmbedding: vector("contact_embedding", { dimensions: 1536 }), // OpenAI text-embedding-3-small vector
