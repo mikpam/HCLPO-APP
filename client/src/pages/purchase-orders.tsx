@@ -8,7 +8,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useState, useMemo } from "react";
-import { Eye, ExternalLink, FileText, Search, Filter, ArrowUpDown, MoreHorizontal, MapPin, Calendar, User, Users, Mail, Hash, CheckCircle, XCircle, Clock, Plus, Minus } from "lucide-react";
+import { Eye, ExternalLink, FileText, Search, Filter, ArrowUpDown, MoreHorizontal, MapPin, Calendar, User, Users, Mail, Hash, CheckCircle, XCircle, Clock, Plus, Minus, FileText as FileTextIcon, Mail as MailIcon } from "lucide-react";
 
 export default function PurchaseOrdersPage() {
   const [selectedOrder, setSelectedOrder] = useState<PurchaseOrder | null>(null);
@@ -441,6 +441,8 @@ export default function PurchaseOrdersPage() {
                     </TableHead>
                     <TableHead className="w-[400px]">Line Items</TableHead>
                     <TableHead className="w-[120px]">Customer Number</TableHead>
+                    <TableHead className="w-[100px]">Purchase Order</TableHead>
+                    <TableHead className="w-[80px]">EML</TableHead>
                     <TableHead className="w-[120px]">Validated JSON</TableHead>
                     <TableHead className="w-[100px]">PO KEY</TableHead>
                     <TableHead className="w-[100px]">Actions</TableHead>
@@ -629,6 +631,36 @@ export default function PurchaseOrdersPage() {
                               </div>
                             )}
                           </div>
+                        </TableCell>
+                        <TableCell>
+                          {order.attachmentPath ? (
+                            <a 
+                              href={order.attachmentPath.startsWith('/objects/') ? order.attachmentPath : `/objects/attachments/${order.attachmentPath.split('/').pop()}`}
+                              target="_blank" 
+                              rel="noopener noreferrer"
+                              className="inline-flex items-center space-x-1 text-blue-600 hover:text-blue-800 text-sm"
+                            >
+                              <FileTextIcon className="w-4 h-4" />
+                              <span>View PDF</span>
+                            </a>
+                          ) : (
+                            <span className="text-gray-400 text-sm">No attachment</span>
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          {order.emlFilePath ? (
+                            <a 
+                              href={order.emlFilePath.startsWith('/objects/') ? order.emlFilePath : `/objects/emails/${order.emlFilePath.split('/').pop()}`}
+                              target="_blank" 
+                              rel="noopener noreferrer"
+                              className="inline-flex items-center space-x-1 text-green-600 hover:text-green-800 text-sm"
+                            >
+                              <MailIcon className="w-4 h-4" />
+                              <span>EML</span>
+                            </a>
+                          ) : (
+                            <span className="text-gray-400 text-sm">No EML</span>
+                          )}
                         </TableCell>
                         <TableCell>
                           <Badge 

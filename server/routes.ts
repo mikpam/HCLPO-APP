@@ -1462,7 +1462,9 @@ ${messageToProcess.body || ''}`;
             processingId: `email-${Date.now()}-${processedCount + 1}`,
             timestamp: new Date().toISOString(),
             currentPO: null as any,
-            dataStructure: 'v2' // Track data structure version for consistency
+            dataStructure: 'v2', // Track data structure version for consistency
+            attachmentPath: null as string | null,
+            emlFilePath: null as string | null
           };
 
           // Enhanced forwarded email detection from HCL
@@ -1603,6 +1605,7 @@ ${messageToProcess.body || ''}`;
                 emlContent
               );
               
+              validationContext.emlFilePath = emailPath;
               console.log(`   ✅ Email preserved: ${emailPath}`);
             } else {
               console.log(`   ✅ Skipped email preservation for filtered email`);
@@ -1698,21 +1701,27 @@ ${messageToProcess.body || ''}`;
                       if (attachmentBuffer) {
                         console.log(`   ✅ Loaded attachment data: ${attachmentBuffer.length} bytes`);
                         
-                        // Store attachment to object storage
+                        // Store attachment to object storage and capture path
+                        let attachmentStoragePath = null;
                         try {
                           const { ObjectStorageService } = await import('./objectStorage');
                           const objectStorageService = new ObjectStorageService();
                           
                           const cleanFilename = selectedAttachment.filename.replace(/[^a-zA-Z0-9._-]/g, '_');
-                          const storagePath = await objectStorageService.storeAttachment(
+                          attachmentStoragePath = await objectStorageService.storeAttachment(
                             attachmentBuffer,
                             `${messageToProcess.id}_${cleanFilename}`,
                             selectedAttachment.contentType || 'application/octet-stream'
                           );
                           
-                          console.log(`      ✅ Stored attachment: ${selectedAttachment.filename} at ${storagePath}`);
+                          console.log(`      ✅ Stored attachment: ${selectedAttachment.filename} at ${attachmentStoragePath}`);
                         } catch (error) {
                           console.error(`      ❌ Failed to store attachment ${selectedAttachment.filename}:`, error);
+                        }
+                        
+                        // Store the attachment path for later database update
+                        if (attachmentStoragePath) {
+                          validationContext.attachmentPath = attachmentStoragePath;
                         }
                         
                         extractedData = await aiService.extractPODataFromPDF(
@@ -1830,6 +1839,8 @@ ${messageToProcess.body || ''}`;
                 route: classification.route,
                 confidence: classification.confidence,
                 emailId: emailId,
+                attachmentPath: validationContext.attachmentPath || null,
+                emlFilePath: validationContext.emlFilePath || null,
                 originalJson: {
                   engine: "gemini",
                   ...classification.reasoning

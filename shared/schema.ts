@@ -42,6 +42,9 @@ export const purchaseOrders = pgTable("purchase_orders", {
   contactValidated: boolean("contact_validated").default(false),
   lineItemsValidated: boolean("line_items_validated").default(false),
   validationCompleted: boolean("validation_completed").default(false),
+  // File storage paths
+  attachmentPath: text("attachment_path"), // Path to PDF/attachment in object storage
+  emlFilePath: text("eml_file_path"), // Path to .eml file in object storage
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
