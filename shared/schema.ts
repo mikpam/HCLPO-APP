@@ -86,10 +86,12 @@ export const customers = pgTable("customers", {
   alternateNames: text("alternate_names").array(), // For fuzzy matching
   email: text("email"),
   phone: text("phone"),
+  phoneDigits: text("phone_digits"), // Normalized phone digits for exact matching
   address: jsonb("address"),
   netsuiteId: text("netsuite_id"),
   isActive: boolean("is_active").default(true),
   searchVector: text("search_vector"), // For full-text search
+  customerEmbedding: text("customer_embedding"), // Will be cast to vector(1536) in SQL
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });

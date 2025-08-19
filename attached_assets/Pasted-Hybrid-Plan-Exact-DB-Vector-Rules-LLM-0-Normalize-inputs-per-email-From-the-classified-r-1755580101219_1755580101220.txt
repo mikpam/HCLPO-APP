@@ -1,0 +1,201 @@
+Hybrid Plan (Exact DB → Vector → Rules → LLM)
+0) Normalize inputs (per email)
+
+From the classified record, collect:
+
+cnumber (if present from forwarded HCL mail), netsuite_internal_id (if you already extracted it),
+
+sender_email, sender_domain, company_text, contact_name, phone_digits, address(city/state/zip).
+
+Lowercase/trim everything; strip phone to digits; collapse whitespace.
+
+1) Exact & deterministic SQL (short‑circuit if single hit)
+
+Priority order (stop on single confident match):
+
+By NetSuite ID / CNumber
+
+SELECT * FROM customers WHERE id = $1 OR cnumber = $2 LIMIT 2;
+
+
+By Email
+
+SELECT * FROM customers WHERE LOWER(email) = LOWER($1) LIMIT 2;
+
+
+By Domain with brand overrides
+(Use your brand/alias table to “expand” the query if the domain is a known aggregator.)
+
+SELECT * FROM customers
+WHERE LOWER(SPLIT_PART(email,'@',2)) = LOWER($1)
+  AND active = TRUE
+LIMIT 25;
+
+
+By Phone (exact digits)
+
+SELECT * FROM customers WHERE phone_digits = $1 LIMIT 2;
+
+
+By Company (strict)
+
+SELECT * FROM customers
+WHERE company ILIKE $1  -- e.g. 'acme %' or exact
+ORDER BY LENGTH(company) ASC
+LIMIT 10;
+
+
+If you get 1 row, return it (method=exact_match, reason=which query).
+
+If 0 rows, go to Step 2.
+
+If >1 rows, treat them as candidates and continue to Step 2 for semantic disambiguation.
+
+Why this first? It matches your “deterministic first” ethos and the NetSuite creation rules in your UE script (customer must resolve cleanly or be flagged).
+
+2) pgvector semantic candidate search (narrowed by filters)
+
+Create a query text like:
+
+"{company_text} | {sender_domain} | {contact_name} | {city} {state} | {phone_digits}"
+
+
+Embed with text-embedding-3-small (1536 dims).
+
+SQL (cosine, filtered if possible by domain/company‑hint):
+
+WITH params AS (
+  SELECT
+    CAST($1 AS vector(1536)) AS q,
+    LOWER($2) AS domain_filter,  -- nullable
+    $3::text AS company_hint     -- nullable, e.g. 'acme'
+)
+SELECT
+  c.id, c.company, c.email, c.cnumber,
+  1 - (c.customer_embedding <=> p.q) AS cosine_sim,
+  (LOWER(SPLIT_PART(c.email,'@',2)) = p.domain_filter) AS domain_match
+FROM customers c, params p
+WHERE (p.domain_filter IS NULL OR LOWER(SPLIT_PART(c.email,'@',2)) = p.domain_filter)
+  AND (p.company_hint IS NULL OR c.company ILIKE p.company_hint || '%')
+ORDER BY c.customer_embedding <=> p.q
+LIMIT 25;
+
+3) Rule‑aware re‑rank (app side)
+
+Score each candidate:
+
+final_score =
+  0.70 * cosine_sim
++ 0.15 * (domain_match ? 1 : 0)
++ 0.05 * alias_hit          // if your alias/brand table says “close”
++ 0.05 * city_state_match   // normalize & compare
++ 0.05 * phone_match        // digits subset match
+
+
+Accept if final_score ≥ 0.85 and margin over #2 ≥ 0.03.
+
+Borderline if 0.75 ≤ final_score < 0.85 or margin < 0.03 → Step 4.
+
+Low if < 0.75 → no auto‑match → new_customer_review.
+
+These thresholds echo the “determinism first, AI second” idea in your app design.
+
+4) LLM tiebreak (only when needed)
+
+If top‑2 are within 0.03 and in the 0.75–0.85 band, ask the model to choose, constrained to given candidates:
+
+Prompt (system):
+
+You are a deterministic resolver. Choose exactly one candidate_id or say "NONE".
+Base your choice ONLY on the provided fields; do not infer new facts.
+
+
+User (JSON):
+
+{
+  "query": {
+    "company_text": "...",
+    "sender_email": "...",
+    "sender_domain": "...",
+    "contact_name": "...",
+    "phone_digits": "...",
+    "city": "...", "state": "..."
+  },
+  "candidates": [
+    {
+      "id": "C136365",
+      "company": "Proforma abZ Imprints",
+      "email": "orders@proforma.com",
+      "aliases": ["Proforma", "abZ"],
+      "domain": "proforma.com",
+      "city": "Phoenix", "state": "AZ", "phone_digits":"6025551212",
+      "final_score": 0.81
+    },
+    {
+      "id": "C136364",
+      "company": "CT Marketing Solutions powered by Proforma",
+      "email": "orders@marketingbyproforma.com",
+      "aliases": ["Proforma", "CT Marketing"],
+      "domain": "marketingbyproforma.com",
+      "city": "Phoenix", "state": "AZ", "phone_digits":"6025551212",
+      "final_score": 0.80
+    }
+  ]
+}
+
+
+Assistant must return:
+
+{"selected_id":"C136365","reason":"same city/phone, closer alias to query text"}
+
+
+If uncertain:
+
+{"selected_id":"NONE","reason":"insufficient delta"}
+
+5) Outputs & write‑backs
+
+Return shape from validator:
+
+{
+  "matched": true,
+  "method": "exact_match | vector | vector+llm | none",
+  "customer_id": "CXXXXX",
+  "confidence": 0.0,
+  "reasons": ["email_exact", "domain_match", "alias_bonus", "city_state_match"],
+  "alternatives": [{"customer_id":"...", "score":0.82}, {"customer_id":"...", "score":0.79}]
+}
+
+
+Audit table (customer_resolution_audit): store the query, top‑K, scores, chosen id, thresholds, and the LLM response (if used).
+
+CSR path: If matched=false, label as new_customer_review so it stays out of NetSuite creation (matches your UE/flow).
+
+Minimal migrations (pgvector + filters)
+CREATE EXTENSION IF NOT EXISTS vector;
+
+ALTER TABLE customers
+  ADD COLUMN IF NOT EXISTS customer_embedding vector(1536),
+  ADD COLUMN IF NOT EXISTS phone_digits text;
+
+CREATE INDEX IF NOT EXISTS customers_embedding_hnsw
+  ON customers USING hnsw (customer_embedding vector_cosine)
+  WITH (m = 16, ef_construction = 64);
+
+CREATE INDEX IF NOT EXISTS customers_domain_idx
+  ON customers ((LOWER(SPLIT_PART(email,'@',2))));
+
+CREATE INDEX IF NOT EXISTS customers_company_trgm
+  ON customers USING gin (company gin_trgm_ops);
+
+
+Embedding upsert (pseudo, Drizzle/TS):
+
+const contactText = `${company} | ${aliases.join(' ')} | ${domain} | ${city} ${state} | ${phone_digits ?? ''}`;
+const { data } = await openai.embeddings.create({
+  model: "text-embedding-3-small",
+  input: contactText
+});
+await db.update(customers)
+  .set({ customerEmbedding: sql`${JSON.stringify(data[0].embedding)}::vector` })
+  .where(eq(customers.id, id));
