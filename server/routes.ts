@@ -123,6 +123,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
     // Start processing emails immediately with sequential architecture
     processEmailsInBackground();
     
+    // Schedule continuous email checking every 2 minutes for new emails
+    setInterval(async () => {
+      try {
+        console.log('🔄 SCHEDULED EMAIL SCAN: Checking for new emails...');
+        await processEmailsInBackground();
+      } catch (error) {
+        console.error('Error in scheduled email processing:', error);
+      }
+    }, 2 * 60 * 1000); // 2 minutes for responsive email processing
+    
     // Check for stuck purchase orders every 5 minutes for faster testing
     setInterval(async () => {
       try {
