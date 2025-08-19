@@ -104,7 +104,76 @@ export class ContactEmbeddingService {
   }
 
   /**
-   * Generate embeddings for all contacts that don't have them
+   * ULTRA-OPTIMIZED: Generate embeddings in massive parallel batches
+   * - Batch OpenAI API calls (up to 100 texts per request)
+   * - Parallel database updates
+   * - Memory-efficient processing
+   */
+  async generateMissingEmbeddingsOptimized(batchSize: number = 100): Promise<number> {
+    console.log(`🚀 ULTRA-OPTIMIZED EMBEDDING: Starting mega-batch processing (batch size: ${batchSize})`);
+
+    try {
+      // Get contacts without embeddings
+      const contactsWithoutEmbeddings = await db
+        .select()
+        .from(contacts)
+        .where(isNull(contacts.contactEmbedding))
+        .limit(batchSize);
+
+      console.log(`   📊 Found ${contactsWithoutEmbeddings.length} contacts without embeddings`);
+
+      if (contactsWithoutEmbeddings.length === 0) {
+        console.log(`   ✅ All contacts already have embeddings`);
+        return 0;
+      }
+
+      // Build all contact texts in parallel
+      const contactTexts = contactsWithoutEmbeddings.map(contact => ({
+        id: contact.id,
+        text: this.buildContactText(contact)
+      }));
+
+      console.log(`   🔥 BATCH PROCESSING: Sending ${contactTexts.length} texts to OpenAI in ONE request`);
+
+      // MASSIVE OPTIMIZATION: Single OpenAI API call for entire batch
+      const response = await this.openai.embeddings.create({
+        model: "text-embedding-3-small",
+        input: contactTexts.map(ct => ct.text), // Send all texts at once
+      });
+
+      console.log(`   ✅ RECEIVED ${response.data.length} embeddings in single API call`);
+
+      // Prepare batch database updates
+      const updates = contactTexts.map((ct, index) => ({
+        contactId: ct.id,
+        contactText: ct.text,
+        embedding: response.data[index].embedding
+      }));
+
+      // ULTRA-FAST: Parallel database updates
+      await Promise.all(
+        updates.map(update => 
+          db.update(contacts)
+            .set({
+              contactText: update.contactText,
+              contactEmbedding: update.embedding,
+              updatedAt: new Date(),
+            })
+            .where(eq(contacts.id, update.contactId))
+        )
+      );
+
+      console.log(`   🎯 Successfully processed ${contactsWithoutEmbeddings.length}/${contactsWithoutEmbeddings.length} contacts`);
+      return contactsWithoutEmbeddings.length;
+
+    } catch (error) {
+      console.error("❌ Error in optimized batch processing:", error);
+      throw error;
+    }
+  }
+
+  /**
+   * Original method kept as fallback
    */
   async generateMissingEmbeddings(batchSize: number = 50): Promise<number> {
     console.log(`🚀 EMBEDDING GENERATION: Starting batch processing (batch size: ${batchSize})`);

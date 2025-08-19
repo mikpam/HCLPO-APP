@@ -33,20 +33,23 @@ export function registerContactEmbeddingRoutes(app: Express) {
     }
   });
 
-  // Generate missing embeddings (batch processing)
+  // Generate missing embeddings (ULTRA-OPTIMIZED batch processing)
   app.post("/api/contact-embeddings/generate-missing", async (req, res) => {
     try {
-      const { batchSize = 50 } = req.body;
+      const { batchSize = 100, optimized = true } = req.body;
       
-      console.log(`🚀 API: Starting missing embeddings generation (batch size: ${batchSize})`);
-      const processedCount = await contactEmbeddingService.generateMissingEmbeddings(batchSize);
+      console.log(`🚀 API: Starting missing embeddings generation (batch size: ${batchSize}, optimized: ${optimized})`);
+      
+      const processedCount = optimized 
+        ? await contactEmbeddingService.generateMissingEmbeddingsOptimized(batchSize)
+        : await contactEmbeddingService.generateMissingEmbeddings(batchSize);
       
       const stats = await contactEmbeddingService.getEmbeddingStats();
       
       res.json({
         success: true,
         processedCount,
-        message: `Successfully processed ${processedCount} contacts`,
+        message: `Successfully processed ${processedCount} contacts using ${optimized ? 'OPTIMIZED' : 'standard'} batch processing`,
         stats
       });
     } catch (error) {
