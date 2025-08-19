@@ -2124,10 +2124,17 @@ ${messageToProcess.body || ''}`;
                   finalUpdateData.clientPONumber = currentPO.extractedData.purchaseOrder.purchaseOrderNumber;
                 }
                 
+                // Add validation completion flags
+                finalUpdateData.customerValidated = !!validationContext.customerMeta;
+                finalUpdateData.contactValidated = !!validationContext.contactMeta;
+                finalUpdateData.lineItemsValidated = !!validationContext.lineItemsMeta;
+                finalUpdateData.validationCompleted = true;
+                
                 // Execute final update
                 if (Object.keys(finalUpdateData).length > 0) {
                   await storage.updatePurchaseOrder(purchaseOrder.id, finalUpdateData);
                   console.log(`   ✅ FINAL UPDATE COMPLETED: Stored ${Object.keys(finalUpdateData).length} data fields deterministically`);
+                  console.log(`   🔍 VALIDATION FLAGS: Customer: ${finalUpdateData.customerValidated}, Contact: ${finalUpdateData.contactValidated}, Line Items: ${finalUpdateData.lineItemsValidated}, Completed: ${finalUpdateData.validationCompleted}`);
                 } else {
                   console.log(`   ⚠️  No validator results to store in final update`);
                 }

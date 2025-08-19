@@ -37,6 +37,11 @@ export const purchaseOrders = pgTable("purchase_orders", {
   subject: text("subject"),
   route: text("route"), // TEXT_PO, ATTACHMENT_PO, REVIEW
   confidence: real("confidence"),
+  // Validation tracking fields
+  customerValidated: boolean("customer_validated").default(false),
+  contactValidated: boolean("contact_validated").default(false),
+  lineItemsValidated: boolean("line_items_validated").default(false),
+  validationCompleted: boolean("validation_completed").default(false),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
