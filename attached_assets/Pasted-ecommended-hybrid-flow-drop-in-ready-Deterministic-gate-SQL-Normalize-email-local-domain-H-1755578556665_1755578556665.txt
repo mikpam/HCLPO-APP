@@ -1,0 +1,121 @@
+ecommended hybrid flow (drop‑in ready)
+
+Deterministic gate (SQL)
+
+Normalize email → local@domain.
+
+Hard match by email; else by domain + company exact/ilike.
+
+If still ambiguous → go semantic.
+
+Semantic candidate fetch (vector)
+
+Build a contact_text string per record (name + company + common aliases + city/state + normalized domain).
+
+Query pgvector index with the same features from the incoming email/context.
+
+WHERE domain = :domain (if present) to shrink search space; else widen—e.g., company ilike 'acme%' OR brand_family = 'ACME'.
+
+Rerank + business rules
+
+Score = 0.7 * cosine_sim + 0.2 * domain_bonus + 0.1 * alias_bonus.
+
+Thresholds: accept ≥ 0.85; if 0.75–0.85, require a second corroborator (address/phone/known alias); else punt to CSR.
+
+Writeback
+
+Persist chosen contact_id, similarity, reasons, and the top N alternatives for audit.
+
+If no confident match: flag new_contact_review.
+
+pgvector: concrete plan
+
+Schema/migration (Drizzle-ish, simplified):
+
+-- 1) Enable extension
+CREATE EXTENSION IF NOT EXISTS vector;
+
+-- 2) Embedding column (1536 dims if using text-embedding-3-large)
+ALTER TABLE contacts
+  ADD COLUMN IF NOT EXISTS contact_text text,
+  ADD COLUMN IF NOT EXISTS contact_embedding vector(1536);
+
+-- 3) HNSW index (fast ANN)
+CREATE INDEX IF NOT EXISTS contacts_contact_embedding_hnsw
+ON contacts
+USING hnsw (contact_embedding vector_cosine)
+WITH (m = 16, ef_construction = 64);
+
+-- Helpful filters
+CREATE INDEX IF NOT EXISTS contacts_domain_idx ON contacts ((lower(split_part(email, '@', 2))));
+CREATE INDEX IF NOT EXISTS contacts_company_trgm ON contacts USING gin (company gin_trgm_ops);
+
+
+Upsert embeddings (Node/TS pseudo):
+
+// contact_text builder
+// e.g., `${name} | ${company} | ${domain} | ${city} ${state} | ${aliases.join(' ')}`
+const embedding = await openai.embeddings.create({
+  model: "text-embedding-3-small",
+  input: contactText,
+});
+// Write both text + embedding in the same transaction
+await db.execute(sql`
+  UPDATE contacts
+  SET contact_text = ${contactText},
+      contact_embedding = ${embedding.data[0].embedding}
+  WHERE id = ${id}
+`);
+
+
+Semantic + filter query:
+
+WITH params AS (
+  SELECT
+    CAST(:query_embedding AS vector(1536)) AS q,
+    :maybe_domain AS domain_filter,
+    :company AS company_hint
+)
+SELECT
+  c.id, c.name, c.email, c.company,
+  1 - (c.contact_embedding <=> p.q) AS cosine_sim
+FROM contacts c, params p
+WHERE
+  (p.domain_filter IS NULL OR lower(split_part(c.email,'@',2)) = lower(p.domain_filter))
+  AND (p.company_hint IS NULL OR c.company ILIKE p.company_hint || '%')
+ORDER BY c.contact_embedding <=> p.q
+LIMIT 15;
+
+
+Then apply your reranker (cosine + rule bonuses) in app code and enforce the thresholds above.
+
+If you still want Pinecone
+
+It’s a solid choice if you want “just vectors” as a managed service.
+
+You’ll move filters/joins to metadata and app logic.
+
+Rough sketch:
+
+const pc = new Pinecone({ apiKey: PINECONE_API_KEY });
+const idx = pc.index("contacts");
+
+// Upsert
+await idx.upsert([
+  {
+    id: contactId,
+    values: embedding,
+    metadata: {
+      email, domain, company, city, state, aliases
+    }
+  }
+]);
+
+// Query
+const res = await idx.query({
+  vector: queryEmbedding,
+  topK: 15,
+  filter: domain ? { domain: domain.toLowerCase() } : undefined
+});
+
+Storage & cost notes
