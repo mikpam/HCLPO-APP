@@ -2263,9 +2263,40 @@ ${messageToProcess.body || ''}`;
                 
                 // CONTACT DATA: Already captured by contact validator in context
                 if (validationContext.contactMeta) {
-                  console.log(`   ✅ Storing contact data: ${validationContext.contactMeta.name} <${validationContext.contactMeta.email}>`);
-                  finalUpdateData.contact = validationContext.contactMeta.email || null;
-                  finalUpdateData.contactMeta = validationContext.contactMeta;
+                  // SECURITY FILTER: Never store @highcaliberline.com emails as final contacts
+                  const contactEmail = validationContext.contactMeta.email;
+                  if (contactEmail?.includes('@highcaliberline.com')) {
+                    console.log(`   🚫 SECURITY BLOCK: Prevented @highcaliberline.com email from being stored as contact: ${contactEmail}`);
+                    
+                    // For forwarded emails, extract the original sender from the forwarded data
+                    const originalSender = currentPO?.extractedData?.forwardedEmail?.originalSender;
+                    if (originalSender) {
+                      const emailMatch = originalSender.match(/<(.+?)>$/);
+                      const cleanEmail = emailMatch ? emailMatch[1] : originalSender;
+                      
+                      console.log(`   ✅ Using original sender instead: ${cleanEmail}`);
+                      finalUpdateData.contact = cleanEmail;
+                      
+                      // Update the contactMeta with the corrected email
+                      const correctedContactMeta = {
+                        ...validationContext.contactMeta,
+                        email: cleanEmail
+                      };
+                      finalUpdateData.contactMeta = correctedContactMeta;
+                      console.log(`   ✅ Storing corrected contact data: ${correctedContactMeta.name} <${correctedContactMeta.email}>`);
+                    } else {
+                      console.log(`   ⚠️  No original sender found - storing metadata only without email`);
+                      finalUpdateData.contact = null;
+                      finalUpdateData.contactMeta = {
+                        ...validationContext.contactMeta,
+                        email: null
+                      };
+                    }
+                  } else {
+                    console.log(`   ✅ Storing contact data: ${validationContext.contactMeta.name} <${validationContext.contactMeta.email}>`);
+                    finalUpdateData.contact = contactEmail || null;
+                    finalUpdateData.contactMeta = validationContext.contactMeta;
+                  }
                 } else {
                   console.log(`   ⚠️  No contact data captured`);
                 }

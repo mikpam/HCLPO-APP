@@ -89,7 +89,38 @@ export class HybridContactValidator {
       normalized.jobTitle = normalized.jobTitle || input.extractedData.contact.jobTitle?.toLowerCase().trim();
     }
 
-    // Use sender info as fallback
+    // SECURITY FILTER: Never use @highcaliberline.com emails as contacts for forwarded emails
+    // These are forwarder emails, not actual customer contacts
+    if (normalized.senderEmail?.includes('@highcaliberline.com')) {
+      console.log(`   🚫 SECURITY FILTER: Filtering out @highcaliberline.com forwarder email: ${normalized.senderEmail}`);
+      
+      // For forwarded emails, prioritize the original sender from extractedData
+      if (input.extractedData?.forwardedEmail?.originalSender) {
+        const originalSenderEmail = input.extractedData.forwardedEmail.originalSender.toLowerCase().trim();
+        const emailMatch = originalSenderEmail.match(/<(.+?)>$/);
+        const cleanEmail = emailMatch ? emailMatch[1] : originalSenderEmail;
+        
+        console.log(`   ✅ Using original sender instead: ${cleanEmail}`);
+        normalized.senderEmail = cleanEmail;
+        
+        // Also extract name from original sender if available
+        const nameMatch = originalSenderEmail.match(/^(.+?)\s*</);
+        if (nameMatch) {
+          normalized.senderName = nameMatch[1].trim().toLowerCase().replace(/\s+/g, ' ');
+        }
+      } else {
+        // If no original sender available, use extracted contact data only
+        console.log(`   ⚠️  No original sender available - using extracted contact data only`);
+      }
+    }
+
+    // Filter out @highcaliberline.com from contact email as well
+    if (normalized.contactEmail?.includes('@highcaliberline.com')) {
+      console.log(`   🚫 SECURITY FILTER: Filtering out @highcaliberline.com from contact email`);
+      normalized.contactEmail = null; // Clear the HCL email so we use sender fallback
+    }
+
+    // Use sender info as fallback (after security filtering)
     normalized.contactName = normalized.contactName || normalized.senderName;
     normalized.contactEmail = normalized.contactEmail || normalized.senderEmail;
 
