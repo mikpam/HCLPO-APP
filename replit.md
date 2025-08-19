@@ -6,7 +6,7 @@ This full-stack web application automates purchase order processing from email s
 ## User Preferences
 Preferred communication style: Simple, everyday language.
 UI Design Priority: Mobile-responsive design is now required across all pages. Users need the system to work well on both desktop and mobile devices.
-System Behavior: Automated email processing should start immediately when server launches without manual prompting.
+System Behavior: Automated email processing now active with full hybrid validation using 100% complete embedding infrastructure.
 Vector Database Preference: PGvector integration with existing PostgreSQL database preferred over external vector databases like Pinecone for future semantic customer/item matching enhancements.
 Development Priority: Contact embeddings are now 100% complete (43,620/43,620 contacts embedded)! Email processing system can now be fully re-enabled for production operations.
 
