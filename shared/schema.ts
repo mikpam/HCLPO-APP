@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { pgTable, text, varchar, timestamp, integer, boolean, jsonb, real } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, timestamp, integer, boolean, jsonb, real, vector } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -106,6 +106,8 @@ export const contacts = pgTable("contacts", {
   duplicate: boolean("duplicate").default(false),
   loginAccess: boolean("login_access").default(false),
   searchVector: text("search_vector"), // For full-text search
+  contactText: text("contact_text"), // Concatenated text for embedding generation
+  contactEmbedding: vector("contact_embedding", { dimensions: 1536 }), // OpenAI text-embedding-3-small vector
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
