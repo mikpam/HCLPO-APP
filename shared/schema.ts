@@ -123,7 +123,6 @@ export const items = pgTable("items", {
   upc: text("upc"), // UPC/EAN code
   mpn: text("mpn"), // Manufacturer Part Number
   displayName: text("display_name").notNull(),
-  name: text("name").notNull(), // Product name for search
   subType: text("sub_type"),
   description: text("description"),
   vendor: text("vendor"), // Vendor/supplier
