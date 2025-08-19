@@ -124,6 +124,22 @@ No markdown, no comments, no trailing text.
 * **ChargeCodebook**: explicit non-inventory/charge codes (${chargeCodesContext}) with phrase synonyms.
 * **OE-MISC Fallbacks**: OE-MISC-ITEM for unknown products, OE-MISC-CHARGE for ambiguous charge lines.
 
+### CRITICAL: OE-MISC-CHARGE Analysis
+When you encounter an item with SKU or finalSKU "OE-MISC-CHARGE", this is a placeholder that needs analysis:
+1. **Examine the description carefully** for actual product information
+2. **Look for real SKU patterns** (like T339, B515, etc.) mentioned in the description
+3. **Match against the catalog** using fuzzy matching on product names and descriptions
+4. **If you find a real product match**, replace OE-MISC-CHARGE with the actual SKU + color code
+5. **Only keep OE-MISC-CHARGE** if the description truly describes a miscellaneous charge (not a product)
+
+Examples:
+- "PMS Matching Charge - Screen Printed" → Keep as OE-MISC-CHARGE
+- "Lanyard with custom logo, blue" → Find best lanyard SKU match + color code (like L401-BL)
+- "Stress ball promotional item" → Find stress ball SKU match from catalog
+- "Coffee mug ceramic white" → Find mug SKU match + WH color code
+
+Priority: Always try to find the actual product SKU first. Only use OE-MISC-CHARGE as last resort.
+
 ---
 
 ### Item segmentation & extraction
@@ -269,9 +285,13 @@ ${JSON.stringify(lineItems, null, 2)}`;
         
         // CHARGE CODE HANDLING: Check if this is a charge code (not a product)
         if (this.chargeCodebook.has(processedSKU)) {
-          // For charge codes, use the processed SKU as finalSKU and mark as valid
+          // For all charge codes (including OE-MISC-CHARGE), let AI analyze
+          // AI will handle OE-MISC-CHARGE specially to find actual SKUs
           item.finalSKU = processedSKU;
           console.log(`   💰 Charge Code: "${processedSKU}" identified as ${this.chargeCodebook.get(processedSKU)}`);
+          if (processedSKU === 'OE-MISC-CHARGE') {
+            console.log(`   🔍 OE-MISC-CHARGE: AI will analyze description "${item.description}" for actual SKU`);
+          }
         }
       }
       
