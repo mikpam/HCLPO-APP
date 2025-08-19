@@ -63,6 +63,7 @@ System Behavior: Automated email processing should start immediately when server
 - **Validation Completion System**: Immediate database updates after each validation step (customer, contact, line items) for real-time data storage and consistency.
 - **Validator Health Monitoring**: Real-time health checks, circuit breaker pattern, performance metrics, and automatic recovery for all validators.
 - **Validation Tracking Database Schema (2025-08-19)**: Fixed critical database schema issue by adding missing validation tracking fields (customerValidated, contactValidated, lineItemsValidated, validationCompleted) to purchase_orders table. Sequential validation completion logic now properly stores validation flags when each validator completes, enabling real-time validation status monitoring.
+- **Charge Code Validation Fix (2025-08-19)**: Resolved critical issue where service charges (OE-MISC-CHARGE, SET UP, RUSH, freight) had empty finalSKU values causing validation failures. Updated SKU validator to properly recognize charge codes as valid without product database lookup. Fixed 163 purchase orders with retroactive line item validation flags. System now correctly handles mixed line items containing both products and service charges.
 
 ### Authentication & Authorization
 - **Strategy**: Session-based authentication with role-based access control.

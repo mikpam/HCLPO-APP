@@ -258,10 +258,16 @@ ${JSON.stringify(lineItems, null, 2)}`;
         if (processedSKU === 'SET UP') {
           processedSKU = 'SETUP';
         }
-        // Remove incorrect OE-MISC-CHARGE mapping - let OpenAI handle it properly
         
         console.log(`   ✅ Processed: "${item.sku}" → "${processedSKU}"`);
         item.sku = processedSKU;
+        
+        // CHARGE CODE HANDLING: Check if this is a charge code (not a product)
+        if (this.chargeCodebook.has(processedSKU)) {
+          // For charge codes, use the processed SKU as finalSKU and mark as valid
+          item.finalSKU = processedSKU;
+          console.log(`   💰 Charge Code: "${processedSKU}" identified as ${this.chargeCodebook.get(processedSKU)}`);
+        }
       }
       
       // FALLBACK: If finalSKU is empty/null, use the processed SKU as fallback
@@ -278,7 +284,8 @@ ${JSON.stringify(lineItems, null, 2)}`;
       console.log(`   ✅ Line items validated: ${validatedItems.length} items processed`);
       for (let i = 0; i < validatedItems.length; i++) {
         const item = validatedItems[i];
-        console.log(`   └─ Item ${i + 1}: ${item.finalSKU} - ${item.description} (Qty: ${item.quantity})`);
+        const itemType = this.chargeCodebook.has(item.finalSKU?.toUpperCase() || '') ? 'Charge' : 'Product';
+        console.log(`   └─ Item ${i + 1}: ${item.finalSKU} - ${item.description} (Qty: ${item.quantity}) [${itemType}]`);
       }
       
       return validatedItems;
