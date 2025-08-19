@@ -8,6 +8,7 @@ Preferred communication style: Simple, everyday language.
 UI Design Priority: Mobile-responsive design is now required across all pages. Users need the system to work well on both desktop and mobile devices.
 System Behavior: Automated email processing should start immediately when server launches without manual prompting.
 Vector Database Preference: PGvector integration with existing PostgreSQL database preferred over external vector databases like Pinecone for future semantic customer/item matching enhancements.
+Development Priority: Wait for contact embeddings to complete (currently 6.13% - 2,673/43,620) before continuing major development work. Background embedding generation running continuously.
 
 ## System Architecture
 
