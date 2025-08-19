@@ -3050,9 +3050,12 @@ totalPrice: ${item.totalPrice || 0}`;
       const { ObjectStorageService, ObjectNotFoundError } = await import('./objectStorage');
       const objectStorageService = new ObjectStorageService();
       
-      // Get the file content
+      // Get the file object
       const objectFile = await objectStorageService.getObjectEntityFile(path);
-      const content = await objectFile.downloadAsText();
+      
+      // Download the file content as buffer and convert to text
+      const [buffer] = await objectFile.download();
+      const content = buffer.toString('utf-8');
       
       // Set headers for text display (not download)
       res.set({
