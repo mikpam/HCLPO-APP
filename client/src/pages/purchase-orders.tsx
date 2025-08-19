@@ -314,16 +314,11 @@ export default function PurchaseOrdersPage() {
   const handleViewFile = async (filePath: string, type: 'pdf' | 'eml', title: string) => {
     try {
       if (type === 'pdf') {
-        // For PDFs, use direct URL for iframe display
+        // For PDFs, open in new tab (same as file management tab)
         const pdfUrl = filePath.startsWith('/objects/') ? filePath : `/objects/attachments/${filePath.split('/').pop()}`;
-        setFileViewModal({
-          isOpen: true,
-          type,
-          content: pdfUrl,
-          title
-        });
+        window.open(pdfUrl, '_blank');
       } else {
-        // For EML files, fetch text content
+        // For EML files, fetch text content and show in modal
         const response = await fetch(`/api/files/view?path=${encodeURIComponent(filePath)}`);
         if (response.ok) {
           const content = await response.text();
@@ -1181,15 +1176,6 @@ export default function PurchaseOrdersPage() {
                 <pre className="whitespace-pre-wrap text-sm font-mono">
                   {fileViewModal.content}
                 </pre>
-              </div>
-            )}
-            {fileViewModal.type === 'pdf' && fileViewModal.content && (
-              <div className="w-full h-full">
-                <iframe
-                  src={fileViewModal.content}
-                  className="w-full h-full border rounded-lg"
-                  title={fileViewModal.title}
-                />
               </div>
             )}
           </div>
