@@ -6,6 +6,7 @@ import itemsRouter from "./routes/items";
 import { registerValidatorHealthRoutes } from "./routes/validator-health";
 import { registerContactEmbeddingRoutes } from "./routes/contact-embeddings";
 import { registerCustomerEmbeddingRoutes } from "./routes/customer-embeddings";
+import { registerItemEmbeddingRoutes } from "./routes/item-embeddings";
 import { validatorHealthService } from "./services/validator-health";
 import { gmailService } from "./services/gmail";
 import { aiService, type AIEngine } from "./services/ai-service";
@@ -93,6 +94,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   
   // Register customer embedding routes
   registerCustomerEmbeddingRoutes(app);
+  
+  // Register item embedding routes
+  registerItemEmbeddingRoutes(app);
   
   // Initialize Gmail labels on startup
   try {

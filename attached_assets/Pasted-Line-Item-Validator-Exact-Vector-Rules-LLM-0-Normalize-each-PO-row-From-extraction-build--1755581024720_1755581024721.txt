@@ -1,0 +1,251 @@
+Line Item Validator (Exact → Vector → Rules → LLM)
+0) Normalize each PO row
+
+From extraction, build a normalized row:
+
+raw_sku_text (from item # column), desc_text, vendor, manufacturer, qty, uom, unit_price, line_total, color, size, style, notes.
+
+Normalize: lowercase, strip, collapse whitespace, digits-only for UPC/EAN, canonical color/size (e.g., “Navy/XL” → navy, xl), split variant suffixes (ABC-123-RED-L → sku=ABC-123, color=red, size=l).
+
+1) Deterministic SQL (short‑circuit on a single confident hit)
+
+Priority order:
+
+Internal IDs
+
+If item_internal_id present from OCR/previous runs:
+
+SELECT * FROM items WHERE id = $1 LIMIT 2;
+
+
+Exact SKU / MPN / UPC/EAN
+
+Normalize dashes, spaces, case; support alias table joins:
+
+SELECT i.*
+FROM items i
+LEFT JOIN item_alias ia ON ia.item_id = i.id
+WHERE LOWER(i.sku) = LOWER($1)
+   OR LOWER(ia.alias_sku) = LOWER($1)
+   OR i.upc = $2
+   OR i.mpn ILIKE $3               -- when vendor/manufacturer matches
+LIMIT 10;
+
+
+Vendor cross‑refs (customer/vendor item numbers)
+
+If the PO supplies a vendor/manufacturer:
+
+SELECT i.*
+FROM items i
+JOIN item_vendor_xref x ON x.item_id = i.id
+WHERE LOWER(x.vendor_name) = LOWER($1)
+  AND LOWER(x.vendor_sku)  = LOWER($2)
+LIMIT 10;
+
+
+Charge classification (deterministic mapping)
+
+Hard map common charges even when no SKU: SETUP, FREIGHT, ART, RUSH, SAMPLE.
+
+Use a small codebook (regex on description/notes) → mapped to charge items.
+
+Strict name match (fallback)
+
+Trigram on item name/keywords; still deterministic:
+
+SELECT *
+FROM items
+WHERE name % $1       -- trigram similarity operator
+ORDER BY similarity(name, $1) DESC
+LIMIT 15;
+
+
+Stop here if you get a single confident result (e.g., exact SKU/UPC or charge mapping). If 0 or >1, continue.
+
+2) pgvector candidate search (semantic recall)
+
+Build item_text per catalog row (done during indexing) like:
+
+"{sku} | {name} | {synonyms} | {category_path} | {vendor}/{manufacturer} | {color_terms} | {size_terms} | {material} | {style} | {keywords}"
+
+
+For the PO row, build a query text:
+
+"{raw_sku_text} | {desc_text} | {color} {size} {style} | {vendor}/{manufacturer}"
+
+
+Query with filters to narrow the ANN search:
+
+WITH params AS (
+  SELECT
+    CAST($1 AS vector(1536)) AS q,
+    LOWER($2) AS vendor_filter,
+    LOWER($3) AS category_hint
+)
+SELECT
+  i.id, i.sku, i.name, i.vendor, i.category,
+  1 - (i.item_embedding <=> p.q) AS cosine_sim,
+  (LOWER(i.vendor) = p.vendor_filter) AS vendor_match
+FROM items i, params p
+WHERE (p.vendor_filter IS NULL OR LOWER(i.vendor) = p.vendor_filter)
+  AND (p.category_hint IS NULL OR i.category ILIKE p.category_hint || '%')
+ORDER BY i.item_embedding <=> p.q
+LIMIT 30;
+
+3) Rule‑aware re‑rank (app side)
+
+Compute a final score that blends vector similarity + business logic:
+
+final_score =
+  0.60 * cosine_sim
++ 0.10 * vendor_match          // vendor/manufacturer agrees
++ 0.10 * color_match           // normalized color overlap (navy ≈ midnight)
++ 0.05 * size_match            // exact or normalized (xl vs x-large)
++ 0.05 * style_match           // style code in desc/sku
++ 0.05 * price_sanity_bonus    // unit_price within tolerance of catalog/tier
++ 0.05 * moq_uom_compat        // meets MOQ, UOM matches (ea, dz, cs)
+
+
+Accept if final_score ≥ 0.86 and margin over #2 ≥ 0.04.
+
+Borderline if 0.76–0.86 or margin < 0.04 → Step 4.
+
+Low if < 0.76 → no auto‑match → new_item_review.
+
+Safety checks before accept:
+
+Price sanity: abs( (unit_price - expected_price) / expected_price ) ≤ 0.25 (tunable by category/tier).
+
+MOQ/UOM: qty respects item’s MOQ and correct UOM conversion.
+
+Variant coherence: If matched item has variants, ensure color/size chosen exists; otherwise down‑rank.
+
+4) LLM tiebreak (only when top‑2 are too close)
+
+Call a constrained LLM with the PO row + top‑K candidates (2–5). The model must return one candidate_id or "NONE", with a short reason, using only provided fields (no web lookups). Keep your thresholds: if the LLM picks but price or MOQ/UOM fails, choose NONE.
+
+Example prompt (system):
+
+Choose exactly one candidate_id that best matches this PO line, or "NONE" if uncertain.
+Use only the fields provided. Prefer exact SKU/UPC/EAN matches; otherwise weigh name, color, size, style, vendor, and price proximity.
+
+5) Outputs & write‑backs
+
+Validator returns (per line):
+
+{
+  "matched": true,
+  "method": "exact_sku | upc | vendor_xref | charge_map | vector | vector+llm | none",
+  "item_id": "INT-12345",
+  "sku": "ABC-123",
+  "confidence": 0.91,
+  "uom": "EA",
+  "resolved_color": "navy",
+  "resolved_size": "xl",
+  "reasons": ["exact_upc", "vendor_match", "color_match"],
+  "alternatives": [{"item_id":"INT-987","score":0.87}],
+  "sanity": {"price_ok": true, "moq_ok": true}
+}
+
+
+Persist to a small audit table with the query text, top‑K scores, chosen item, and (if used) the LLM JSON.
+
+Minimal schema/migrations (pgvector + filters)
+CREATE EXTENSION IF NOT EXISTS vector;
+
+-- Core catalog
+CREATE TABLE IF NOT EXISTS items (
+  id                bigserial PRIMARY KEY,
+  sku               text UNIQUE,
+  upc               text,
+  mpn               text,
+  name              text NOT NULL,
+  vendor            text,
+  manufacturer      text,
+  category          text,
+  attributes        jsonb,    -- {"color":["navy","midnight"],"size":["xl"],"material":"cotton"}
+  uom               text,     -- "EA","DZ","CS"
+  moq               int,
+  tier_prices       jsonb,    -- {"A": 12.50, "B": 10.75}
+  item_embedding    vector(1536)
+);
+
+-- Helpful indexes
+CREATE INDEX IF NOT EXISTS items_embedding_hnsw
+  ON items USING hnsw (item_embedding vector_cosine)
+  WITH (m = 16, ef_construction = 64);
+
+CREATE INDEX IF NOT EXISTS items_name_trgm
+  ON items USING gin (name gin_trgm_ops);
+
+CREATE INDEX IF NOT EXISTS items_vendor_idx ON items (LOWER(vendor));
+CREATE INDEX IF NOT EXISTS items_category_idx ON items (LOWER(category));
+
+-- Aliases and vendor cross-refs
+CREATE TABLE IF NOT EXISTS item_alias (
+  item_id  bigint REFERENCES items(id) ON DELETE CASCADE,
+  alias_sku text,
+  alias_name text,
+  UNIQUE (item_id, alias_sku)
+);
+CREATE INDEX IF NOT EXISTS item_alias_sku_idx ON item_alias (LOWER(alias_sku));
+
+CREATE TABLE IF NOT EXISTS item_vendor_xref (
+  item_id     bigint REFERENCES items(id) ON DELETE CASCADE,
+  vendor_name text,
+  vendor_sku  text,
+  UNIQUE (vendor_name, vendor_sku)
+);
+CREATE INDEX IF NOT EXISTS item_vendor_xref_vendor_idx ON item_vendor_xref (LOWER(vendor_name), LOWER(vendor_sku));
+
+-- Deterministic charges
+CREATE TABLE IF NOT EXISTS charge_map (
+  charge_code text PRIMARY KEY,    -- e.g., SETUP, FREIGHT, ART, RUSH
+  regex       text NOT NULL,       -- e.g., '(?i)\\b(set[- ]?up|setup)\\b'
+  item_id     bigint NOT NULL REFERENCES items(id)
+);
+
+
+Embedding upsert (TS pseudo):
+
+const itemText = [
+  sku, name, synonyms.join(" "),
+  categoryPath, `${vendor}/${manufacturer}`,
+  colorTerms.join(" "), sizeTerms.join(" "),
+  material, style, keywords.join(" ")
+].filter(Boolean).join(" | ");
+
+const { data } = await openai.embeddings.create({
+  model: "text-embedding-3-small",
+  input: itemText
+});
+
+await db.execute(sql`
+  UPDATE items
+     SET item_embedding = ${sql.raw(`'${JSON.stringify(data[0].embedding)}'::vector`)}
+   WHERE id = ${itemId}
+`);
+
+Price & UOM sanity (quick helpers)
+
+Expected price: choose customer’s tier from tier_prices or default; compare to unit_price.
+
+UOM conversion: define a uom_map (e.g., CS=24 EA) and verify qty aligns; if not, compute the implied EA price and compare to catalog.
+
+Variant handling
+
+Keep a variants table or JSON attribute arrays for color, size, finish.
+
+During re‑rank, award color/size bonuses only if the target item actually supports that variant.
+
+If sku points to a base style and you infer a color/size, emit resolved_variant fields for downstream selection.
+
+CSR fail‑safe
+
+If no candidate passes thresholds or price/moq sanity, emit:
+
+{"matched": false, "reason": "no_confident_match", "action": "new_item_review"}
+
+
+and include a top‑5 suggestion list to speed CSR correction.

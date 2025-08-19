@@ -114,21 +114,79 @@ export const contacts = pgTable("contacts", {
   updatedAt: timestamp("updated_at").defaultNow(),
 });
 
-// HCL Items table for SKU validation and product information
+// HCL Items table for SKU validation and product information - Enhanced for hybrid validation
 export const items = pgTable("items", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   netsuiteId: text("netsuite_id").notNull().unique(), // NetSuite Internal ID
-  finalSku: text("final_sku").notNull(),
+  sku: text("sku").notNull().unique(), // Primary SKU identifier
+  finalSku: text("final_sku").notNull(), // Legacy field for compatibility
+  upc: text("upc"), // UPC/EAN code
+  mpn: text("mpn"), // Manufacturer Part Number
   displayName: text("display_name").notNull(),
+  name: text("name").notNull(), // Product name for search
   subType: text("sub_type"),
   description: text("description"),
+  vendor: text("vendor"), // Vendor/supplier
+  manufacturer: text("manufacturer"), // Manufacturer
+  category: text("category"), // Product category
+  attributes: jsonb("attributes"), // {"color":["navy","midnight"],"size":["xl"],"material":"cotton"}
+  uom: text("uom").default("EA"), // Unit of measure: EA, DZ, CS
+  moq: integer("moq").default(1), // Minimum order quantity
   basePrice: text("base_price"), // Keep as text since some might be empty
+  tierPrices: jsonb("tier_prices"), // {"A": 12.50, "B": 10.75}
   taxSchedule: text("tax_schedule"),
   planner: text("planner"),
   isActive: boolean("is_active").default(true),
   searchVector: text("search_vector"), // For full-text search
+  itemText: text("item_text"), // Concatenated text for embedding generation
+  itemEmbedding: vector("item_embedding", { dimensions: 1536 }), // OpenAI text-embedding-3-small vector
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+// Item aliases and alternative SKUs
+export const itemAlias = pgTable("item_alias", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  itemId: varchar("item_id").notNull().references(() => items.id, { onDelete: 'cascade' }),
+  aliasSku: text("alias_sku").notNull(),
+  aliasName: text("alias_name"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+// Vendor cross-references for customer/vendor item numbers
+export const itemVendorXref = pgTable("item_vendor_xref", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  itemId: varchar("item_id").notNull().references(() => items.id, { onDelete: 'cascade' }),
+  vendorName: text("vendor_name").notNull(),
+  vendorSku: text("vendor_sku").notNull(),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+// Deterministic charge mappings
+export const chargeMap = pgTable("charge_map", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  chargeCode: text("charge_code").notNull().unique(), // SETUP, FREIGHT, ART, RUSH, SAMPLE
+  regex: text("regex").notNull(), // e.g., '(?i)\\b(set[- ]?up|setup)\\b'
+  itemId: varchar("item_id").notNull().references(() => items.id),
+  description: text("description"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+// Line item validation audit table
+export const lineItemValidationAudit = pgTable("line_item_validation_audit", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  poId: varchar("po_id").references(() => purchaseOrders.id),
+  lineItemIndex: integer("line_item_index").notNull(), // Which line item in the PO
+  queryData: jsonb("query_data"), // Normalized input data
+  topCandidates: jsonb("top_candidates"), // Top candidate matches with scores
+  selectedItemId: varchar("selected_item_id").references(() => items.id),
+  confidenceScore: real("confidence_score"),
+  method: text("method").notNull(), // exact_sku, upc, vendor_xref, charge_map, vector, vector+llm, none
+  reasons: text("reasons").array(), // Array of reason codes
+  llmResponse: jsonb("llm_response"), // LLM response if used
+  finalScore: real("final_score"),
+  sanityChecks: jsonb("sanity_checks"), // Price, MOQ, UOM validation results
+  createdAt: timestamp("created_at").defaultNow(),
 });
 
 export const systemHealth = pgTable("system_health", {
@@ -195,11 +253,40 @@ export const insertItemSchema = createInsertSchema(items).omit({
 });
 export const updateItemSchema = insertItemSchema.partial();
 
+export const insertItemAliasSchema = createInsertSchema(itemAlias).omit({
+  id: true,
+  createdAt: true,
+});
+
+export const insertItemVendorXrefSchema = createInsertSchema(itemVendorXref).omit({
+  id: true,
+  createdAt: true,
+});
+
+export const insertChargeMapSchema = createInsertSchema(chargeMap).omit({
+  id: true,
+  createdAt: true,
+});
+
+export const insertLineItemValidationAuditSchema = createInsertSchema(lineItemValidationAudit).omit({
+  id: true,
+  createdAt: true,
+});
+
 export type InsertCustomer = z.infer<typeof insertCustomerSchema>;
 export type UpdateCustomer = z.infer<typeof updateCustomerSchema>;
 export type InsertContact = z.infer<typeof insertContactSchema>;
 export type InsertItem = z.infer<typeof insertItemSchema>;
 export type UpdateItem = z.infer<typeof updateItemSchema>;
+export type InsertItemAlias = z.infer<typeof insertItemAliasSchema>;
+export type InsertItemVendorXref = z.infer<typeof insertItemVendorXrefSchema>;
+export type InsertChargeMap = z.infer<typeof insertChargeMapSchema>;
+export type InsertLineItemValidationAudit = z.infer<typeof insertLineItemValidationAuditSchema>;
+
+export type ItemAlias = typeof itemAlias.$inferSelect;
+export type ItemVendorXref = typeof itemVendorXref.$inferSelect;
+export type ChargeMap = typeof chargeMap.$inferSelect;
+export type LineItemValidationAudit = typeof lineItemValidationAudit.$inferSelect;
 
 export type PurchaseOrder = typeof purchaseOrders.$inferSelect;
 export type InsertPurchaseOrder = z.infer<typeof insertPurchaseOrderSchema>;
