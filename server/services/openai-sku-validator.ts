@@ -53,6 +53,7 @@ export class OpenAISKUValidatorService {
     this.chargeCodebook.set('EC', 'Extra charges');
     this.chargeCodebook.set('P', 'Proof charges');
     this.chargeCodebook.set('PROOF', 'Proof charges');
+    this.chargeCodebook.set('FREIGHT', 'Freight charges');
     this.chargeCodebook.set('OE-MISC-CHARGE', 'Miscellaneous charges');
     this.chargeCodebook.set('OE-MISC-ITEM', 'Unknown products');
   }
@@ -297,5 +298,74 @@ ${JSON.stringify(lineItems, null, 2)}`;
       console.error('Line items validation failed:', error);
       throw error;
     }
+  }
+
+  /**
+   * CONDITIONAL HELPER: Analyzes OE-MISC-CHARGE items and checks descriptions for better charge code matches
+   */
+  private improveOEMiscChargeMapping(items: ValidatedLineItem[]): ValidatedLineItem[] {
+    const improved = items.map(item => {
+      // Only process items that were mapped to OE-MISC-CHARGE
+      if (item.finalSKU?.toUpperCase() !== 'OE-MISC-CHARGE') {
+        return item;
+      }
+
+      const description = (item.description || '').toLowerCase();
+      let betterMatch: { code: string; name: string } | null = null;
+
+      // Define description patterns for known charge codes
+      const patterns = [
+        { 
+          keywords: ['proof', 'proofing', 'pre-production sample'], 
+          code: 'PROOF', 
+          name: 'Proof Charge' 
+        },
+        { 
+          keywords: ['setup', 'set up', 'set-up', 'setup charge'], 
+          code: 'SETUP', 
+          name: 'Setup Charge' 
+        },
+        { 
+          keywords: ['rush', '48 hour', '24 hour', '48-hour', '24-hour', 'express'], 
+          code: '48-RUSH', 
+          name: 'Rush Charge' 
+        },
+        { 
+          keywords: ['freight', 'shipping', 'ship as needed', 'delivery'], 
+          code: 'FREIGHT', 
+          name: 'Freight Charge' 
+        },
+        { 
+          keywords: ['extra charge', 'additional charge', 'misc charge'], 
+          code: 'EC', 
+          name: 'Extra Charge' 
+        }
+      ];
+
+      // Check each pattern for matches
+      for (const pattern of patterns) {
+        if (pattern.keywords.some(keyword => description.includes(keyword))) {
+          betterMatch = { code: pattern.code, name: pattern.name };
+          break; // Use first match found
+        }
+      }
+
+      if (betterMatch) {
+        console.log(`   🔍 CONDITIONAL HELPER: OE-MISC-CHARGE → ${betterMatch.code}`);
+        console.log(`      Description: "${item.description}"`);
+        console.log(`      Better match: ${betterMatch.name}`);
+        
+        return {
+          ...item,
+          finalSKU: betterMatch.code,
+          productName: betterMatch.name,
+          validationNotes: `Improved from OE-MISC-CHARGE via description analysis`
+        };
+      }
+
+      return item;
+    });
+
+    return improved;
   }
 }
