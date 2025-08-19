@@ -2286,7 +2286,26 @@ ${messageToProcess.body || ''}`;
                 
                 // Add validation completion flags
                 finalUpdateData.customerValidated = !!validationContext.customerMeta;
-                finalUpdateData.contactValidated = !!validationContext.contactMeta;
+                
+                // CONTACT VALIDATION FIX: Only mark as validated if it's a REAL database match, not fallback data
+                const isRealContactMatch = validationContext.contactMeta && 
+                  validationContext.contactMeta.matched_contact_id && 
+                  validationContext.contactMeta.matched_contact_id.trim() !== '' &&
+                  validationContext.contactMeta.match_method !== 'extracted_json' &&
+                  validationContext.contactMeta.match_method !== 'extracted_json_fallback' &&
+                  validationContext.contactMeta.confidence > 0.6; // Require decent confidence
+                
+                finalUpdateData.contactValidated = !!isRealContactMatch;
+                
+                // DEBUG LOGGING: Show contact validation decision
+                if (validationContext.contactMeta) {
+                  if (isRealContactMatch) {
+                    console.log(`   ✅ CONTACT VALIDATED: Real database match (${validationContext.contactMeta.match_method}, confidence=${validationContext.contactMeta.confidence})`);
+                  } else {
+                    console.log(`   ❌ CONTACT NOT VALIDATED: Fallback/extracted data only (${validationContext.contactMeta.match_method}, confidence=${validationContext.contactMeta.confidence}, matched_id='${validationContext.contactMeta.matched_contact_id || 'empty'}')`);
+                  }
+                }
+                
                 finalUpdateData.lineItemsValidated = !!validationContext.lineItemsMeta;
                 finalUpdateData.validationCompleted = true;
                 
