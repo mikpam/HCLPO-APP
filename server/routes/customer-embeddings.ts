@@ -1,6 +1,7 @@
 import type { Express } from "express";
 import { customerEmbeddingService } from "../services/customer-embedding";
 import { hybridCustomerValidator } from "../services/hybrid-customer-validator";
+import { hybridContactValidator } from "../services/hybrid-contact-validator";
 
 export function registerCustomerEmbeddingRoutes(app: Express) {
   console.log("📡 Registering customer embedding management routes");
@@ -111,6 +112,49 @@ export function registerCustomerEmbeddingRoutes(app: Express) {
       });
     } catch (error) {
       console.error("Error testing customer validation:", error);
+      res.status(500).json({
+        success: false,
+        error: error instanceof Error ? error.message : "Unknown error"
+      });
+    }
+  });
+
+  /**
+   * Test hybrid contact validation
+   * POST /api/customer-embeddings/test-contact-validation
+   */
+  app.post("/api/customer-embeddings/test-contact-validation", async (req, res) => {
+    try {
+      const {
+        senderName,
+        senderEmail,
+        contactName,
+        contactEmail,
+        contactPhone,
+        jobTitle,
+        company,
+        customerNumber,
+        netsuiteInternalId
+      } = req.body;
+
+      const result = await hybridContactValidator.validateContact({
+        senderName,
+        senderEmail,
+        contactName,
+        contactEmail,
+        contactPhone,
+        jobTitle,
+        company,
+        customerNumber,
+        netsuiteInternalId
+      });
+
+      res.json({
+        success: true,
+        result
+      });
+    } catch (error) {
+      console.error("Error testing contact validation:", error);
       res.status(500).json({
         success: false,
         error: error instanceof Error ? error.message : "Unknown error"

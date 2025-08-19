@@ -1836,39 +1836,63 @@ ${messageToProcess.body || ''}`;
                 currentStep: "customer_validation",
               });
               try {
-                // Create fresh customer finder instance for this email to prevent race conditions with health monitoring
-                const { OpenAICustomerFinderService } = await import('./services/openai-customer-finder');
-                const customerFinder = await validatorHealthService.recordValidatorCall(
-                  'customerFinder',
-                  async () => new OpenAICustomerFinderService()
-                );
-                const updatedPO = await customerFinder.processPurchaseOrder(purchaseOrder.id);
-                console.log(`   ✅ Customer processing completed for PO ${poNumber} (Status: ${updatedPO?.status || purchaseOrder.status})`);
+                // HYBRID CUSTOMER VALIDATION: Use new 5-step escalation approach
+                console.log(`\n🔍 HYBRID CUSTOMER VALIDATION:`);
                 
-                // CRITICAL: Capture customer data for final update  
-                if (updatedPO?.status === 'customer_found') {
-                  // Get current PO to access extracted data and customer finder results
-                  const currentPO = await storage.getPurchaseOrder(purchaseOrder.id);
+                const { hybridCustomerValidator } = await import('./services/hybrid-customer-validator');
+                
+                // Prepare input from extracted data
+                const customerInput = {
+                  customerName: extractedData?.purchaseOrder?.customer?.company || extractedData?.customer?.company,
+                  customerEmail: extractedData?.purchaseOrder?.customer?.email || extractedData?.customer?.email,
+                  senderEmail: messageToProcess.sender,
+                  senderDomain: messageToProcess.sender.split('@')[1],
+                  contactName: extractedData?.contact?.name,
+                  phoneDigits: extractedData?.purchaseOrder?.customer?.phone || extractedData?.customer?.phone,
+                  address: extractedData?.purchaseOrder?.customer?.address || extractedData?.customer?.address,
+                  netsuiteId: extractedData?.purchaseOrder?.customer?.netsuiteId || extractedData?.customer?.netsuiteId,
+                  customerNumber: extractedData?.purchaseOrder?.customer?.customerNumber || extractedData?.customer?.customerNumber
+                };
+                
+                const customerResult = await validatorHealthService.recordValidatorCall(
+                  'hybridCustomerValidator',
+                  async () => await hybridCustomerValidator.validateCustomer(customerInput)
+                );
+                
+                console.log(`   ✅ Hybrid customer validation completed: ${customerResult.matched ? 'FOUND' : 'NOT_FOUND'}`);
+                console.log(`   └─ Method: ${customerResult.method} (Confidence: ${Math.round((customerResult.confidence || 0) * 100)}%)`);
+                
+                if (customerResult.matched && customerResult.customerNumber) {
+                  validationContext.customerMeta = {
+                    customer_name: customerResult.customerName || 'Unknown',
+                    customer_number: customerResult.customerNumber,
+                    status: 'found',
+                    method: customerResult.method,
+                    confidence: customerResult.confidence,
+                    reasons: customerResult.reasons
+                  };
+                  console.log(`   ✅ Customer found: ${validationContext.customerMeta.customer_name} (${validationContext.customerMeta.customer_number})`);
                   
-                  // Try to get customer data from extractedData first
-                  if (currentPO?.extractedData?.purchaseOrder?.customer?.customerNumber) {
-                    validationContext.customerMeta = {
-                      customer_name: currentPO.extractedData.purchaseOrder.customer.company || 'Unknown',
-                      customer_number: currentPO.extractedData.purchaseOrder.customer.customerNumber
-                    };
-                    console.log(`   ✅ Captured customer data from extractedData: ${validationContext.customerMeta.customer_name} (${validationContext.customerMeta.customer_number})`);
-                  } else if (currentPO?.extractedData?.customer) {
-                    // Fallback to older structure  
-                    validationContext.customerMeta = {
-                      customer_name: currentPO.extractedData.customer.company || 'Unknown',
-                      customer_number: currentPO.extractedData.customer.customerNumber || currentPO.extractedData.customer.customernumber || 'Unknown'
-                    };
-                    console.log(`   ✅ Captured customer data from legacy extractedData: ${validationContext.customerMeta.customer_name} (${validationContext.customerMeta.customer_number})`);
-                  } else {
-                    console.log(`   ⚠️  Customer found but data not in expected extractedData structure`);
-                  }
+                  // Update PO status
+                  await storage.updatePurchaseOrder(purchaseOrder.id, {
+                    status: 'customer_found',
+                    customerMeta: validationContext.customerMeta
+                  });
                 } else {
-                  console.log(`   ⚠️  Customer status: ${updatedPO?.status || 'unknown'} - no customer data captured`);
+                  console.log(`   ❌ Customer not found - flagging as new customer`);
+                  validationContext.customerMeta = {
+                    customer_name: customerInput.customerName || 'Unknown',
+                    customer_number: 'NO_CUSTOMER_FOUND',
+                    status: 'new_customer',
+                    method: customerResult.method,
+                    confidence: customerResult.confidence || 0,
+                    reasons: customerResult.reasons || ['not_found']
+                  };
+                  
+                  await storage.updatePurchaseOrder(purchaseOrder.id, {
+                    status: 'new customer',
+                    customerMeta: validationContext.customerMeta
+                  });
                 }
                 
                 // Log customer lookup failures for review
@@ -1942,23 +1966,36 @@ ${messageToProcess.body || ''}`;
                   console.log(`   🔍 DEBUG: Sender name resolution: "${senderName}"`);
                   console.log(`   🔍 DEBUG: messageToProcess.sender: "${messageToProcess.sender}"`);
                   
-                  // Create fresh validator instance for this email to prevent race conditions
-                  const contactValidator = new OpenAIContactValidatorService();
+                  // HYBRID CONTACT VALIDATION: Use new 5-step escalation approach
+                  console.log(`\n👤 HYBRID CONTACT VALIDATION:`);
+                  
+                  const { hybridContactValidator } = await import('./services/hybrid-contact-validator');
                   
                   // Use original sender email for forwarded emails, otherwise use messageToProcess.sender
                   const effectiveSenderEmail = forwardedEmail?.originalSender || messageToProcess.sender;
                   console.log(`   🔍 DEBUG: Using effective sender email: "${effectiveSenderEmail}"`);
                   
-                  validationContext.contactMeta = await contactValidator.validateContact({
+                  // Prepare input from extracted data and email metadata
+                  const contactInput = {
                     extractedData: extractedData,
                     senderName: senderName,
                     senderEmail: effectiveSenderEmail,
-                    resolvedCustomerId: extractedData?.customer?.customernumber,
-                    companyId: extractedData?.customer?.customernumber
-                  });
+                    contactName: extractedData?.contact?.name,
+                    contactEmail: extractedData?.contact?.email,
+                    contactPhone: extractedData?.contact?.phone,
+                    jobTitle: extractedData?.contact?.jobTitle,
+                    company: extractedData?.purchaseOrder?.customer?.company || extractedData?.customer?.company,
+                    customerNumber: validationContext.customerMeta?.customer_number,
+                    netsuiteInternalId: extractedData?.contact?.netsuiteInternalId
+                  };
+                  
+                  validationContext.contactMeta = await validatorHealthService.recordValidatorCall(
+                    'hybridContactValidator',
+                    async () => await hybridContactValidator.validateContact(contactInput)
+                  );
                   
                   console.log(`   ✅ Contact validated: ${validationContext.contactMeta.name} <${validationContext.contactMeta.email}>`);
-                  console.log(`   └─ Method: ${validationContext.contactMeta.match_method} (Confidence: ${validationContext.contactMeta.confidence})`);
+                  console.log(`   └─ Method: ${validationContext.contactMeta.match_method} (Confidence: ${Math.round((validationContext.contactMeta.confidence || 0) * 100)}%)`);
                   console.log(`   └─ Role: ${validationContext.contactMeta.role}`);
                   
                   // IMMEDIATE STORAGE: Store contact data per validator step
