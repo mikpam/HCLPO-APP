@@ -16,6 +16,17 @@ export default function PurchaseOrdersPage() {
   const [expandedCells, setExpandedCells] = useState<Set<string>>(new Set());
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
+  const [fileViewModal, setFileViewModal] = useState<{
+    isOpen: boolean;
+    type: 'pdf' | 'eml' | null;
+    content: string | null;
+    title: string;
+  }>({
+    isOpen: false,
+    type: null,
+    content: null,
+    title: ''
+  });
 
   // Toggle expanded state for cells
   const toggleCellExpansion = (cellId: string) => {
@@ -298,6 +309,23 @@ export default function PurchaseOrdersPage() {
   const handleViewOrder = (order: PurchaseOrder) => {
     setSelectedOrder(order);
     setIsViewModalOpen(true);
+  };
+
+  const handleViewFile = async (filePath: string, type: 'pdf' | 'eml', title: string) => {
+    try {
+      const response = await fetch(`/api/files/view?path=${encodeURIComponent(filePath)}`);
+      if (response.ok) {
+        const content = await response.text();
+        setFileViewModal({
+          isOpen: true,
+          type,
+          content,
+          title
+        });
+      }
+    } catch (error) {
+      console.error('Error loading file:', error);
+    }
   };
 
   return (
@@ -634,30 +662,30 @@ export default function PurchaseOrdersPage() {
                         </TableCell>
                         <TableCell>
                           {order.attachmentPath ? (
-                            <a 
-                              href={order.attachmentPath.startsWith('/objects/') ? order.attachmentPath : `/objects/attachments/${order.attachmentPath.split('/').pop()}`}
-                              target="_blank" 
-                              rel="noopener noreferrer"
-                              className="inline-flex items-center space-x-1 text-blue-600 hover:text-blue-800 text-sm"
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => handleViewFile(order.attachmentPath!, 'pdf', `${order.poNumber} - Attachment`)}
+                              className="inline-flex items-center space-x-1 text-blue-600 hover:text-blue-800 text-sm h-8"
                             >
                               <FileTextIcon className="w-4 h-4" />
                               <span>View PDF</span>
-                            </a>
+                            </Button>
                           ) : (
                             <span className="text-gray-400 text-sm">No attachment</span>
                           )}
                         </TableCell>
                         <TableCell>
                           {order.emlFilePath ? (
-                            <a 
-                              href={order.emlFilePath.startsWith('/objects/') ? order.emlFilePath : `/objects/emails/${order.emlFilePath.split('/').pop()}`}
-                              target="_blank" 
-                              rel="noopener noreferrer"
-                              className="inline-flex items-center space-x-1 text-green-600 hover:text-green-800 text-sm"
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => handleViewFile(order.emlFilePath!, 'eml', `${order.poNumber} - Email`)}
+                              className="inline-flex items-center space-x-1 text-green-600 hover:text-green-800 text-sm h-8"
                             >
                               <MailIcon className="w-4 h-4" />
-                              <span>EML</span>
-                            </a>
+                              <span>View EML</span>
+                            </Button>
                           ) : (
                             <span className="text-gray-400 text-sm">No EML</span>
                           )}
@@ -1121,6 +1149,39 @@ export default function PurchaseOrdersPage() {
               </div>
             </div>
           )}
+        </DialogContent>
+      </Dialog>
+
+      {/* File Viewing Modal */}
+      <Dialog open={fileViewModal.isOpen} onOpenChange={(open) => 
+        setFileViewModal(prev => ({ ...prev, isOpen: open }))
+      }>
+        <DialogContent className="max-w-4xl w-full h-[80vh] flex flex-col">
+          <DialogHeader>
+            <DialogTitle>{fileViewModal.title}</DialogTitle>
+            <DialogDescription>
+              {fileViewModal.type === 'pdf' ? 'PDF Attachment Content' : 'Email File Content'}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex-1 overflow-auto">
+            {fileViewModal.type === 'eml' && (
+              <div className="bg-gray-50 p-4 rounded-lg">
+                <pre className="whitespace-pre-wrap text-sm font-mono">
+                  {fileViewModal.content}
+                </pre>
+              </div>
+            )}
+            {fileViewModal.type === 'pdf' && (
+              <div className="bg-gray-50 p-4 rounded-lg text-center">
+                <p className="text-gray-600 mb-4">PDF Content:</p>
+                <div className="bg-white p-4 rounded border max-h-96 overflow-auto">
+                  <pre className="whitespace-pre-wrap text-sm">
+                    {fileViewModal.content}
+                  </pre>
+                </div>
+              </div>
+            )}
+          </div>
         </DialogContent>
       </Dialog>
     </div>

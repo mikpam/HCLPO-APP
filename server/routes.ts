@@ -3038,6 +3038,38 @@ totalPrice: ${item.totalPrice || 0}`;
     }
   });
 
+  // View file content endpoint - returns text content for modal display
+  app.get("/api/files/view", async (req, res) => {
+    try {
+      const { path } = req.query;
+      
+      if (!path || typeof path !== 'string') {
+        return res.status(400).json({ error: "File path is required" });
+      }
+      
+      const { ObjectStorageService, ObjectNotFoundError } = await import('./objectStorage');
+      const objectStorageService = new ObjectStorageService();
+      
+      // Get the file content
+      const objectFile = await objectStorageService.getObjectEntityFile(path);
+      const content = await objectFile.downloadAsText();
+      
+      // Set headers for text display (not download)
+      res.set({
+        'Content-Type': 'text/plain; charset=utf-8',
+        'Cache-Control': 'private, max-age=3600'
+      });
+      
+      res.send(content);
+    } catch (error) {
+      console.error("Error viewing file:", error);
+      if (error.name === 'ObjectNotFoundError') {
+        return res.status(404).json({ error: "File not found" });
+      }
+      return res.status(500).json({ error: "Failed to retrieve file content" });
+    }
+  });
+
   // Get upload URL for PDFs
   app.post("/api/objects/pdf-upload", async (req, res) => {
     const { filename } = req.body;
