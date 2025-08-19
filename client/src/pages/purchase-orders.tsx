@@ -313,15 +313,27 @@ export default function PurchaseOrdersPage() {
 
   const handleViewFile = async (filePath: string, type: 'pdf' | 'eml', title: string) => {
     try {
-      const response = await fetch(`/api/files/view?path=${encodeURIComponent(filePath)}`);
-      if (response.ok) {
-        const content = await response.text();
+      if (type === 'pdf') {
+        // For PDFs, use direct URL for iframe display
+        const pdfUrl = filePath.startsWith('/objects/') ? filePath : `/objects/attachments/${filePath.split('/').pop()}`;
         setFileViewModal({
           isOpen: true,
           type,
-          content,
+          content: pdfUrl,
           title
         });
+      } else {
+        // For EML files, fetch text content
+        const response = await fetch(`/api/files/view?path=${encodeURIComponent(filePath)}`);
+        if (response.ok) {
+          const content = await response.text();
+          setFileViewModal({
+            isOpen: true,
+            type,
+            content,
+            title
+          });
+        }
       }
     } catch (error) {
       console.error('Error loading file:', error);
@@ -1171,14 +1183,13 @@ export default function PurchaseOrdersPage() {
                 </pre>
               </div>
             )}
-            {fileViewModal.type === 'pdf' && (
-              <div className="bg-gray-50 p-4 rounded-lg text-center">
-                <p className="text-gray-600 mb-4">PDF Content:</p>
-                <div className="bg-white p-4 rounded border max-h-96 overflow-auto">
-                  <pre className="whitespace-pre-wrap text-sm">
-                    {fileViewModal.content}
-                  </pre>
-                </div>
+            {fileViewModal.type === 'pdf' && fileViewModal.content && (
+              <div className="w-full h-full">
+                <iframe
+                  src={fileViewModal.content}
+                  className="w-full h-full border rounded-lg"
+                  title={fileViewModal.title}
+                />
               </div>
             )}
           </div>
