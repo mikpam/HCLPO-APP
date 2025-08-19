@@ -108,25 +108,31 @@ export async function registerRoutes(app: Express): Promise<Server> {
   }
 
   // Auto-start with retry mechanism - SEQUENTIAL PROCESSING ARCHITECTURE
-  setTimeout(async () => {
-    console.log('🔄 AUTO-PROCESSING: Starting sequential email processing architecture');
-    console.log('⚡ ARCHITECTURE: Strict per-email processing with health monitoring control');
-    
-    // Start health monitoring system with pausing capability
-    validatorHealthService.startMonitoring();
-    
-    // Start processing emails immediately with sequential architecture
-    processEmailsInBackground();
-    
-    // Check for stuck purchase orders every 5 minutes for faster testing
-    setInterval(async () => {
-      try {
-        await retryStuckPurchaseOrders();
-      } catch (error) {
-        console.error('Error in periodic stuck PO check:', error);
-      }
-    }, 5 * 60 * 1000); // 5 minutes for faster retry testing
-  }, 2000);
+  // ⛔ EMAIL PROCESSING DISABLED - FOCUSING ON EMBEDDING COMPLETION
+  // User requested to stop email processing until embeddings are finished
+  // setTimeout(async () => {
+  //   console.log('🔄 AUTO-PROCESSING: Starting sequential email processing architecture');
+  //   console.log('⚡ ARCHITECTURE: Strict per-email processing with health monitoring control');
+  //   
+  //   // Start health monitoring system with pausing capability
+  //   validatorHealthService.startMonitoring();
+  //   
+  //   // Start processing emails immediately with sequential architecture
+  //   processEmailsInBackground();
+  //   
+  //   // Check for stuck purchase orders every 5 minutes for faster testing
+  //   setInterval(async () => {
+  //     try {
+  //       await retryStuckPurchaseOrders();
+  //     } catch (error) {
+  //       console.error('Error in periodic stuck PO check:', error);
+  //     }
+  //   }, 5 * 60 * 1000); // 5 minutes for faster retry testing
+  // }, 2000);
+  
+  console.log('⛔ EMAIL PROCESSING DISABLED: Focusing on embedding completion');
+  console.log('📊 EMBEDDING STATUS: Contact embeddings at 8.02% (3,498/43,620)');
+  console.log('🎯 PRIORITY: Complete embeddings before resuming email processing');
   
 
   
