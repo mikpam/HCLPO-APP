@@ -15,8 +15,8 @@ import { netsuiteService } from "./services/netsuite";
 import { OpenAISKUValidatorService } from "./services/openai-sku-validator";
 import { OpenAIContactValidatorService } from "./services/openai-contact-validator";
 import { db } from "./db";
-import { purchaseOrders, errorLogs } from "@shared/schema";
-import { eq, desc, and, or, lt } from "drizzle-orm";
+import { purchaseOrders, errorLogs, customers } from "@shared/schema";
+import { eq, desc, and, or, lt, sql } from "drizzle-orm";
 
 import { insertPurchaseOrderSchema, insertErrorLogSchema, classificationResultSchema } from "@shared/schema";
 import { z } from "zod";
@@ -2206,6 +2206,59 @@ ${messageToProcess.body || ''}`;
                   console.log(`   🔍 DEBUG: purchaseOrder.customer exists: ${!!currentPO?.extractedData?.purchaseOrder?.customer}`);
                 } else {
                   console.log(`   ⚠️  Customer not found, status: ${currentPO?.status || 'unknown'}`);
+                }
+                
+                // CUSTOMER FALLBACK LOGIC: If customer not found but contact verified with company, create customer from contact
+                if (!finalUpdateData.customerMeta && validationContext.contactMeta?.match_method && validationContext.contactMeta?.company) {
+                  console.log(`   🔄 CUSTOMER FALLBACK: Contact verified with company "${validationContext.contactMeta.company}" - creating customer record`);
+                  
+                  try {
+                    // Search for existing customer by company name
+                    const existingCustomers = await db.select()
+                      .from(customers)
+                      .where(sql`LOWER(${customers.companyName}) = LOWER(${validationContext.contactMeta.company})`)
+                      .limit(1);
+                    
+                    let customerRecord;
+                    if (existingCustomers.length > 0) {
+                      // Use existing customer
+                      customerRecord = existingCustomers[0];
+                      console.log(`   ✅ Found existing customer: ${customerRecord.companyName} (${customerRecord.customerNumber})`);
+                    } else {
+                      // Create new customer from contact info
+                      const newCustomerData = {
+                        customerNumber: `C${String(Math.floor(Math.random() * 900000) + 100000)}`, // Generate C######
+                        companyName: validationContext.contactMeta.company,
+                        address: {
+                          address1: validationContext.contactMeta.address1 || '',
+                          city: validationContext.contactMeta.city || '',
+                          state: validationContext.contactMeta.state || '',
+                          zipCode: validationContext.contactMeta.zipCode || ''
+                        },
+                        email: validationContext.contactMeta.email || '',
+                        phone: validationContext.contactMeta.phone || ''
+                      };
+                      
+                      const insertResult = await db.insert(customers).values(newCustomerData).returning();
+                      customerRecord = insertResult[0];
+                      console.log(`   ✅ Created new customer: ${customerRecord.companyName} (${customerRecord.customerNumber})`);
+                    }
+                    
+                    // Set customer data in final update
+                    const customerMeta = {
+                      customer_name: customerRecord.companyName,
+                      customer_number: customerRecord.customerNumber
+                    };
+                    finalUpdateData.customerMeta = customerMeta;
+                    finalUpdateData.customerNumber = customerMeta.customer_number;
+                    finalUpdateData.customer = customerMeta.customer_name;
+                    finalUpdateData.status = 'customer_found'; // Update status to reflect customer found
+                    
+                    console.log(`   ✅ FALLBACK SUCCESS: Applied contact company as customer: ${customerMeta.customer_name} (${customerMeta.customer_number})`);
+                    
+                  } catch (error) {
+                    console.error(`   ❌ FALLBACK FAILED: Could not create customer from contact company:`, error);
+                  }
                 }
                 
                 // CONTACT DATA: Already captured by contact validator in context
