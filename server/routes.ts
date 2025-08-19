@@ -178,6 +178,52 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // TEST: Customer number format validation
+  app.post("/api/test/customer-format-validation", async (req, res) => {
+    try {
+      const { testNumbers } = req.body;
+      const { CustomerLookupService } = await import("./services/customer-lookup");
+      const customerLookup = new CustomerLookupService();
+      
+      const results = await Promise.all(
+        testNumbers.map(async (number: string) => {
+          const result = await customerLookup.lookupCustomer({ customerNumber: number });
+          return {
+            customerNumber: number,
+            formatStatus: result.method === 'invalid_format' ? 'INVALID' : 'VALID',
+            error: result.validationError || null,
+            found: result.customer !== null
+          };
+        })
+      );
+      
+      res.json(results);
+    } catch (error) {
+      console.error("Customer format validation test failed:", error);
+      res.status(500).json({ error: "Test failed" });
+    }
+  });
+
+  // TEST: Customer finder with empty data (like PO 28358)
+  app.post("/api/test/customer-finder", async (req, res) => {
+    try {
+      const { customerName, customerEmail, senderEmail } = req.body;
+      const { OpenAICustomerFinderService } = await import("./services/openai-customer-finder");
+      const customerFinder = new OpenAICustomerFinderService();
+      
+      const result = await customerFinder.findCustomer({
+        customerName,
+        customerEmail,
+        senderEmail
+      });
+      
+      res.json(result);
+    } catch (error) {
+      console.error("Customer finder test failed:", error);
+      res.status(500).json({ error: "Test failed" });
+    }
+  });
+
   // Bulk email processing endpoint
 
   // Process single email for development

@@ -107,6 +107,31 @@ class CustomerLookupService {
   }
 
   /**
+   * CUSTOMER NUMBER FORMAT HELPER: Validates C + numeric format (e.g., C12345)
+   * Customer numbers not following this format are 100% invalid
+   */
+  private validateCustomerNumberFormat(customerNumber: string): {
+    isValid: boolean;
+    reason?: string;
+  } {
+    if (!customerNumber) {
+      return { isValid: false, reason: 'Empty customer number' };
+    }
+
+    // Must start with 'C' followed by numeric digits
+    const validFormat = /^C\d+$/;
+    
+    if (!validFormat.test(customerNumber)) {
+      return { 
+        isValid: false, 
+        reason: `Invalid format "${customerNumber}" - must be C + numeric (e.g., C12345)` 
+      };
+    }
+
+    return { isValid: true };
+  }
+
+  /**
    * Main lookup method with cascading strategies
    */
   async lookupCustomer(input: {
@@ -115,11 +140,24 @@ class CustomerLookupService {
     email?: string;
   }): Promise<{
     customer: Customer | null;
-    method: 'exact_number' | 'company_exact' | 'company_fuzzy' | 'fulltext' | 'not_found';
+    method: 'exact_number' | 'company_exact' | 'company_fuzzy' | 'fulltext' | 'not_found' | 'invalid_format';
     confidence: number;
+    validationError?: string;
   }> {
-    // Strategy 1: Direct customer number lookup
+    // Strategy 1: Direct customer number lookup with format validation
     if (input.customerNumber) {
+      // PRE-VALIDATION: Check customer number format before database lookup
+      const formatCheck = this.validateCustomerNumberFormat(input.customerNumber);
+      if (!formatCheck.isValid) {
+        console.log(`   ❌ CUSTOMER NUMBER FORMAT INVALID: ${formatCheck.reason}`);
+        return { 
+          customer: null, 
+          method: 'invalid_format', 
+          confidence: 0.0,
+          validationError: formatCheck.reason
+        };
+      }
+
       const customer = await this.findByCustomerNumber(input.customerNumber);
       if (customer) {
         return { customer, method: 'exact_number', confidence: 1.0 };

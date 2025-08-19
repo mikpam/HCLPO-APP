@@ -62,7 +62,7 @@ export class OpenAICustomerFinderService {
       
       if (candidates.length === 0) {
         console.log(`   ❌ No candidates found in database`);
-        return { customer_number: "", customer_name: "", status: 'not_found', confidence: 0, method: 'database_search' };
+        return { customer_number: "NO_CUSTOMER_NUMBER", customer_name: "NO_CUSTOMER_FOUND", status: 'not_found', confidence: 0, method: 'database_search' };
       }
       
       // Step 3: Use OpenAI to intelligently match with sophisticated prompt
@@ -73,11 +73,11 @@ export class OpenAICustomerFinderService {
       if (result.customer_number && result.customer_name) {
         return { ...result, status: 'found', confidence: 0.95, method: 'openai_match' };
       } else {
-        return { ...result, status: 'not_found', confidence: 0, method: 'openai_match' };
+        return { customer_number: "NO_CUSTOMER_NUMBER", customer_name: "NO_CUSTOMER_FOUND", status: 'not_found', confidence: 0, method: 'openai_match' };
       }
     } catch (error) {
       console.error(`   ❌ Customer finder error:`, error);
-      return { customer_number: "", customer_name: "", status: 'error', confidence: 0, method: 'error' };
+      return { customer_number: "NO_CUSTOMER_NUMBER", customer_name: "NO_CUSTOMER_FOUND", status: 'error', confidence: 0, method: 'error' };
     }
   }
   
@@ -335,7 +335,7 @@ BRAND OVERRIDES (mandatory):
 
 OUTPUT FORMAT:
 Confident match: {"customer_number": "C#####", "customer_name": "..."}
-No confident match: {"customer_number": "", "customer_name": ""}
+No confident match: {"customer_number": "NO_CUSTOMER_NUMBER", "customer_name": "NO_CUSTOMER_FOUND"}
 
 RULES:
 - customer_number must start with "C" + digits
@@ -371,7 +371,7 @@ Please analyze the input and return the correct customer match.`;
       const content = response.choices[0].message.content?.trim();
       if (!content) {
         console.log(`   ⚠️  Empty response from OpenAI`);
-        return { customer_number: "", customer_name: "" };
+        return { customer_number: "NO_CUSTOMER_NUMBER", customer_name: "NO_CUSTOMER_FOUND" };
       }
 
       // Parse the JSON response - handle markdown code blocks
@@ -395,12 +395,12 @@ Please analyze the input and return the correct customer match.`;
         
         // Validate the response format and customer number format
         if (typeof result.customer_number === 'string' && typeof result.customer_name === 'string') {
-          // Validate customer number format: must be empty OR start with "C" followed by digits
-          const isValidCustomerNumber = result.customer_number === '' || /^C\d+$/.test(result.customer_number);
+          // Validate customer number format: must be NO_CUSTOMER_NUMBER OR start with "C" followed by digits
+          const isValidCustomerNumber = result.customer_number === 'NO_CUSTOMER_NUMBER' || /^C\d+$/.test(result.customer_number);
           
           if (!isValidCustomerNumber) {
-            console.log(`   ❌ Invalid customer number format from OpenAI: "${result.customer_number}" - must be empty or start with "C" followed by digits`);
-            return { customer_number: "", customer_name: "" };
+            console.log(`   ❌ Invalid customer number format from OpenAI: "${result.customer_number}" - must be NO_CUSTOMER_NUMBER or start with "C" followed by digits`);
+            return { customer_number: "NO_CUSTOMER_NUMBER", customer_name: "NO_CUSTOMER_FOUND" };
           }
           
           console.log(`   ✅ Successfully parsed OpenAI response: ${result.customer_name} (${result.customer_number})`);
@@ -408,18 +408,18 @@ Please analyze the input and return the correct customer match.`;
           return result;
         } else {
           console.log(`   ⚠️  Invalid response format from OpenAI:`, result);
-          return { customer_number: "", customer_name: "" };
+          return { customer_number: "NO_CUSTOMER_NUMBER", customer_name: "NO_CUSTOMER_FOUND" };
         }
       } catch (parseError) {
         console.log(`   ⚠️  Failed to parse OpenAI response as JSON:`, content);
         console.log(`   🔍 Raw content:`, content);
         console.log(`   🔍 Parse error:`, parseError);
-        return { customer_number: "", customer_name: "" };
+        return { customer_number: "NO_CUSTOMER_NUMBER", customer_name: "NO_CUSTOMER_FOUND" };
       }
       
     } catch (error) {
       console.error(`   ❌ OpenAI API error:`, error);
-      return { customer_number: "", customer_name: "" };
+      return { customer_number: "NO_CUSTOMER_NUMBER", customer_name: "NO_CUSTOMER_FOUND" };
     }
   }
   
