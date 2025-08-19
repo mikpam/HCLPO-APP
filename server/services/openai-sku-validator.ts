@@ -54,6 +54,7 @@ export class OpenAISKUValidatorService {
     this.chargeCodebook.set('P', 'Proof charges');
     this.chargeCodebook.set('PROOF', 'Proof charges');
     this.chargeCodebook.set('FREIGHT', 'Freight charges');
+    this.chargeCodebook.set('RUN-CHARGE', 'Run charges');
     this.chargeCodebook.set('OE-MISC-CHARGE', 'Miscellaneous charges');
     this.chargeCodebook.set('OE-MISC-ITEM', 'Unknown products');
   }
@@ -126,19 +127,22 @@ No markdown, no comments, no trailing text.
 
 ### CRITICAL: OE-MISC-CHARGE Analysis
 When you encounter an item with SKU or finalSKU "OE-MISC-CHARGE", this is a placeholder that needs analysis:
-1. **Examine the description carefully** for actual product information
-2. **Look for real SKU patterns** (like T339, B515, etc.) mentioned in the description
-3. **Match against the catalog** using fuzzy matching on product names and descriptions
-4. **If you find a real product match**, replace OE-MISC-CHARGE with the actual SKU + color code
-5. **Only keep OE-MISC-CHARGE** if the description truly describes a miscellaneous charge (not a product)
+1. **Check for known charge patterns first**:
+   - "Run Charge" → Use "RUN-CHARGE" 
+   - "PMS Matching" → Keep as "OE-MISC-CHARGE"
+   - "Set Up" or "Setup" → Use "SETUP"
+2. **Examine the description for actual product information**
+3. **Look for real SKU patterns** (like T339, B515, etc.) mentioned in the description
+4. **Match against the catalog** using fuzzy matching on product names
+5. **PRESERVE ORIGINAL QUANTITIES** - Don't change quantities to 1 for charges
 
 Examples:
-- "PMS Matching Charge - Screen Printed" → Keep as OE-MISC-CHARGE
-- "Lanyard with custom logo, blue" → Find best lanyard SKU match + color code (like L401-BL)
-- "Stress ball promotional item" → Find stress ball SKU match from catalog
-- "Coffee mug ceramic white" → Find mug SKU match + WH color code
+- "Run Charge" (qty: 130) → "RUN-CHARGE" (qty: 130) ✅
+- "PMS Matching Charge" (qty: 1) → "OE-MISC-CHARGE" (qty: 1) ✅
+- "Lanyard with custom logo, blue" → Find actual lanyard SKU like "L401-BL"
+- "Setup Charge" (qty: 4) → "SETUP" (qty: 4) ✅
 
-Priority: Always try to find the actual product SKU first. Only use OE-MISC-CHARGE as last resort.
+**CRITICAL**: Always preserve the original quantity - do not force charges to quantity=1!
 
 ---
 
@@ -163,9 +167,9 @@ Priority: Always try to find the actual product SKU first. Only use OE-MISC-CHAR
 3. If still no match → continue to fuzzy match.
 
 **B) Charge codes**
-1. If line contains explicit charge tokens (SETUP, 48-RUSH, EC, etc.), map directly.
-2. Else if line matches phrase synonyms ("set up charge", "48 hour rush", "drop ship"), map.
-3. For charges, force quantity = 1 if absent.
+1. If line contains explicit charge tokens (SETUP, 48-RUSH, EC, RUN-CHARGE, etc.), map directly.
+2. Else if line matches phrase synonyms ("set up charge", "run charge", "48 hour rush", "drop ship"), map.
+3. **PRESERVE original quantities** - do not force charges to quantity = 1 unless originally absent.
 
 **C) Fuzzy match**
 If not resolved above:

@@ -1,0 +1,117 @@
+{
+  "engine": "gemini",
+  "lineItems": [
+    {
+      "sku": "S900",
+      "finalSKU": "S900-07",
+      "quantity": 130,
+      "itemColor": "Gray",
+      "unitPrice": 2.6946,
+      "totalPrice": 350.3,
+      "description": "18 oz Glass Tumbler with Bamboo Lid - Gray",
+      "imprintColor": "Black, 642 C, 2925 C, 032 C"
+    },
+    {
+      "sku": "SET UP",
+      "finalSKU": "",
+      "quantity": 4,
+      "itemColor": "",
+      "unitPrice": 48,
+      "totalPrice": 192,
+      "description": "Set Up Charge",
+      "imprintColor": ""
+    },
+    {
+      "sku": "OE-MISC-CHARGE",
+      "finalSKU": "",
+      "quantity": 130,
+      "itemColor": "",
+      "unitPrice": 0.36,
+      "totalPrice": 46.8,
+      "description": "Run Charge",
+      "imprintColor": ""
+    },
+    {
+      "sku": "OE-MISC-CHARGE",
+      "finalSKU": "",
+      "quantity": 130,
+      "itemColor": "",
+      "unitPrice": 0.36,
+      "totalPrice": 46.8,
+      "description": "Run Charge",
+      "imprintColor": ""
+    },
+    {
+      "sku": "OE-MISC-CHARGE",
+      "finalSKU": "",
+      "quantity": 130,
+      "itemColor": "",
+      "unitPrice": 0.36,
+      "totalPrice": 46.8,
+      "description": "Run Charge",
+      "imprintColor": ""
+    }
+  ],
+  "subtotals": {
+    "grandTotal": 682.7,
+    "merchandiseSubtotal": 350.3,
+    "additionalChargesSubtotal": 332.4
+  },
+  "purchaseOrder": {
+    "shipTo": {
+      "city": "Oak Park",
+      "name": "Teresa Whetstone",
+      "state": "Illinois",
+      "company": "American Model United Nations",
+      "country": "United States",
+      "zipCode": "60302",
+      "address1": "1212 Columbian Ave",
+      "address2": ""
+    },
+    "vendor": {
+      "city": "Irwindale",
+      "name": "Calibre International, Inc.",
+      "email": "",
+      "phone": "",
+      "state": "California",
+      "country": "United States",
+      "zipCode": "91702",
+      "address1": "6250 North Irwindale Ave",
+      "address2": ""
+    },
+    "contact": {
+      "name": "Briana Randolph",
+      "email": "brandolph@waterbottles.com",
+      "phone": "1.626.788.9282",
+      "jobTitle": "Rep"
+    },
+    "customer": {
+      "city": "Glendora",
+      "email": "",
+      "phone": "1.800.328.8428",
+      "state": "California",
+      "company": "WB Promos, LLC",
+      "country": "United States",
+      "zipCode": "91741",
+      "address1": "510 S. Grand Ave #302",
+      "address2": "",
+      "lastName": "",
+      "firstName": "",
+      "customerNumber": ""
+    },
+    "asiNumber": "",
+    "orderDate": "08/19/2025",
+    "ppaiNumber": "",
+    "inHandsDate": "08/29/2025",
+    "shippingMethod": "FedEx Exp Saver",
+    "salesPersonName": "Briana Randolph",
+    "shippingCarrier": "FedEx",
+    "requiredShipDate": "08/27/2025",
+    "salesPersonEmail": "brandolph@waterbottles.com",
+    "purchaseOrderNumber": "227524"
+  },
+  "additionalNotes": [
+    "Unit price & free PMS match per Dan O."
+  ],
+  "specialInstructions": "SHIP ON OUR FEDEX ACCT# 330660511 UNLESS OTHERWISE STATED ABOVE."
+}
