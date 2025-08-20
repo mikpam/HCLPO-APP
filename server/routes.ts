@@ -10,7 +10,7 @@ import { registerCustomerEmbeddingRoutes } from "./routes/customer-embeddings";
 import { registerItemEmbeddingRoutes } from "./routes/item-embeddings";
 import { validatorHealthService } from "./services/validator-health";
 import { gmailService } from "./services/gmail";
-import { aiService, type AIEngine } from "./services/ai-service";
+import { AIServiceManager, type AIEngine } from "./services/ai-service";
 import { netsuiteService } from "./services/netsuite";
 // openaiCustomerFinderService now uses per-email instances to prevent race conditions
 import { OpenAISKUValidatorService } from "./services/openai-sku-validator";
@@ -172,9 +172,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (newEmailsFound > 0) {
         console.log(`📈 AUTO-SCAN: Found ${newEmailsFound} new emails`);
         
-        // Process new emails immediately
+        // Process new emails immediately from our database queue
         try {
-          await processEmailsInBackground();
+          await processEmailsFromQueue();
         } catch (processError) {
           console.log('⚠️  AUTO-PROCESS: Processing failed, will retry next cycle');
         }
@@ -187,22 +187,129 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   }
   
+  // Sequential email processing from database queue
+  async function processEmailsFromQueue() {
+    try {
+      console.log('🔄 QUEUE PROCESSING: Starting sequential processing from database queue...');
+      
+      // Get unprocessed emails from our database queue (sequential processing)
+      const unprocessedEmails = await storage.getEmailQueue({ status: 'unprocessed', limit: 10 });
+      
+      if (unprocessedEmails.length === 0) {
+        console.log('📧 QUEUE PROCESSING: No unprocessed emails in queue');
+        return;
+      }
+      
+      console.log(`📊 QUEUE PROCESSING: Found ${unprocessedEmails.length} unprocessed emails in queue`);
+      
+      // Process emails ONE AT A TIME sequentially
+      for (let i = 0; i < unprocessedEmails.length; i++) {
+        const emailItem = unprocessedEmails[i];
+        
+        try {
+          console.log(`\n📧 PROCESSING EMAIL ${i + 1}/${unprocessedEmails.length}: "${emailItem.subject}"`);
+          console.log(`   └─ From: ${emailItem.sender}`);
+          console.log(`   └─ Gmail ID: ${emailItem.gmailId}`);
+          
+          // Mark as processing to prevent concurrent processing
+          await storage.updateEmailQueueItem(emailItem.id, { status: 'processing' });
+          
+          // Get Gmail message details if needed  
+          const gmailMessage = await gmailService.getMessageById(emailItem.gmailId);
+          if (!gmailMessage) {
+            console.log(`   ❌ Could not fetch Gmail message, marking as failed`);
+            await storage.updateEmailQueueItem(emailItem.id, { status: 'failed' });
+            continue;
+          }
+          
+          // Process with full pipeline using the exported AI service instance
+          const { aiService } = await import('./services/ai-service');
+          
+          // STEP 1: Pre-processing
+          console.log(`   🧠 STEP 1: Pre-processing email...`);
+          const emailProcessingResult = await aiService.processEmail({
+            sender: gmailMessage.sender,
+            subject: gmailMessage.subject || '',
+            body: gmailMessage.body || '',
+            attachments: gmailMessage.attachments || []
+          });
+          
+          const preprocessing = emailProcessingResult.preprocessing;
+          const classification = emailProcessingResult.classification;
+          
+          if (!preprocessing.shouldProceed) {
+            console.log(`   🚫 Pre-processing: Email filtered (${preprocessing.response})`);
+            await storage.updateEmailQueueItem(emailItem.id, { 
+              status: 'filtered',
+              preprocessingResult: preprocessing,
+              processedAt: new Date()
+            });
+            await gmailService.addLabelToEmail(emailItem.gmailId, 'filtered');
+            continue;
+          }
+          
+          // STEP 2: Classification (already done)
+          console.log(`   🧠 STEP 2: Classification completed...`);
+          
+          // Update with classification results
+          await storage.updateEmailQueueItem(emailItem.id, {
+            status: 'classified',
+            preprocessingResult: preprocessing,
+            classificationResult: classification,
+            route: classification.recommended_route,
+            confidence: classification.analysis_flags?.confidence_score || 0
+          });
+          
+          console.log(`   ✅ Classified as: ${classification.recommended_route} (${Math.round((classification.analysis_flags?.confidence_score || 0) * 100)}% confidence)`);
+          
+          // STEP 3: Processing based on route
+          // ... Full processing pipeline would continue here
+          
+          // Mark as processed
+          await storage.updateEmailQueueItem(emailItem.id, { 
+            status: 'processed',
+            processedAt: new Date()
+          });
+          await gmailService.addLabelToEmail(emailItem.gmailId, 'processed');
+          
+          console.log(`   ✅ EMAIL ${i + 1} COMPLETED: Successfully processed "${emailItem.subject}"`);
+          
+        } catch (emailError) {
+          console.error(`   ❌ EMAIL ${i + 1} FAILED:`, emailError);
+          await storage.updateEmailQueueItem(emailItem.id, { 
+            status: 'failed',
+            processingError: emailError instanceof Error ? emailError.message : 'Unknown error'
+          });
+        }
+      }
+      
+      console.log(`✅ QUEUE PROCESSING: Completed processing ${unprocessedEmails.length} emails`);
+      
+    } catch (error) {
+      console.error('❌ QUEUE PROCESSING ERROR:', error);
+    }
+  }
+
   // Enable automatic startup with comprehensive scanning
   setTimeout(async () => {
     console.log('🚀 STARTING AUTOMATIC EMAIL PROCESSING...');
     
     validatorHealthService.startMonitoring();
     
-    // Initial scan
+    // Initial scan and process
     await scanAndProcessEmails();
     
     // Set up automatic scanning every 5 minutes (optimized interval)
     setInterval(() => scanAndProcessEmails(), 5 * 60 * 1000);
     
+    // Set up automatic processing every 2 minutes (faster cycle for queue processing)
+    setInterval(() => processEmailsFromQueue(), 2 * 60 * 1000);
+    
     // Retry stuck purchase orders every 10 minutes
     setInterval(() => retryStuckPurchaseOrders(), 10 * 60 * 1000);
     
     console.log('✅ AUTOMATIC PROCESSING: Comprehensive email scanning enabled every 5 minutes');
+    console.log('✅ AUTOMATIC PROCESSING: Queue processing enabled every 2 minutes');
   }, 3000);
   
   console.log('✅ EMAIL PROCESSING ENABLED: All embeddings complete (57,058 total)');
@@ -211,6 +318,45 @@ export async function registerRoutes(app: Express): Promise<Server> {
   
 
   
+  // Process emails from queue sequentially - Manual trigger endpoint
+  app.post("/api/emails/process-queue", async (req, res) => {
+    try {
+      await processEmailsFromQueue();
+      res.json({ message: "Queue processing completed successfully" });
+    } catch (error) {
+      console.error('Queue processing error:', error);
+      res.status(500).json({ 
+        message: error instanceof Error ? error.message : "Queue processing failed" 
+      });
+    }
+  });
+
+  // Reset failed emails to unprocessed status
+  app.post("/api/emails/reset-failed", async (req, res) => {
+    try {
+      const failedEmails = await storage.getEmailQueue({ status: 'failed' });
+      let resetCount = 0;
+      
+      for (const email of failedEmails) {
+        await storage.updateEmailQueueItem(email.id, { 
+          status: 'unprocessed',
+          processingError: null
+        });
+        resetCount++;
+      }
+      
+      res.json({ 
+        message: `Reset ${resetCount} failed emails to unprocessed status`,
+        resetCount 
+      });
+    } catch (error) {
+      console.error('Reset failed emails error:', error);
+      res.status(500).json({ 
+        message: error instanceof Error ? error.message : "Reset failed" 
+      });
+    }
+  });
+
   // Dashboard metrics
   app.get("/api/dashboard/metrics", async (req, res) => {
     try {

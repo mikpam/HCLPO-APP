@@ -267,3 +267,4 @@ class AIServiceManager {
 }
 
 export const aiService = new AIServiceManager();
+export { AIServiceManager };
