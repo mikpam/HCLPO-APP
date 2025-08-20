@@ -318,8 +318,8 @@ export default function PurchaseOrdersPage() {
         const pdfUrl = filePath.startsWith('/objects/') ? filePath : `/objects/attachments/${filePath.split('/').pop()}`;
         window.open(pdfUrl, '_blank');
       } else {
-        // For EML files, fetch text content and show in modal
-        const response = await fetch(`/api/files/view?path=${encodeURIComponent(filePath)}`);
+        // For EML files, fetch text content directly from object storage and show in modal
+        const response = await fetch(filePath); // Use direct object storage route
         if (response.ok) {
           const content = await response.text();
           setFileViewModal({
@@ -328,6 +328,8 @@ export default function PurchaseOrdersPage() {
             content,
             title
           });
+        } else {
+          console.error('Failed to fetch EML content');
         }
       }
     } catch (error) {
