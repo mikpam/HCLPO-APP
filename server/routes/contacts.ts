@@ -8,7 +8,7 @@ export function registerContactRoutes(app: Express): void {
   app.get("/api/contacts", async (req, res) => {
     try {
       const page = parseInt(req.query.page as string) || 1;
-      const limit = parseInt(req.query.limit as string) || 1000; // Higher limit for contacts since they're often browsed
+      const limit = parseInt(req.query.limit as string) || 50000; // Show all contacts by default
       const offset = (page - 1) * limit;
       const search = req.query.search as string;
       const status = req.query.status as string; // "all", "active", "inactive"
