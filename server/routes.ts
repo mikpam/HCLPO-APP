@@ -132,15 +132,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Create a simple polling function that checks for new emails every 2 minutes
       const pollEmails = async () => {
         try {
-          const response = await fetch('http://localhost:5000/api/emails/process-normal', {
+          const response = await fetch('http://localhost:5000/api/emails/process-single', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' }
           });
           
           if (response.ok) {
             const result = await response.json();
-            if (result.emailsProcessed > 0) {
-              console.log(`📧 Auto-polling: Processed ${result.emailsProcessed} emails`);
+            if (result.processed && result.processed > 0) {
+              console.log(`📧 Auto-polling: Processed ${result.processed} email(s)`);
             }
           }
         } catch (error) {
