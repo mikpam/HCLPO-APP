@@ -323,6 +323,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
       }
 
+      // 🔥 START REAL-TIME STATUS TRACKING
+      updateProcessingStatus({
+        isProcessing: true,
+        currentStep: "email_preprocessing",
+        currentEmail: `${messageToProcess.subject} (${messageToProcess.sender})`,
+        emailNumber: 1,
+        totalEmails: 1
+      });
+
       console.log(`\n🔄 MANUAL PROCESSING: Processing single email`);
       console.log(`📧 EMAIL: "${messageToProcess.subject}"`);
       console.log(`   └─ From: ${messageToProcess.sender}`);
@@ -535,6 +544,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
                   
                   // Step 2: Process with Gemini extraction (only for documents that passed filter)
                   try {
+                    // 🔥 UPDATE STATUS: Gemini Extraction
+                    updateProcessingStatus({
+                      currentStep: "gemini_extraction"
+                    });
+
                     console.log(`\n🧠 GEMINI EXTRACTION: Processing validated PO document...`);
                     console.log(`   └─ File: ${pdfAttachment.filename}`);
                     
@@ -626,6 +640,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
           console.log(`   └─ Skipping Gemini processing (route: ${processingResult.classification.recommended_route})`);
         }
         
+        // 🔥 UPDATE STATUS: PO Assignment
+        updateProcessingStatus({
+          currentStep: "po_assignment",
+          currentPO: extractionResult?.purchaseOrder?.purchaseOrderNumber || "Generating..."
+        });
+
         // Use extracted PO number if available, otherwise generate synthetic one
         console.log(`\n🆔 PO NUMBER ASSIGNMENT:`);
         let poNumber;
@@ -674,6 +694,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
           console.log(`   └─ Contact Phone: ${extractionResult.purchaseOrder.contact.phone || 'Not provided'}`);
           console.log(`   └─ Job Title: ${extractionResult.purchaseOrder.contact.jobTitle || 'Not provided'}`);
           
+          // 🔥 UPDATE STATUS: Contact Validation
+          updateProcessingStatus({
+            currentStep: "contact_validation"
+          });
+
           // Optionally validate against HCL contacts database
           try {
             // Create fresh validator instance for this email to prevent race conditions with health monitoring
@@ -715,6 +740,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
           console.log(`\n👤 CONTACT EXTRACTION:`);
           console.log(`   ⚠️  No contact information extracted from purchase order`);
         }
+
+        // 🔥 UPDATE STATUS: Customer Validation
+        updateProcessingStatus({
+          currentStep: "customer_validation"
+        });
 
         // Lookup customer in HCL database for all purchase orders using OpenAI-powered matching
         if (extractionResult?.purchaseOrder?.customer) {
@@ -809,6 +839,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
           effectiveSenderForPO = customerInfo.email || messageToProcess.sender;
         }
 
+        // 🔥 UPDATE STATUS: Line Item Validation
+        updateProcessingStatus({
+          currentStep: "line_item_validation"
+        });
+
         // SKU Validation for extracted line items
         let validatedLineItems: any[] | null = null;
         if (extractionResult?.lineItems?.length > 0) {
@@ -895,6 +930,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
           contact: extractionResult?.purchaseOrder?.contact?.name || null // Store contact name for NetSuite
         });
       }
+
+      // 🔥 UPDATE STATUS: Completion
+      updateProcessingStatus({
+        currentStep: "completed"
+      });
 
       // Mark as processed in Gmail with preprocessing result
       await gmailService.markAsProcessed(messageToProcess.id, processingResult.preprocessing);
