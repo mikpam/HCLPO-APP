@@ -1,7 +1,7 @@
 import OpenAI from "openai";
 import { db } from "../db";
 import { contacts } from "../../shared/schema";
-import { eq, isNull, sql } from "drizzle-orm";
+import { eq, isNull, sql, and } from "drizzle-orm";
 
 function getOpenAIClient(): OpenAI {
   const apiKey = process.env.OPENAI_API_KEY;
@@ -59,12 +59,12 @@ export class ContactEmbeddingService {
   }
 
   /**
-   * Update embedding for a single contact
+   * Generate embeddings for a contact and store in database
    */
   async updateContactEmbedding(contactId: string): Promise<void> {
-    console.log(`🔄 Updating embedding for contact: ${contactId}`);
-
     try {
+      console.log(`🔄 Processing contact ${contactId}...`);
+
       // Get the contact
       const contact = await db
         .select()
@@ -73,14 +73,14 @@ export class ContactEmbeddingService {
         .limit(1);
 
       if (contact.length === 0) {
-        throw new Error(`Contact not found: ${contactId}`);
+        throw new Error(`Contact ${contactId} not found`);
       }
 
       const contactData = contact[0];
-      
+
       // Build contact text
       const contactText = this.buildContactText(contactData);
-      console.log(`   📝 Contact text: "${contactText}"`);
+      console.log(`   📝 Contact text: ${contactText}`);
 
       // Generate embedding
       const embedding = await this.generateEmbedding(contactText);
@@ -163,11 +163,84 @@ export class ContactEmbeddingService {
         )
       );
 
-      console.log(`   🎯 Successfully processed ${contactsWithoutEmbeddings.length}/${contactsWithoutEmbeddings.length} contacts`);
-      return contactsWithoutEmbeddings.length;
+      console.log(`   💾 Updated ${updates.length} contacts with embeddings`);
+      return updates.length;
 
     } catch (error) {
-      console.error("❌ Error in optimized batch processing:", error);
+      console.error(`   ❌ ULTRA-OPTIMIZED EMBEDDING ERROR:`, error);
+      throw error;
+    }
+  }
+
+  /**
+   * ACTIVE CONTACTS ONLY: Generate embeddings for active contacts in massive parallel batches
+   * - Only processes contacts where inactive = false
+   * - Batch OpenAI API calls (up to 100 texts per request)
+   * - Parallel database updates
+   * - Memory-efficient processing
+   */
+  async generateActiveContactEmbeddingsOptimized(batchSize: number = 100): Promise<number> {
+    console.log(`🚀 ACTIVE CONTACTS ULTRA-OPTIMIZED EMBEDDING: Starting mega-batch processing (batch size: ${batchSize})`);
+
+    try {
+      // Get ACTIVE contacts without embeddings
+      const contactsWithoutEmbeddings = await db
+        .select()
+        .from(contacts)
+        .where(and(
+          isNull(contacts.contactEmbedding),
+          eq(contacts.inactive, false)
+        ))
+        .limit(batchSize);
+
+      console.log(`   📊 Found ${contactsWithoutEmbeddings.length} ACTIVE contacts without embeddings`);
+
+      if (contactsWithoutEmbeddings.length === 0) {
+        console.log(`   ✅ All active contacts already have embeddings`);
+        return 0;
+      }
+
+      // Build all contact texts in parallel
+      const contactTexts = contactsWithoutEmbeddings.map(contact => ({
+        id: contact.id,
+        text: this.buildContactText(contact)
+      }));
+
+      console.log(`   🔥 ACTIVE BATCH PROCESSING: Sending ${contactTexts.length} texts to OpenAI in ONE request`);
+
+      // MASSIVE OPTIMIZATION: Single OpenAI API call for entire batch
+      const response = await this.openai.embeddings.create({
+        model: "text-embedding-3-small",
+        input: contactTexts.map(ct => ct.text), // Send all texts at once
+      });
+
+      console.log(`   ✅ RECEIVED ${response.data.length} embeddings in single API call`);
+
+      // Prepare batch database updates
+      const updates = contactTexts.map((ct, index) => ({
+        contactId: ct.id,
+        contactText: ct.text,
+        embedding: response.data[index].embedding
+      }));
+
+      // ULTRA-FAST: Parallel database updates
+      await Promise.all(
+        updates.map(update => 
+          db.update(contacts)
+            .set({
+              contactText: update.contactText,
+              contactEmbedding: update.embedding,
+              updatedAt: new Date(),
+            })
+            .where(eq(contacts.id, update.contactId))
+        )
+      );
+
+      console.log(`   💾 Updated ${updates.length} ACTIVE contacts with embeddings`);
+      return updates.length;
+
+    } catch (error) {
+      console.error(`   ❌ ACTIVE CONTACTS ULTRA-OPTIMIZED EMBEDDING ERROR:`, error);
       throw error;
     }
   }
@@ -223,46 +296,44 @@ export class ContactEmbeddingService {
 
     try {
       // Get total count first
-      const totalCount = await db
-        .select({ count: sql<number>`count(*)` })
-        .from(contacts);
-
-      console.log(`   📊 Total contacts to process: ${totalCount[0].count}`);
+      const totalCount = await db.select({ count: sql<number>`count(*)` }).from(contacts);
+      console.log(`   📊 Total contacts to regenerate: ${totalCount[0].count}`);
 
       let processedCount = 0;
       let offset = 0;
 
       while (true) {
-        // Get batch of contacts
-        const batch = await db
+        const contactBatch = await db
           .select()
           .from(contacts)
           .limit(batchSize)
           .offset(offset);
 
-        if (batch.length === 0) break;
+        if (contactBatch.length === 0) break;
 
-        console.log(`   🔄 Processing batch ${Math.floor(offset / batchSize) + 1} (${batch.length} contacts)`);
+        console.log(`   📦 Processing batch ${Math.floor(offset / batchSize) + 1}: ${contactBatch.length} contacts`);
 
-        for (const contact of batch) {
+        for (const contact of contactBatch) {
           try {
             await this.updateContactEmbedding(contact.id);
             processedCount++;
+            
+            // Add delay to avoid rate limiting
+            await new Promise(resolve => setTimeout(resolve, 150));
           } catch (error) {
-            console.error(`   ⚠️  Failed to process contact ${contact.id}:`, error);
+            console.error(`   ⚠️  Failed to regenerate embedding for contact ${contact.id}:`, error);
+            // Continue with other contacts
           }
-          
-          // Rate limiting delay
-          await new Promise(resolve => setTimeout(resolve, 150));
         }
 
         offset += batchSize;
+        console.log(`   📈 Progress: ${processedCount}/${totalCount[0].count} contacts`);
       }
 
-      console.log(`   🎯 Successfully regenerated embeddings for ${processedCount} contacts`);
+      console.log(`   🎯 Regeneration complete: ${processedCount}/${totalCount[0].count} contacts`);
       return processedCount;
     } catch (error) {
-      console.error(`   ❌ Full regeneration failed:`, error);
+      console.error(`   ❌ Embedding regeneration failed:`, error);
       throw error;
     }
   }
@@ -279,7 +350,7 @@ export class ContactEmbeddingService {
     try {
       const [totalResult, withEmbeddingsResult] = await Promise.all([
         db.select({ count: sql<number>`count(*)` }).from(contacts),
-        db.select({ count: sql<number>`count(*)` }).from(contacts).where(sql`contact_embedding IS NOT NULL`)
+        db.select({ count: sql<number>`count(*)` }).from(contacts).where(isNull(contacts.contactEmbedding))
       ]);
 
       const total = totalResult[0].count;
@@ -291,14 +362,11 @@ export class ContactEmbeddingService {
         total,
         withEmbeddings,
         withoutEmbeddings,
-        percentage: Math.round(percentage * 100) / 100
+        percentage
       };
     } catch (error) {
-      console.error("Error getting embedding stats:", error);
+      console.error(`   ❌ Failed to get embedding stats:`, error);
       throw error;
     }
   }
 }
-
-// Export singleton instance
-export const contactEmbeddingService = new ContactEmbeddingService();

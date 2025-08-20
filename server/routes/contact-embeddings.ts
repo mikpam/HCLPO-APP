@@ -1,6 +1,8 @@
 import type { Express } from "express";
-import { contactEmbeddingService } from "../services/contact-embedding";
+import { ContactEmbeddingService } from "../services/contact-embedding";
 import { hybridContactSearchService } from "../services/hybrid-contact-search";
+
+const contactEmbeddingService = new ContactEmbeddingService();
 
 export function registerContactEmbeddingRoutes(app: Express) {
   console.log("📡 Registering contact embedding management routes");
