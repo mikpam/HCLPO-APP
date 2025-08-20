@@ -200,6 +200,25 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Memory health endpoint (OpenAI recommendation)
+  app.get("/api/memory/health", async (req, res) => {
+    try {
+      const { getMemoryStats } = await import('./utils/memory-monitor');
+      const stats = getMemoryStats();
+      
+      res.json({
+        ...stats,
+        status: stats.heapUsedMB > 700 ? 'pressure' : 'ok',
+        recommendation: stats.heapUsedMB > 700 ? 'Consider reducing batch sizes' : 'Memory usage normal'
+      });
+    } catch (error) {
+      res.status(500).json({ 
+        error: 'Failed to get memory stats',
+        message: error instanceof Error ? error.message : 'Unknown error'
+      });
+    }
+  });
+
   // TEST: Customer number format validation
   app.post("/api/test/customer-format-validation", async (req, res) => {
     try {

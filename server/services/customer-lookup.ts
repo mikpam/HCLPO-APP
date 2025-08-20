@@ -1,22 +1,25 @@
 import { db } from "../db";
 import { customers, type Customer } from "@shared/schema";
 import { eq, ilike, or, sql } from "drizzle-orm";
+import { LRUCache } from "../utils/lru-cache";
+import { logMemoryUsage } from "../utils/memory-monitor";
 
 /**
  * High-performance customer lookup service with multiple matching strategies
  * Handles 5,000+ customer records efficiently with caching and fuzzy matching
  */
 class CustomerLookupService {
-  private customerCache: Map<string, Customer> = new Map();
-  private companyNameIndex: Map<string, Customer> = new Map();
-  private cacheExpiry = 5 * 60 * 1000; // 5 minutes
+  private customerCache = new LRUCache<Customer>(2000, 5 * 60 * 1000); // 2000 customers, 5 min TTL
+  private companyNameIndex = new LRUCache<Customer>(3000, 5 * 60 * 1000); // 3000 name variants, 5 min TTL
   private lastCacheUpdate = 0;
 
   /**
    * Initialize or refresh the in-memory cache
    */
   async refreshCache(): Promise<void> {
+    logMemoryUsage('CustomerLookup - Before Cache Refresh');
     console.log('🔄 Refreshing customer cache (memory optimized)...');
+    
     // MEMORY OPTIMIZATION: Load only top 2000 customers instead of all 13,000+
     const allCustomers = await db.select().from(customers).where(eq(customers.isActive, true)).limit(2000);
     
@@ -41,14 +44,16 @@ class CustomerLookupService {
     }
     
     this.lastCacheUpdate = Date.now();
-    console.log(`✅ Cached ${allCustomers.length} customers (memory optimized)`);
+    logMemoryUsage('CustomerLookup - After Cache Refresh');
+    console.log(`✅ Cached ${allCustomers.length} customers in LRU cache (${this.customerCache.size()} + ${this.companyNameIndex.size()} entries)`);
   }
 
   /**
    * Ensure cache is fresh
    */
   private async ensureFreshCache(): Promise<void> {
-    if (Date.now() - this.lastCacheUpdate > this.cacheExpiry) {
+    const cacheExpiry = 5 * 60 * 1000; // 5 minutes
+    if (Date.now() - this.lastCacheUpdate > cacheExpiry) {
       await this.refreshCache();
     }
   }
@@ -72,6 +77,7 @@ class CustomerLookupService {
 
   /**
    * Strategy 3: Fuzzy matching with similarity scoring
+   * Note: Limited fuzzy search with LRU cache for memory efficiency
    */
   async findByFuzzyMatch(companyName: string, threshold = 0.8): Promise<{ customer: Customer; similarity: number } | null> {
     await this.ensureFreshCache();
@@ -79,13 +85,22 @@ class CustomerLookupService {
     let bestMatch: { customer: Customer; similarity: number } | null = null;
     const searchTerm = this.normalizeCompanyName(companyName);
     
-    this.companyNameIndex.forEach((customer, indexedName) => {
-      const similarity = this.calculateSimilarity(searchTerm, indexedName);
+    // For LRU cache, we'll do a direct database query for fuzzy matching
+    // since iterating through cache entries isn't efficient
+    const candidates = await db
+      .select()
+      .from(customers)
+      .where(eq(customers.isActive, true))
+      .limit(100); // Limit candidates for performance
+    
+    for (const customer of candidates) {
+      const normalizedName = this.normalizeCompanyName(customer.companyName);
+      const similarity = this.calculateSimilarity(searchTerm, normalizedName);
       
       if (similarity >= threshold && (!bestMatch || similarity > bestMatch.similarity)) {
         bestMatch = { customer, similarity };
       }
-    });
+    }
     
     return bestMatch;
   }

@@ -1,0 +1,101 @@
+Here’s a tight, proven playbook to fix app memory pain without guesswork. It’s ordered so you stop the bleeding first, then shrink, then harden.
+
+# 0) Observe (cheap, always‑on)
+
+* Expose `/health` with `heapUsedMB`, `rssMB`, queue sizes.
+* Log memory at key points: after startup, after each batch, after major jobs.
+* Take one heap snapshot during a test run (Node `--inspect`) to confirm there isn’t a true leak (e.g., timers/listeners not cleared).
+
+# 1) Stop the bleeding (disable + pace work)
+
+* Gate all boot‑time work behind env flags; start processors only on demand.
+* Put all email/attachment processing behind a queue with **small concurrency** (e.g., 1–2) and backpressure.
+* Add an idempotency check to avoid reprocessing the same message.
+
+```ts
+// Memory guard + backpressure example
+import PQueue from "p-queue";
+const queue = new PQueue({ concurrency: 2 });
+
+function heapMB() { return process.memoryUsage().heapUsed / 1024 / 1024; }
+const SOFT_LIMIT = 700; // tune for your container
+
+async function maybePauseQueue() {
+  if (heapMB() > SOFT_LIMIT && !queue.isPaused) queue.pause();
+  if (heapMB() < SOFT_LIMIT * 0.8 && queue.isPaused) queue.start();
+}
+setInterval(maybePauseQueue, 2000);
+```
+
+# 2) Shrink the footprint (load less)
+
+* **Lazy‑load** everything; preload only tiny lookup keys (e.g., `normalizedName → id`, `email → id`, `baseSku → id`).
+* Replace unbounded `Map`s with **size‑bounded LRUs** for hot records (e.g., LRU of a few thousand entries with TTL).
+* Stream big reads in pages (100–1000 rows) via async generators instead of `SELECT *`.
+
+```ts
+// Paginated streaming keeps memory flat
+const PAGE = 500;
+export async function* streamRows<T>(fetchPage: (offset:number, limit:number)=>Promise<T[]>) {
+  for (let off = 0; ; off += PAGE) {
+    const rows = await fetchPage(off, PAGE);
+    if (!rows.length) break;
+    yield rows;
+  }
+}
+```
+
+# 3) Push state out of process
+
+* Move “detail” caches to **Redis** with TTL and `maxmemory-policy allkeys-lru` so eviction happens there, not on your Node heap.
+* Use a Redis‑backed queue (e.g., BullMQ) so batches aren’t held in memory.
+* Optional: Redis Bloom filters to short‑circuit obvious misses (e.g., SKU not present).
+
+# 4) Reduce peak allocations (GC‑friendly patterns)
+
+* Process large arrays in **small chunks** with `for…of`; avoid `map/filter` chains that materialize big temporaries.
+* Yield between chunks (`await Promise.resolve()` or `setImmediate`) to let GC run.
+* Don’t `JSON.parse` megabyte strings if you can stream them.
+* Avoid copying big objects; pass IDs, re‑fetch details on demand.
+
+# 5) Fix classic leak sources
+
+* Always clear `setInterval`/listeners on shutdown or restart.
+* No global “append forever” arrays/Maps.
+* Ensure `.map(async …)` is followed by `await Promise.all(...)` (dangling promises keep references alive).
+* Close cursors/streams after each page.
+
+# 6) Constrain and scale safely
+
+* Start with a realistic heap cap (e.g., `NODE_OPTIONS="--max-old-space-size=768"`). A cap reveals pressure early instead of letting the process balloon.
+* Prefer **multiple small workers** (PM2/Cluster/K8s HPA) over one giant process.
+* Crash‑only on fatal OOM with a supervisor (don’t try to limp along after an OOM).
+
+# 7) Set a memory budget and enforce it
+
+Define budgets per component (e.g., API ≤ 250 MB heap, worker ≤ 500 MB). If a job would exceed the budget:
+
+* shrink batch size,
+* pause the queue,
+* or spill to Redis/disk.
+
+```ts
+// Batch size auto‑tuner sketch
+let batchSize = 50;
+async function processLoop() {
+  const items = await fetchNextBatch(batchSize);
+  await Promise.all(items.map(handle));
+  if (heapMB() > SOFT_LIMIT) batchSize = Math.max(10, Math.floor(batchSize / 2));
+  else if (heapMB() < SOFT_LIMIT * 0.6) batchSize = Math.min(200, batchSize + 10);
+}
+```
+
+# 8) Verify with a short load test
+
+* Run a 10–15 minute test that mimics production input rates.
+* Watch heap plateau (should sawtooth under your soft limit).
+* Confirm no long‑lived growth in successive intervals (leak signal).
+
+---
+
+If you want, paste your startup/processor snippets and I’ll convert them to: (a) env‑gated startup, (b) BullMQ or PQueue with backpressure, (c) LRU + Redis read‑through caches, and (d) paginated DB loaders. This combo fixes “load 5k/25k/11k on boot + aggressive background work” reliably and keeps the heap flat.

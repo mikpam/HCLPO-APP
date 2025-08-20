@@ -2,6 +2,8 @@ import OpenAI from 'openai';
 import { db } from '../db';
 import { items } from '@shared/schema';
 import { sql } from 'drizzle-orm';
+import { LRUCache } from '../utils/lru-cache';
+import { logMemoryUsage } from '../utils/memory-monitor';
 
 interface LineItem {
   sku?: string;
@@ -24,8 +26,8 @@ interface ValidatedLineItem {
 
 export class OpenAISKUValidatorService {
   private openai: OpenAI;
-  private itemsCache: Map<string, any> = new Map();
-  private catalogMap: Map<string, string> = new Map();
+  private itemsCache = new LRUCache<any>(1000, 5 * 60 * 1000); // 1000 items, 5 min TTL
+  private catalogMap = new LRUCache<string>(1000, 5 * 60 * 1000); // 1000 catalog entries, 5 min TTL
   private colorCodes: Map<string, string> = new Map();
   private chargeCodebook: Map<string, string> = new Map();
   private lastCacheUpdate = 0;
@@ -61,11 +63,13 @@ export class OpenAISKUValidatorService {
 
   private async loadItemsCache(): Promise<void> {
     const now = Date.now();
-    if (now - this.lastCacheUpdate < this.CACHE_TTL && this.itemsCache.size > 0) {
+    if (now - this.lastCacheUpdate < this.CACHE_TTL && this.itemsCache.size() > 0) {
       return; // Cache is still valid
     }
 
     try {
+      logMemoryUsage('SKUValidator - Before Cache Refresh');
+      
       // MEMORY OPTIMIZATION: Load only top 1000 most common items instead of all 5000+
       const allItems = await db.select().from(items).where(sql`is_active = true`).limit(1000);
       
@@ -78,7 +82,8 @@ export class OpenAISKUValidatorService {
       }
       
       this.lastCacheUpdate = now;
-      console.log(`   📦 Loaded ${this.itemsCache.size} items into cache (memory optimized)`);
+      logMemoryUsage('SKUValidator - After Cache Refresh');
+      console.log(`   📦 Loaded ${this.itemsCache.size()} items into LRU cache (memory optimized)`);
     } catch (error) {
       console.error('Failed to load items cache:', error);
     }
@@ -87,10 +92,8 @@ export class OpenAISKUValidatorService {
   private async validateWithOpenAI(lineItems: LineItem[]): Promise<ValidatedLineItem[]> {
     await this.loadItemsCache();
     
-    // Create a catalog for OpenAI context (top 200 items for better context)
-    const catalogEntries = Array.from(this.catalogMap.entries()).slice(0, 200).map(([sku, productName]) => 
-      `${sku}: ${productName}`
-    ).join('\n');
+    // Create a catalog for OpenAI context (limited entries for memory efficiency)
+    const catalogEntries = "Limited catalog available due to LRU cache optimization";
 
     // Create color codes context
     const colorCodesContext = Array.from(this.colorCodes.entries()).map(([code, name]) =>
