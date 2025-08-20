@@ -330,12 +330,33 @@ export default function PurchaseOrdersPage() {
           (title && title.includes(o.poNumber))
         );
         
+        if (!order) {
+          setFileViewModal({
+            isOpen: true,
+            type,
+            content: 'Purchase order not found for this EML file.',
+            title: 'Email Information - Not Found'
+          });
+          return;
+        }
+
+        // Get customer info using the same function as the table
+        const customerInfo = getCustomerInfo(order);
+        
+        // Calculate total from line items
+        const lineItems = (order.lineItems as any[]) || [];
+        const totalAmount = lineItems.reduce((sum, item) => {
+          const price = parseFloat(item?.unitPrice || item?.price || '0');
+          const qty = parseInt(item?.quantity || '1');
+          return sum + (price * qty);
+        }, 0);
+        
         let emailInfo = `=== EMAIL INFORMATION ===
 
-Purchase Order: ${order?.poNumber || 'N/A'}
-Customer: ${order?.customerName || 'N/A'}  
-Total Amount: ${order?.totalAmount ? `$${order.totalAmount}` : 'N/A'}
-Processing Date: ${order?.processedAt ? new Date(order.processedAt).toLocaleDateString() : 'N/A'}
+Purchase Order: ${order.poNumber || 'N/A'}
+Customer: ${customerInfo.name || 'N/A'}  
+Total Amount: ${totalAmount > 0 ? `$${totalAmount.toFixed(2)}` : 'N/A'}
+Processing Date: ${order.createdAt ? new Date(order.createdAt).toLocaleDateString() : 'N/A'}
 
 Status: Email successfully processed and purchase order created
 Source: Email processing system
@@ -347,9 +368,9 @@ and is available in the purchase order details above.
 
 === PURCHASE ORDER DETAILS ===
 
-Line Items: ${order?.lineItems?.length || 0} items
-${order?.lineItems?.map((item, i) => 
-  `${i + 1}. ${item.description || item.sku} - Qty: ${item.quantity} - $${item.unitPrice || 'N/A'}`
+Line Items: ${lineItems.length} items
+${lineItems.map((item, i) => 
+  `${i + 1}. ${item?.description || item?.sku || 'Unknown Item'} - Qty: ${item?.quantity || '1'} - $${item?.unitPrice || item?.price || 'N/A'}`
 ).join('\n') || 'No line items available'}
 
 === END EMAIL INFORMATION ===`;
