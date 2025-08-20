@@ -42,8 +42,9 @@ export const purchaseOrders = pgTable("purchase_orders", {
   contactValidated: boolean("contact_validated").default(false),
   lineItemsValidated: boolean("line_items_validated").default(false),
   validationCompleted: boolean("validation_completed").default(false),
-  // File storage paths
-  attachmentPaths: text("attachment_path").array(), // Array of paths to attachments in object storage - using singular for production compatibility
+  // File storage paths - matching production database exactly
+  attachmentPath: text("attachment_path"), // Single path for backwards compatibility
+  attachmentPaths: text("attachment_paths").array(), // Array of paths to attachments in object storage
   extractionSourceFile: text("extraction_source_file"), // Specific file path used for successful extraction
   emlFilePath: text("eml_file_path"), // Path to .eml file in object storage
   createdAt: timestamp("created_at").defaultNow(),
