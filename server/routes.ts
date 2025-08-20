@@ -111,18 +111,38 @@ export async function registerRoutes(app: Express): Promise<Server> {
     console.error('Failed to initialize Gmail labels:', error);
   }
 
-  // MEMORY OPTIMIZATION: Disable auto-start to prevent memory overflow on startup
-  // Health checks will run after processing completes instead of on timers
-  console.log('🚀 SERVER STARTUP: Email processing available on-demand to prevent memory issues');
+  // MEMORY OPTIMIZED AUTO-START: Re-enable automatic processing with optimizations
+  console.log('🚀 SERVER STARTUP: Email processing with memory optimizations active');
   console.log('🧠 MEMORY OPTIMIZATION: Health checks moved to post-processing stage');
   
-  // Disable automatic startup - call manually via API endpoints when needed
-  // setTimeout(async () => {
-  //   validatorHealthService.startMonitoring();
-  //   processEmailsInBackground();
-  //   setInterval(() => processEmailsInBackground(), 2 * 60 * 1000);
-  //   setInterval(() => retryStuckPurchaseOrders(), 5 * 60 * 1000);
-  // }, 2000);
+  // Re-enable automatic startup with optimizations in place
+  setTimeout(async () => {
+    console.log('🔄 AUTO-PROCESSING: Starting memory-optimized email processing');
+    console.log('⚡ ARCHITECTURE: Lightweight health checks after processing completion');
+    console.log('🎯 HYBRID VALIDATION: Full semantic search capabilities active');
+    
+    // Start processing emails immediately with sequential architecture
+    processEmailsInBackground();
+    
+    // Schedule continuous email checking every 2 minutes for new emails
+    setInterval(async () => {
+      try {
+        console.log('🔄 SCHEDULED EMAIL SCAN: Checking for new emails...');
+        await processEmailsInBackground();
+      } catch (error) {
+        console.error('Error in scheduled email processing:', error);
+      }
+    }, 2 * 60 * 1000); // 2 minutes for responsive email processing
+    
+    // Check for stuck purchase orders every 5 minutes
+    setInterval(async () => {
+      try {
+        await retryStuckPurchaseOrders();
+      } catch (error) {
+        console.error('Error in periodic stuck PO check:', error);
+      }
+    }, 5 * 60 * 1000); // 5 minutes for faster retry testing
+  }, 3000); // Slight delay to ensure full startup
   
   console.log('✅ EMAIL PROCESSING ENABLED: All embeddings complete (57,058 total)');
   console.log('📊 EMBEDDING STATUS: Contact (43,620), Customer (13,665), Item (5,373) - 100%');
