@@ -1522,6 +1522,69 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // File viewing endpoint for EML and other files
+  app.get("/api/files/view", async (req, res) => {
+    try {
+      const { path } = req.query;
+      if (!path || typeof path !== 'string') {
+        return res.status(400).json({ error: 'File path is required' });
+      }
+
+      console.log(`📁 Viewing file: ${path}`);
+
+      // Use ObjectStorageService to fetch the file content
+      const objectStorageService = new ObjectStorageService();
+      
+      // Parse the object path to get bucket and file info
+      const { bucketName, objectName } = parseObjectPath(path);
+      const bucket = objectStorageService.objectStorageClient.bucket(bucketName);
+      const file = bucket.file(objectName);
+
+      // Check if file exists
+      const [exists] = await file.exists();
+      if (!exists) {
+        console.log(`❌ File not found: ${path}`);
+        return res.status(404).json({ error: 'File not found' });
+      }
+
+      // Download file content as text
+      const [content] = await file.download();
+      const textContent = content.toString('utf-8');
+
+      console.log(`✅ Successfully retrieved file content (${content.length} bytes)`);
+      
+      // Set appropriate headers for text content
+      res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+      res.send(textContent);
+
+    } catch (error) {
+      console.error('❌ Error viewing file:', error);
+      res.status(500).json({ 
+        error: 'Failed to view file',
+        message: error instanceof Error ? error.message : 'Unknown error'
+      });
+    }
+  });
+
   const server = createServer(app);
   return server;
-};
+}
+
+// Helper function to parse object paths (from objectStorage.ts)
+function parseObjectPath(path: string): { bucketName: string; objectName: string } {
+  if (!path.startsWith("/")) {
+    path = `/${path}`;
+  }
+  const pathParts = path.split("/");
+  if (pathParts.length < 3) {
+    throw new Error("Invalid path: must contain at least a bucket name");
+  }
+
+  const bucketName = pathParts[1];
+  const objectName = pathParts.slice(2).join("/");
+
+  return {
+    bucketName,
+    objectName,
+  };
+}
