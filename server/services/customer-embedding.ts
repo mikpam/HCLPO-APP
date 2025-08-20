@@ -236,6 +236,70 @@ export class CustomerEmbeddingService {
 
     return parts.join(' | ');
   }
+
+  /**
+   * Ultra-optimized customer embedding generation using mega-batches
+   * Processes thousands of customers in single OpenAI API calls
+   */
+  async generateActiveCustomerEmbeddingsOptimized(batchSize: number = 2000): Promise<number> {
+    console.log(`🚀 ACTIVE CUSTOMERS ULTRA-OPTIMIZED EMBEDDING: Starting mega-batch processing (batch size: ${batchSize})`);
+
+    // Get active customers without embeddings
+    const customersNeedingEmbeddings = await db
+      .select({
+        id: customers.id,
+        customerNumber: customers.customerNumber,
+        companyName: customers.companyName,
+        alternateNames: customers.alternateNames,
+        email: customers.email,
+        phone: customers.phone,
+        address: customers.address
+      })
+      .from(customers)
+      .where(isNull(customers.customerEmbedding))
+      .limit(batchSize);
+
+    console.log(`   📊 Found ${customersNeedingEmbeddings.length} customers without embeddings`);
+
+    if (customersNeedingEmbeddings.length === 0) {
+      return 0;
+    }
+
+    // Create texts for all customers in the batch
+    const customerTexts = customersNeedingEmbeddings.map(customer => this.createCustomerText(customer));
+    
+    console.log(`   🔥 BATCH PROCESSING: Sending ${customersNeedingEmbeddings.length} texts to OpenAI in ONE request`);
+    
+    // Single API call for all customers
+    const client = getOpenAIClient();
+    const embeddingResponse = await client.embeddings.create({
+      model: "text-embedding-3-small",
+      input: customerTexts
+    });
+
+    console.log(`   ✅ RECEIVED ${embeddingResponse.data.length} embeddings in single API call`);
+
+    // Prepare all updates in parallel
+    const updatePromises = customersNeedingEmbeddings.map(async (customer, index) => {
+      const embedding = embeddingResponse.data[index].embedding;
+      const phoneDigits = customer.phone ? customer.phone.replace(/\D/g, '') : null;
+
+      return db
+        .update(customers)
+        .set({
+          customerEmbedding: sql`${JSON.stringify(embedding)}::vector`,
+          phoneDigits: phoneDigits
+        })
+        .where(eq(customers.id, customer.id));
+    });
+
+    // Execute all database updates in parallel
+    await Promise.all(updatePromises);
+    
+    console.log(`   💾 Updated ${customersNeedingEmbeddings.length} customers with embeddings`);
+    
+    return customersNeedingEmbeddings.length;
+  }
 }
 
 // Export service instance
