@@ -10,10 +10,14 @@ export function registerCustomerRoutes(app: Express): void {
   app.get("/api/customers", async (req, res) => {
     try {
       const page = parseInt(req.query.page as string) || 1;
-      const limit = parseInt(req.query.limit as string) || 10000; // Default to show all records, configurable via limit parameter
-      const offset = (page - 1) * limit;
       const search = req.query.search as string;
       const status = req.query.status as string; // "all", "active", "inactive"
+      
+      // Use larger limit when searching to show all results, smaller limit for initial load
+      const limit = search && search.trim() 
+        ? parseInt(req.query.limit as string) || 10000  // Show all search results
+        : parseInt(req.query.limit as string) || 50;    // Initial load: 50 records
+      const offset = (page - 1) * limit;
 
       let query = db
         .select({
