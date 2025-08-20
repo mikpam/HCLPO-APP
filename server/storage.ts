@@ -249,6 +249,10 @@ export class DatabaseStorage implements IStorage {
     return await query;
   }
 
+  async getAllEmailQueueItems(): Promise<EmailQueue[]> {
+    return await db.select().from(emailQueue);
+  }
+
   // System Health
   async updateSystemHealth(health: InsertSystemHealth): Promise<SystemHealth> {
     const [updated] = await db

@@ -3712,6 +3712,89 @@ totalPrice: ${item.totalPrice || 0}`;
     }
   });
 
+  // Scan for all unprocessed emails (including unlabeled ones)
+  app.post("/api/gmail/scan-unprocessed", async (req, res) => {
+    try {
+      console.log('🔍 SCANNING FOR UNPROCESSED EMAILS: Starting comprehensive email scan...');
+      
+      // Get all existing email IDs in our database
+      const existingEmails = await storage.getAllEmailQueueItems();
+      const existingGmailIds = new Set(existingEmails.map(email => email.gmailId));
+      
+      console.log(`📊 Found ${existingGmailIds.size} emails already in database`);
+      
+      // Search for emails that don't have processing labels AND aren't in our database
+      const queries = [
+        'in:inbox -label:processed -label:filtered', // Standard unprocessed
+        'in:inbox', // All inbox emails (will filter existing ones)
+        '-label:processed -label:filtered -label:spam -label:trash', // All non-spam/trash emails without processing labels
+      ];
+      
+      let newEmailsFound = 0;
+      let totalScanned = 0;
+      const newEmails: any[] = [];
+      
+      for (const query of queries) {
+        console.log(`🔍 Scanning with query: "${query}"`);
+        const messages = await gmailService.getMessages(query, 200); // Increased limit
+        totalScanned += messages.length;
+        
+        for (const message of messages) {
+          // Skip if we already have this email
+          if (existingGmailIds.has(message.id)) {
+            continue;
+          }
+          
+          // Add to our queue
+          try {
+            const queueItem = await storage.createEmailQueueItem({
+              gmailId: message.id,
+              sender: message.sender,
+              subject: message.subject || 'No Subject',
+              body: message.body || '',
+              attachments: message.attachments || [],
+              labels: message.labels || [],
+              status: 'unprocessed'
+            });
+            
+            // Add unprocessed label to Gmail
+            await gmailService.addLabelToEmail(message.id, 'unprocessed');
+            
+            newEmailsFound++;
+            newEmails.push({
+              id: queueItem.id,
+              gmailId: message.id,
+              sender: message.sender,
+              subject: message.subject,
+              hasAttachments: (message.attachments?.length || 0) > 0
+            });
+            
+            console.log(`   ✅ Added: ${message.sender} - "${message.subject}"`);
+          } catch (error) {
+            console.log(`   ⚠️  Skipping duplicate: ${message.id}`);
+          }
+        }
+      }
+      
+      console.log(`📈 SCAN COMPLETE: Found ${newEmailsFound} new emails out of ${totalScanned} scanned`);
+      
+      res.json({
+        success: true,
+        scanned: totalScanned,
+        newEmailsFound,
+        newEmails: newEmails.slice(0, 10), // Show first 10 for preview
+        message: `Scan complete! Found ${newEmailsFound} new unprocessed emails.`
+      });
+      
+    } catch (error) {
+      console.error('❌ EMAIL SCAN ERROR:', error);
+      res.status(500).json({
+        success: false,
+        message: error instanceof Error ? error.message : 'Email scan failed'
+      });
+    }
+  });
+
   // Email queue
   app.get("/api/email-queue", async (req, res) => {
     try {

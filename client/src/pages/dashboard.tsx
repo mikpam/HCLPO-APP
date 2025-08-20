@@ -59,6 +59,43 @@ export default function Dashboard() {
     },
   });
 
+  // Scan for new emails mutation
+  const scanForNewEmails = useMutation({
+    mutationFn: async () => {
+      const response = await fetch("/api/gmail/scan-unprocessed", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+      });
+      
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      
+      return await response.json();
+    },
+    onSuccess: (result) => {
+      toast({
+        title: "Email Scan Complete",
+        description: `Found ${result.newEmailsFound} new emails out of ${result.scanned} scanned`,
+        duration: 5000,
+      });
+      
+      // Refresh email queue and metrics
+      queryClient.invalidateQueries({ queryKey: ["/api/dashboard/metrics"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/email-queue"] });
+    },
+    onError: (error: any) => {
+      console.error("Email scan error:", error);
+      toast({
+        title: "Email Scan Failed",
+        description: error.message || "Failed to scan for new emails",
+        variant: "destructive",
+      });
+    },
+  });
+
   // Sequential email processing mutation
   const processAllEmails = useMutation({
     mutationFn: async () => {
@@ -325,7 +362,16 @@ export default function Dashboard() {
               <span>Last sync: 2 minutes ago</span>
             </div>
             
-            {/* Performance Monitoring Test Section */}
+            {/* Email Processing Buttons */}
+            <button
+              onClick={() => scanForNewEmails.mutate()}
+              disabled={scanForNewEmails.isPending}
+              className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors disabled:opacity-50"
+            >
+              <i className="fas fa-search mr-2"></i>
+              {scanForNewEmails.isPending ? 'Scanning...' : 'Scan New Emails'}
+            </button>
+            
             <button
               onClick={() => processAllEmails.mutate()}
               disabled={processAllEmails.isPending}
