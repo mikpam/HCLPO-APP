@@ -279,6 +279,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       console.log(`   └─ From: ${messageToProcess.sender}`);
       console.log(`   └─ Attachments: ${messageToProcess.attachments.length}`);
 
+      // PERFORMANCE TRACKING: Record email processing start
+      const { performanceMonitor } = await import('./services/performance-monitor');
+      performanceMonitor.startEmailProcessing(messageToProcess.id);
+
       // Check for forwarded email from @highcaliberline.com and extract CNumber
       let isForwardedEmail = false;
       let extractedCNumber = null;
@@ -850,6 +854,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Mark as processed in Gmail with preprocessing result
       await gmailService.markAsProcessed(messageToProcess.id, processingResult.preprocessing);
 
+      // PERFORMANCE TRACKING: Record successful completion
+      performanceMonitor.endEmailProcessing(messageToProcess.id, true);
+
       res.json({ 
         message: `Successfully processed: ${messageToProcess.subject}`,
         processed: 1,
@@ -882,6 +889,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
     } catch (error) {
       console.error('Error processing single email:', error);
+      
+      // PERFORMANCE TRACKING: Record failed processing
+      if (messageToProcess?.id) {
+        const { performanceMonitor } = await import('./services/performance-monitor');
+        performanceMonitor.endEmailProcessing(messageToProcess.id, false);
+      }
+      
       res.status(500).json({ 
         message: error instanceof Error ? error.message : 'Failed to process single email' 
       });
