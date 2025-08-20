@@ -182,7 +182,8 @@ export class ObjectStorageService {
       throw new ObjectNotFoundError();
     }
 
-    const entityId = parts.slice(1).join("/");
+    // URL decode the entityId to handle spaces and special characters properly
+    const entityId = decodeURIComponent(parts.slice(1).join("/"));
     let entityDir = this.getPrivateObjectDir();
     if (!entityDir.endsWith("/")) {
       entityDir = `${entityDir}/`;
