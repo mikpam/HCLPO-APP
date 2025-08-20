@@ -44,6 +44,12 @@ export class GeminiService {
     const artworkExtensions = ['.ai', '.eps', '.svg', '.png', '.jpg', '.jpeg', '.tif', '.gif'];
     const artworkMimeTypes = ['application/postscript', 'image/', 'application/illustrator'];
     
+    // Artwork filename patterns (case insensitive)
+    const artworkPatterns = [
+      /logo/i, /art/i, /artwork/i, /design/i, /proof/i, /mock/i, 
+      /visual/i, /graphic/i, /brand/i, /creative/i, /layout/i
+    ];
+    
     const hasArtworkExtension = artworkExtensions.some(ext => 
       filename.toLowerCase().endsWith(ext)
     );
@@ -52,7 +58,11 @@ export class GeminiService {
       contentType.toLowerCase().includes(mime)
     );
     
-    return hasArtworkExtension || hasArtworkMimeType;
+    const hasArtworkPattern = artworkPatterns.some(pattern => 
+      pattern.test(filename)
+    );
+    
+    return hasArtworkExtension || hasArtworkMimeType || hasArtworkPattern;
   }
 
   private checkBodySufficiency(body: string): boolean {
