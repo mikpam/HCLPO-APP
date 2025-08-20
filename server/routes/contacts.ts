@@ -1,7 +1,7 @@
 import { Express } from "express";
 import { db } from "../db";
 import { contacts, insertContactSchema } from "../../shared/schema";
-import { and, eq, or, ilike, sql } from "drizzle-orm";
+import { and, eq, or, ilike, sql, inArray, isNotNull, ne } from "drizzle-orm";
 import { z } from "zod";
 
 export function registerContactRoutes(app: Express): void {
@@ -41,6 +41,7 @@ export function registerContactRoutes(app: Express): void {
       const search = req.query.search as string;
       const status = req.query.status as string; // "all", "active", "inactive"
       const verification = req.query.verification as string; // "all", "verified", "unverified"
+      const duplicateEmails = req.query.duplicateEmails === 'true';
 
       let query = db
         .select({
@@ -98,17 +99,36 @@ export function registerContactRoutes(app: Express): void {
         whereCondition = whereCondition ? and(whereCondition, verificationCondition) : verificationCondition;
       }
 
+      // Add duplicate emails filtering
+      if (duplicateEmails) {
+        // Get emails that appear more than once
+        const duplicateEmailsSubquery = db.select({ email: contacts.email })
+          .from(contacts)
+          .where(and(
+            isNotNull(contacts.email),
+            ne(contacts.email, '')
+          ))
+          .groupBy(contacts.email)
+          .having(sql`count(*) > 1`);
+
+        const duplicateCondition = inArray(contacts.email, duplicateEmailsSubquery);
+        whereCondition = whereCondition ? and(whereCondition, duplicateCondition) : duplicateCondition;
+      }
+
       // Apply where condition and execute query
       let result;
       if (whereCondition) {
+        // Order by email first when showing duplicates, then by name
+        const orderBy = duplicateEmails ? [contacts.email, contacts.name] : [contacts.name];
         result = await query
           .where(whereCondition)
-          .orderBy(contacts.name)
+          .orderBy(...orderBy)
           .limit(limit)
           .offset(offset);
       } else {
+        const orderBy = duplicateEmails ? [contacts.email, contacts.name] : [contacts.name];
         result = await query
-          .orderBy(contacts.name)
+          .orderBy(...orderBy)
           .limit(limit)
           .offset(offset);
       }

@@ -120,6 +120,7 @@ export default function ContactsPage() {
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("active");
   const [verificationFilter, setVerificationFilter] = useState<string>("all");
+  const [showDuplicateEmails, setShowDuplicateEmails] = useState<boolean>(false);
   const [selectedContact, setSelectedContact] = useState<Contact | null>(null);
   const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
@@ -133,7 +134,7 @@ export default function ContactsPage() {
   const queryClient = useQueryClient();
 
   const { data: contactsResponse, isLoading } = useQuery<ContactsResponse>({
-    queryKey: ['/api/contacts', currentPage, searchTerm, statusFilter, verificationFilter],
+    queryKey: ['/api/contacts', currentPage, searchTerm, statusFilter, verificationFilter, showDuplicateEmails],
     queryFn: async () => {
       const params = new URLSearchParams({
         page: currentPage.toString(),
@@ -143,6 +144,7 @@ export default function ContactsPage() {
       if (searchTerm) params.append('search', searchTerm);
       if (statusFilter !== 'all') params.append('status', statusFilter);
       if (verificationFilter !== 'all') params.append('verification', verificationFilter);
+      if (showDuplicateEmails) params.append('duplicateEmails', 'true');
       
       const response = await fetch(`/api/contacts?${params}`);
       if (!response.ok) {
@@ -431,6 +433,15 @@ export default function ContactsPage() {
                   <SelectItem value="unverified">Unverified</SelectItem>
                 </SelectContent>
               </Select>
+              
+              <Button
+                variant={showDuplicateEmails ? "default" : "outline"}
+                onClick={() => setShowDuplicateEmails(!showDuplicateEmails)}
+                className="whitespace-nowrap"
+              >
+                <Users className="h-4 w-4 mr-2" />
+                Duplicate Emails
+              </Button>
 
               <Button 
                 onClick={() => setIsCreateModalOpen(true)}
