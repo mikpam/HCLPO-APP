@@ -10,7 +10,7 @@ export function registerCustomerRoutes(app: Express): void {
   app.get("/api/customers", async (req, res) => {
     try {
       const page = parseInt(req.query.page as string) || 1;
-      const limit = parseInt(req.query.limit as string) || 50; // Default to 50 for better performance
+      const limit = parseInt(req.query.limit as string) || 10000; // Default to show all records, configurable via limit parameter
       const offset = (page - 1) * limit;
       const search = req.query.search as string;
       const status = req.query.status as string; // "all", "active", "inactive"
