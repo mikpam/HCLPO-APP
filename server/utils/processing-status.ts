@@ -30,31 +30,8 @@ export function getCurrentProcessingStatus(): ProcessingStatus {
   return { ...currentProcessingStatus };
 }
 
-// Set processing status for validator health checks
+// Set processing status for validator health checks (now unused - health checks don't show in UI)
 export function setValidatorHealthStatus(validatorName: string, isRunning: boolean) {
-  if (isRunning) {
-    updateProcessingStatus({
-      isProcessing: true,
-      currentStep: "validator_health_check",
-      currentEmail: `Running ${validatorName} health check...`,
-      currentPO: "",
-      emailNumber: 0,
-      totalEmails: 0
-    });
-  } else {
-    // Keep status visible for 5 seconds after health check completes
-    setTimeout(() => {
-      // Only reset if we're still in health check mode
-      if (currentProcessingStatus.currentStep === "validator_health_check") {
-        updateProcessingStatus({
-          isProcessing: false,
-          currentStep: "idle",
-          currentEmail: "",
-          currentPO: "",
-          emailNumber: 0,
-          totalEmails: 0
-        });
-      }
-    }, 5000);
-  }
+  // Health checks no longer update the processing status UI
+  // They run silently in the background without showing "processing" state
 }
