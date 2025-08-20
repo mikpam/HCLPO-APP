@@ -2,6 +2,7 @@ import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { registerCustomerRoutes } from "./routes/customers";
+import { registerContactRoutes } from "./routes/contacts";
 import itemsRouter from "./routes/items";
 import { registerValidatorHealthRoutes } from "./routes/validator-health";
 import { registerContactEmbeddingRoutes } from "./routes/contact-embeddings";
@@ -82,6 +83,9 @@ async function logProcessingError(
 export async function registerRoutes(app: Express): Promise<Server> {
   // Register customer routes
   registerCustomerRoutes(app);
+  
+  // Register contact routes
+  registerContactRoutes(app);
   
   // Register items routes
   app.use("/api/items", itemsRouter);
