@@ -17,7 +17,7 @@ import { netsuiteService } from "./services/netsuite";
 import { OpenAISKUValidatorService } from "./services/openai-sku-validator";
 import { OpenAIContactValidatorService } from "./services/openai-contact-validator";
 import { db } from "./db";
-import { purchaseOrders as purchaseOrdersTable, errorLogs, customers } from "@shared/schema";
+import { purchaseOrders as purchaseOrdersTable, errorLogs, customers, contacts } from "@shared/schema";
 import { eq, desc, and, or, lt, sql, isNotNull } from "drizzle-orm";
 
 import { insertPurchaseOrderSchema, insertErrorLogSchema, classificationResultSchema } from "@shared/schema";
@@ -1334,6 +1334,125 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       res.status(500).json({ 
         message: error instanceof Error ? error.message : 'Failed to fetch metrics' 
+      });
+    }
+  });
+
+  // Company cross-reference analysis endpoint
+  app.get("/api/analysis/company-crossref", async (req, res) => {
+    try {
+      console.log("🔍 COMPANY CROSS-REFERENCE: Starting analysis...");
+      
+      // Get all unique companies from contacts (exclude empty/null values)
+      const contactCompanies = await db
+        .select({ 
+          company: sql<string>`DISTINCT TRIM(${contacts.company})`,
+          contactCount: sql<number>`count(*)`
+        })
+        .from(contacts)
+        .where(
+          and(
+            isNotNull(contacts.company),
+            sql`TRIM(${contacts.company}) != ''`,
+            sql`TRIM(${contacts.company}) NOT ILIKE '%high caliber%'`, // Exclude HCL internal
+            sql`TRIM(${contacts.company}) NOT ILIKE '%hcl%'` // Exclude HCL variations
+          )
+        )
+        .groupBy(sql`TRIM(${contacts.company})`)
+        .orderBy(sql<number>`count(*) DESC`);
+
+      console.log(`📊 Found ${contactCompanies.length} unique companies in contacts database`);
+
+      // Get all companies from customers database for comparison
+      const customerCompanies = await db
+        .select({ 
+          companyName: customers.companyName,
+          customerNumber: customers.customerNumber,
+          isActive: customers.isActive
+        })
+        .from(customers)
+        .where(
+          and(
+            isNotNull(customers.companyName),
+            sql`TRIM(${customers.companyName}) != ''`
+          )
+        );
+
+      console.log(`📊 Found ${customerCompanies.length} companies in customers database`);
+
+      // Create lookup set for faster searching
+      const customerCompanySet = new Set(
+        customerCompanies.map(c => c.companyName.toLowerCase().trim())
+      );
+
+      // Find companies from contacts that are NOT in customers database
+      const missingCompanies = [];
+      const foundCompanies = [];
+
+      for (const contactCompany of contactCompanies) {
+        const companyName = contactCompany.company.toLowerCase().trim();
+        
+        // Check for exact match first
+        if (customerCompanySet.has(companyName)) {
+          foundCompanies.push({
+            contactCompany: contactCompany.company,
+            contactCount: contactCompany.contactCount,
+            matchType: 'exact'
+          });
+        } else {
+          // Check for partial matches (fuzzy matching)
+          let foundMatch = false;
+          for (const customerCompany of customerCompanies) {
+            const customerName = customerCompany.companyName.toLowerCase().trim();
+            
+            // Check if either contains the other (partial matching)
+            if (companyName.includes(customerName) || customerName.includes(companyName)) {
+              foundCompanies.push({
+                contactCompany: contactCompany.company,
+                contactCount: contactCompany.contactCount,
+                matchType: 'partial',
+                customerMatch: customerCompany.companyName
+              });
+              foundMatch = true;
+              break;
+            }
+          }
+          
+          if (!foundMatch) {
+            missingCompanies.push({
+              company: contactCompany.company,
+              contactCount: contactCompany.contactCount
+            });
+          }
+        }
+      }
+
+      // Sort missing companies by contact count (highest first)
+      missingCompanies.sort((a, b) => b.contactCount - a.contactCount);
+
+      // Get top 20 missing companies with most contacts
+      const topMissingCompanies = missingCompanies.slice(0, 20);
+
+      console.log(`✅ CROSS-REFERENCE COMPLETE: ${missingCompanies.length} companies missing from customer database`);
+
+      res.json({
+        summary: {
+          totalContactCompanies: contactCompanies.length,
+          totalCustomerCompanies: customerCompanies.length,
+          matchedCompanies: foundCompanies.length,
+          missingCompanies: missingCompanies.length
+        },
+        topMissingCompanies,
+        allMissingCompanies: missingCompanies,
+        exactMatches: foundCompanies.filter(f => f.matchType === 'exact').length,
+        partialMatches: foundCompanies.filter(f => f.matchType === 'partial').length
+      });
+
+    } catch (error) {
+      console.error("Error in company cross-reference analysis:", error);
+      res.status(500).json({ 
+        error: "Failed to perform company cross-reference analysis",
+        details: error instanceof Error ? error.message : 'Unknown error'
       });
     }
   });

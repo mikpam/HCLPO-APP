@@ -13,6 +13,7 @@ const navigationItems = [
   { path: "/customers", label: "Customer Directory", icon: "fas fa-address-book" },
   { path: "/contacts", label: "Contact Directory", icon: "fas fa-users" },
   { path: "/items", label: "Items Management", icon: "fas fa-boxes" },
+  { path: "/company-analysis", label: "Company Analysis", icon: "fas fa-building" },
   { path: "/files", label: "File Management", icon: "fas fa-folder-open" },
   { path: "/error-logs", label: "Error Logs", icon: "fas fa-exclamation-triangle" },
   { path: "/system-status", label: "System Status", icon: "fas fa-cogs" },
