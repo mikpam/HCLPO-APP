@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -118,6 +118,7 @@ type ContactFormData = z.infer<typeof contactFormSchema>;
 
 export default function ContactsPage() {
   const [searchTerm, setSearchTerm] = useState("");
+  const [debouncedSearchTerm, setDebouncedSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("active");
   const [verificationFilter, setVerificationFilter] = useState<string>("all");
   const [showDuplicateEmails, setShowDuplicateEmails] = useState<boolean>(false);
@@ -133,15 +134,28 @@ export default function ContactsPage() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
+  // Debounce search term to avoid API calls on every keystroke
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearchTerm(searchTerm);
+      // Reset to page 1 when search changes
+      if (searchTerm !== debouncedSearchTerm) {
+        setCurrentPage(1);
+      }
+    }, 500); // 500ms delay
+
+    return () => clearTimeout(timer);
+  }, [searchTerm, debouncedSearchTerm]);
+
   const { data: contactsResponse, isLoading } = useQuery<ContactsResponse>({
-    queryKey: ['/api/contacts', currentPage, searchTerm, statusFilter, verificationFilter, showDuplicateEmails],
+    queryKey: ['/api/contacts', currentPage, debouncedSearchTerm, statusFilter, verificationFilter, showDuplicateEmails],
     queryFn: async () => {
       const params = new URLSearchParams({
         page: currentPage.toString(),
         limit: pageSize.toString(),
       });
       
-      if (searchTerm) params.append('search', searchTerm);
+      if (debouncedSearchTerm) params.append('search', debouncedSearchTerm);
       if (statusFilter !== 'all') params.append('status', statusFilter);
       if (verificationFilter !== 'all') params.append('verification', verificationFilter);
       if (showDuplicateEmails) params.append('duplicateEmails', 'true');
@@ -151,20 +165,24 @@ export default function ContactsPage() {
         throw new Error('Failed to fetch contacts');
       }
       return response.json();
-    }
+    },
+    staleTime: 2 * 60 * 1000, // Cache for 2 minutes to reduce DB hits
+    placeholderData: (previousData) => previousData, // Keep previous data while loading new page
   });
 
   const contacts = contactsResponse?.data || [];
   const pagination = contactsResponse?.pagination;
 
-  // Get stats for all contacts (not filtered view)
+  // Get stats for all contacts (not filtered view) - reduce frequency to avoid heavy load
   const { data: stats } = useQuery({
     queryKey: ['/api/contacts/stats'],
     queryFn: async () => {
       const response = await fetch('/api/contacts/stats');
       if (!response.ok) throw new Error('Failed to fetch stats');
       return response.json();
-    }
+    },
+    staleTime: 5 * 60 * 1000, // Cache for 5 minutes
+    refetchInterval: 5 * 60 * 1000, // Refetch every 5 minutes instead of constantly
   });
 
   // Create mutation
