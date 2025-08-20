@@ -409,9 +409,89 @@ export class GmailService {
     }
   }
 
-  // Get attachment data for processing (without storing yet)
-  async getAttachmentData(messageId: string, attachmentId: string): Promise<Buffer> {
-    return await this.downloadAttachment(messageId, attachmentId);
+  async storeEmailAttachments(messageId: string, attachments: Array<{
+    filename: string;
+    contentType: string;
+    size: number;
+    attachmentId?: string;
+  }>): Promise<Array<{ filename: string; storagePath: string; buffer?: Buffer }>> {
+    const storedAttachments = [];
+    
+    console.log(`📎 ATTACHMENT ANALYSIS: Found ${attachments.length} total attachments`);
+    
+    for (const attachment of attachments) {
+      console.log(`   └─ ${attachment.filename}: ${attachment.contentType} (${attachment.size} bytes) ${attachment.attachmentId ? '[Has ID]' : '[No ID]'}`);
+      
+      // Process all document types that Gemini can handle for PO extraction
+      const isProcessableDocument = (
+        // PDF documents
+        attachment.contentType === 'application/pdf' || 
+        attachment.filename.toLowerCase().endsWith('.pdf') ||
+        
+        // Microsoft Word documents
+        attachment.contentType === 'application/msword' ||
+        attachment.contentType === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' ||
+        attachment.filename.toLowerCase().endsWith('.doc') ||
+        attachment.filename.toLowerCase().endsWith('.docx') ||
+        
+        // Images (common for scanned POs)
+        attachment.contentType?.startsWith('image/') ||
+        attachment.filename.toLowerCase().match(/\.(jpg|jpeg|png|gif|bmp|tiff|webp)$/i) ||
+        
+        // Spreadsheet formats
+        attachment.contentType === 'text/csv' ||
+        attachment.contentType === 'application/vnd.ms-excel' ||
+        attachment.contentType === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' ||
+        attachment.filename.toLowerCase().endsWith('.csv') ||
+        attachment.filename.toLowerCase().endsWith('.xls') ||
+        attachment.filename.toLowerCase().endsWith('.xlsx') ||
+        
+        // Text files
+        attachment.contentType === 'text/plain' ||
+        attachment.filename.toLowerCase().endsWith('.txt') ||
+        
+        // RTF and other document formats
+        attachment.contentType === 'application/rtf' ||
+        attachment.filename.toLowerCase().endsWith('.rtf')
+      );
+      
+      if (isProcessableDocument && attachment.attachmentId) {
+        try {
+          // Download the attachment
+          const attachmentData = await this.downloadAttachment(messageId, attachment.attachmentId);
+          
+          // Store in object storage
+          const { ObjectStorageService } = await import('../objectStorage');
+          const objectStorageService = new ObjectStorageService();
+          
+          // Store attachment using the correct function
+          const cleanFilename = attachment.filename.replace(/[^a-zA-Z0-9._-]/g, '_');
+          const storagePath = await objectStorageService.storeAttachment(
+            attachmentData,
+            `${messageId}_${cleanFilename}`,
+            attachment.contentType
+          );
+          
+          console.log(`      ✅ Stored attachment: ${attachment.filename} at ${storagePath}`);
+          
+          storedAttachments.push({
+            filename: attachment.filename,
+            storagePath,
+            buffer: attachmentData
+          });
+
+          console.log(`      ✅ Stored attachment: ${attachment.filename} at ${storagePath}`);
+        } catch (error) {
+          console.error(`      ❌ Error storing attachment ${attachment.filename}:`, error);
+        }
+      } else if (!attachment.attachmentId) {
+        console.log(`      ⚠️  Skipping ${attachment.filename}: No attachment ID`);
+      } else {
+        console.log(`      ⚠️  Skipping ${attachment.filename}: Not a processable document type`);
+      }
+    }
+    
+    return storedAttachments;
   }
 }
 
