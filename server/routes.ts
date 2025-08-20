@@ -478,59 +478,82 @@ async function processEmailThroughValidationSystem(messageToProcess: any, update
     let customerMeta = null;
     let contactMeta = null;
     
-    // Extract contact information for NetSuite (required field)
-    if (extractionResult?.purchaseOrder?.contact) {
-      console.log(`\n👤 CONTACT EXTRACTION:`);
-      console.log(`   └─ Contact Name: ${extractionResult.purchaseOrder.contact.name || 'Not provided'}`);
-      console.log(`   └─ Contact Email: ${extractionResult.purchaseOrder.contact.email || 'Not provided'}`);
-      console.log(`   └─ Contact Phone: ${extractionResult.purchaseOrder.contact.phone || 'Not provided'}`);
-      console.log(`   └─ Job Title: ${extractionResult.purchaseOrder.contact.jobTitle || 'Not provided'}`);
-      
-      // 🔥 UPDATE STATUS: Contact Validation
-      updateProcessingStatus({
-        currentStep: "contact_validation"
-      });
-
-      // Optionally validate against HCL contacts database
-      try {
-        // Create fresh validator instance for this email to prevent race conditions with health monitoring
-        const contactValidator = await validatorHealthService.recordValidatorCall(
-          'contactValidator',
-          async () => new OpenAIContactValidatorService()
-        );
-        const validatedContact = await contactValidator.validateContact({
-          extractedData: extractionResult,
-          senderName: extractionResult.purchaseOrder.contact?.name,
-          senderEmail: messageToProcess.sender,
-          resolvedCustomerId: customerMeta?.customer_number,
-          companyId: customerMeta?.customer_number
-        });
-        
-        contactMeta = validatedContact;
-        console.log(`   ✅ Contact validated: ${validatedContact.name} <${validatedContact.email}>`);
-        console.log(`   └─ Method: ${validatedContact.match_method} (Confidence: ${validatedContact.confidence})`);
-        console.log(`   └─ Role: ${validatedContact.role}`);
-        
-        // STEP 2 COMPLETION: Update database immediately with contact validation results
-        try {
-          const tempPO = await storage.getPurchaseOrderByNumber(poNumber);
-          if (tempPO) {
-            await storage.updatePurchaseOrder(tempPO.id, {
-              contactMeta: contactMeta,
-              contact: validatedContact.email
-            });
-            console.log(`   ✅ STEP 2 COMPLETED: Contact data stored in database`);
-          }
-        } catch (stepError) {
-          console.error(`   ❌ STEP 2 FAILED: Could not store contact data:`, stepError);
-        }
-      } catch (error) {
-        console.error(`   ⚠️  Contact lookup failed:`, error);
-        // Continue with extracted contact info even if lookup fails
-      }
+    // Extract and validate contact information (always run - required field for NetSuite)
+    console.log(`\n👤 CONTACT EXTRACTION:`);
+    
+    // Check if contact was extracted from purchase order
+    const extractedContact = extractionResult?.purchaseOrder?.contact;
+    if (extractedContact) {
+      console.log(`   └─ Contact Name: ${extractedContact.name || 'Not provided'}`);
+      console.log(`   └─ Contact Email: ${extractedContact.email || 'Not provided'}`);
+      console.log(`   └─ Contact Phone: ${extractedContact.phone || 'Not provided'}`);
+      console.log(`   └─ Job Title: ${extractedContact.jobTitle || 'Not provided'}`);
     } else {
-      console.log(`\n👤 CONTACT EXTRACTION:`);
-      console.log(`   ⚠️  No contact information extracted from purchase order`);
+      console.log(`   ⚠️  No contact information extracted from purchase order - will validate sender email`);
+    }
+
+    // 🔥 UPDATE STATUS: Contact Validation (always run)
+    updateProcessingStatus({
+      currentStep: "contact_validation"
+    });
+
+    // ALWAYS run contact validation against HCL contacts database
+    try {
+      // Create fresh validator instance for this email to prevent race conditions with health monitoring
+      const contactValidator = await validatorHealthService.recordValidatorCall(
+        'contactValidator',
+        async () => new OpenAIContactValidatorService()
+      );
+      
+      // Use extracted contact if available, otherwise fall back to sender email
+      const validatedContact = await contactValidator.validateContact({
+        extractedData: extractionResult,
+        senderName: extractedContact?.name,
+        senderEmail: messageToProcess.sender,
+        contactName: extractedContact?.name,
+        contactEmail: extractedContact?.email || messageToProcess.sender,
+        contactPhone: extractedContact?.phone,
+        jobTitle: extractedContact?.jobTitle,
+        resolvedCustomerId: customerMeta?.customer_number,
+        companyId: customerMeta?.customer_number
+      });
+      
+      contactMeta = validatedContact;
+      console.log(`   ✅ Contact validated: ${validatedContact.name} <${validatedContact.email}>`);
+      console.log(`   └─ Method: ${validatedContact.match_method} (Confidence: ${validatedContact.confidence})`);
+      console.log(`   └─ Role: ${validatedContact.role}`);
+      console.log(`   └─ Evidence: ${validatedContact.evidence?.join(', ') || 'None provided'}`);
+      
+      // STEP 2 COMPLETION: Update database immediately with contact validation results
+      try {
+        const tempPO = await storage.getPurchaseOrderByNumber(poNumber);
+        if (tempPO) {
+          await storage.updatePurchaseOrder(tempPO.id, {
+            contactMeta: contactMeta,
+            contact: validatedContact.name || validatedContact.email,
+            contactValidated: true
+          });
+          console.log(`   ✅ STEP 2 COMPLETED: Contact data stored in database`);
+        }
+      } catch (stepError) {
+        console.error(`   ❌ STEP 2 FAILED: Could not store contact data:`, stepError);
+      }
+    } catch (error) {
+      console.error(`   ❌ Contact validation failed:`, error);
+      
+      // Create basic contact metadata using sender email as fallback
+      contactMeta = {
+        name: extractedContact?.name || '',
+        role: 'Unknown',
+        email: extractedContact?.email || messageToProcess.sender,
+        phone: extractedContact?.phone || '',
+        evidence: ['Contact validation failed - using sender email'],
+        confidence: 0.5,
+        match_method: 'FALLBACK_SENDER',
+        matched_contact_id: ''
+      };
+      
+      console.log(`   ⚠️  Using fallback contact: ${messageToProcess.sender}`);
     }
 
     // 🔥 UPDATE STATUS: Customer Validation
