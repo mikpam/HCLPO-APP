@@ -44,31 +44,8 @@ export class PerformanceMonitorService {
   static getInstance(): PerformanceMonitorService {
     if (!PerformanceMonitorService.instance) {
       PerformanceMonitorService.instance = new PerformanceMonitorService();
-      // Start collecting metrics immediately when first instantiated
-      PerformanceMonitorService.instance.startBackgroundCollection();
     }
     return PerformanceMonitorService.instance;
-  }
-
-  /**
-   * Start background metric collection for real-time monitoring
-   */
-  private startBackgroundCollection(): void {
-    // Collect initial metrics
-    this.collectMetrics().then(() => {
-      console.log('🔍 PERFORMANCE MONITOR: Started collecting metrics');
-    }).catch(error => {
-      console.error('❌ PERFORMANCE MONITOR: Failed to collect initial metrics:', error);
-    });
-
-    // Set up interval to collect metrics every 10 seconds for real-time monitoring
-    setInterval(async () => {
-      try {
-        await this.collectMetrics();
-      } catch (error) {
-        console.error('❌ PERFORMANCE MONITOR: Background metric collection failed:', error);
-      }
-    }, 10000); // Collect every 10 seconds
   }
 
   /**

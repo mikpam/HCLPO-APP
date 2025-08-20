@@ -1,6 +1,3 @@
-// Set timezone to Pacific Daylight Time (PDT)
-process.env.TZ = 'America/Los_Angeles';
-
 import express, { type Request, Response, NextFunction } from "express";
 import { registerRoutes } from "./routes";
 import { setupVite, serveStatic, log } from "./vite";

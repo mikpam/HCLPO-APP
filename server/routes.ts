@@ -10,7 +10,7 @@ import { registerCustomerEmbeddingRoutes } from "./routes/customer-embeddings";
 import { registerItemEmbeddingRoutes } from "./routes/item-embeddings";
 import { validatorHealthService } from "./services/validator-health";
 import { gmailService } from "./services/gmail";
-import { AIServiceManager, type AIEngine } from "./services/ai-service";
+import { aiService, type AIEngine } from "./services/ai-service";
 import { netsuiteService } from "./services/netsuite";
 // openaiCustomerFinderService now uses per-email instances to prevent race conditions
 import { OpenAISKUValidatorService } from "./services/openai-sku-validator";
@@ -111,206 +111,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
     console.error('Failed to initialize Gmail labels:', error);
   }
 
-  // AUTOMATIC EMAIL PROCESSING: Enable comprehensive scanning and processing
-  console.log('🚀 SERVER STARTUP: Enabling automatic comprehensive email scanning');
-  console.log('📧 COMPREHENSIVE SCANNING: Will find ALL emails including unlabeled ones');
+  // MEMORY OPTIMIZATION: Disable auto-start to prevent memory overflow on startup
+  // Health checks will run after processing completes instead of on timers
+  console.log('🚀 SERVER STARTUP: Email processing available on-demand to prevent memory issues');
+  console.log('🧠 MEMORY OPTIMIZATION: Health checks moved to post-processing stage');
   
-  // Background comprehensive email scanning function
-  async function scanAndProcessEmails() {
-    try {
-      console.log('🔍 AUTO-SCAN: Starting comprehensive email scan...');
-      
-      // Get all existing email IDs in our database
-      const existingEmails = await storage.getAllEmailQueueItems();
-      const existingGmailIds = new Set(existingEmails.map(email => email.gmailId));
-      
-      // Search for emails that don't have processing labels AND aren't in our database
-      const queries = [
-        'in:inbox -label:processed -label:filtered', // Standard unprocessed
-        'in:inbox', // All inbox emails (will filter existing ones)
-        '-label:processed -label:filtered -label:spam -label:trash', // All non-spam/trash emails without processing labels
-      ];
-      
-      let newEmailsFound = 0;
-      
-      for (const query of queries) {
-        try {
-          const messages = await gmailService.getMessages(query, 100);
-          
-          for (const message of messages) {
-            // Skip if we already have this email
-            if (existingGmailIds.has(message.id)) {
-              continue;
-            }
-            
-            // Add to our queue
-            try {
-              await storage.createEmailQueueItem({
-                gmailId: message.id,
-                sender: message.sender,
-                subject: message.subject || 'No Subject',
-                body: message.body || '',
-                attachments: message.attachments || [],
-                labels: message.labels || [],
-                status: 'unprocessed'
-              });
-              
-              // Add unprocessed label to Gmail
-              await gmailService.addLabelToEmail(message.id, 'unprocessed');
-              
-              newEmailsFound++;
-              console.log(`   ✅ AUTO-SCAN: Added ${message.sender} - "${message.subject}"`);
-            } catch (error) {
-              // Skip duplicates silently
-            }
-          }
-        } catch (queryError) {
-          console.log(`   ⚠️  AUTO-SCAN: Query "${query}" failed, continuing...`);
-        }
-      }
-      
-      if (newEmailsFound > 0) {
-        console.log(`📈 AUTO-SCAN: Found ${newEmailsFound} new emails`);
-        
-        // Process new emails immediately from our database queue
-        try {
-          await processEmailsFromQueue();
-        } catch (processError) {
-          console.log('⚠️  AUTO-PROCESS: Processing failed, will retry next cycle');
-        }
-      } else {
-        console.log('📧 AUTO-SCAN: No new emails found');
-      }
-      
-    } catch (error) {
-      console.error('❌ AUTO-SCAN ERROR:', error);
-    }
-  }
-  
-  // Sequential email processing from database queue
-  async function processEmailsFromQueue() {
-    try {
-      console.log('🔄 QUEUE PROCESSING: Starting sequential processing from database queue...');
-      
-      // Get unprocessed emails from our database queue (sequential processing)
-      const unprocessedEmails = await storage.getEmailQueue({ status: 'unprocessed', limit: 10 });
-      
-      if (unprocessedEmails.length === 0) {
-        console.log('📧 QUEUE PROCESSING: No unprocessed emails in queue');
-        return;
-      }
-      
-      console.log(`📊 QUEUE PROCESSING: Found ${unprocessedEmails.length} unprocessed emails in queue`);
-      
-      // Process emails ONE AT A TIME sequentially
-      for (let i = 0; i < unprocessedEmails.length; i++) {
-        const emailItem = unprocessedEmails[i];
-        
-        try {
-          console.log(`\n📧 PROCESSING EMAIL ${i + 1}/${unprocessedEmails.length}: "${emailItem.subject}"`);
-          console.log(`   └─ From: ${emailItem.sender}`);
-          console.log(`   └─ Gmail ID: ${emailItem.gmailId}`);
-          
-          // Mark as processing to prevent concurrent processing
-          await storage.updateEmailQueueItem(emailItem.id, { status: 'processing' });
-          
-          // Get Gmail message details if needed  
-          const gmailMessage = await gmailService.getMessageById(emailItem.gmailId);
-          if (!gmailMessage) {
-            console.log(`   ❌ Could not fetch Gmail message, marking as failed`);
-            await storage.updateEmailQueueItem(emailItem.id, { status: 'failed' });
-            continue;
-          }
-          
-          // Process with full pipeline using the exported AI service instance
-          const { aiService } = await import('./services/ai-service');
-          
-          // STEP 1: Pre-processing
-          console.log(`   🧠 STEP 1: Pre-processing email...`);
-          const emailProcessingResult = await aiService.processEmail({
-            sender: gmailMessage.sender,
-            subject: gmailMessage.subject || '',
-            body: gmailMessage.body || '',
-            attachments: gmailMessage.attachments || []
-          });
-          
-          const preprocessing = emailProcessingResult.preprocessing;
-          const classification = emailProcessingResult.classification;
-          
-          if (!preprocessing.shouldProceed) {
-            console.log(`   🚫 Pre-processing: Email filtered (${preprocessing.response})`);
-            await storage.updateEmailQueueItem(emailItem.id, { 
-              status: 'filtered',
-              preprocessingResult: preprocessing,
-              processedAt: new Date()
-            });
-            await gmailService.addLabelToEmail(emailItem.gmailId, 'filtered');
-            continue;
-          }
-          
-          // STEP 2: Classification (already done)
-          console.log(`   🧠 STEP 2: Classification completed...`);
-          
-          // Update with classification results
-          await storage.updateEmailQueueItem(emailItem.id, {
-            status: 'classified',
-            preprocessingResult: preprocessing,
-            classificationResult: classification,
-            route: classification.recommended_route,
-            confidence: classification.analysis_flags?.confidence_score || 0
-          });
-          
-          console.log(`   ✅ Classified as: ${classification.recommended_route} (${Math.round((classification.analysis_flags?.confidence_score || 0) * 100)}% confidence)`);
-          
-          // STEP 3: Processing based on route
-          // ... Full processing pipeline would continue here
-          
-          // Mark as processed
-          await storage.updateEmailQueueItem(emailItem.id, { 
-            status: 'processed',
-            processedAt: new Date()
-          });
-          await gmailService.addLabelToEmail(emailItem.gmailId, 'processed');
-          
-          console.log(`   ✅ EMAIL ${i + 1} COMPLETED: Successfully processed "${emailItem.subject}"`);
-          
-        } catch (emailError) {
-          console.error(`   ❌ EMAIL ${i + 1} FAILED:`, emailError);
-          await storage.updateEmailQueueItem(emailItem.id, { 
-            status: 'failed',
-            processingError: emailError instanceof Error ? emailError.message : 'Unknown error'
-          });
-        }
-      }
-      
-      console.log(`✅ QUEUE PROCESSING: Completed processing ${unprocessedEmails.length} emails`);
-      
-    } catch (error) {
-      console.error('❌ QUEUE PROCESSING ERROR:', error);
-    }
-  }
-
-  // Enable automatic startup with comprehensive scanning
-  setTimeout(async () => {
-    console.log('🚀 STARTING AUTOMATIC EMAIL PROCESSING...');
-    
-    validatorHealthService.startMonitoring();
-    
-    // Initial scan and process
-    await scanAndProcessEmails();
-    
-    // Set up automatic scanning every 5 minutes (optimized interval)
-    setInterval(() => scanAndProcessEmails(), 5 * 60 * 1000);
-    
-    // Set up automatic processing every 2 minutes (faster cycle for queue processing)
-    setInterval(() => processEmailsFromQueue(), 2 * 60 * 1000);
-    
-    // Retry stuck purchase orders every 10 minutes
-    setInterval(() => retryStuckPurchaseOrders(), 10 * 60 * 1000);
-    
-    console.log('✅ AUTOMATIC PROCESSING: Comprehensive email scanning enabled every 5 minutes');
-    console.log('✅ AUTOMATIC PROCESSING: Queue processing enabled every 2 minutes');
-  }, 3000);
+  // Disable automatic startup - call manually via API endpoints when needed
+  // setTimeout(async () => {
+  //   validatorHealthService.startMonitoring();
+  //   processEmailsInBackground();
+  //   setInterval(() => processEmailsInBackground(), 2 * 60 * 1000);
+  //   setInterval(() => retryStuckPurchaseOrders(), 5 * 60 * 1000);
+  // }, 2000);
   
   console.log('✅ EMAIL PROCESSING ENABLED: All embeddings complete (57,058 total)');
   console.log('📊 EMBEDDING STATUS: Contact (43,620), Customer (13,665), Item (5,373) - 100%');
@@ -318,45 +130,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
   
 
   
-  // Process emails from queue sequentially - Manual trigger endpoint
-  app.post("/api/emails/process-queue", async (req, res) => {
-    try {
-      await processEmailsFromQueue();
-      res.json({ message: "Queue processing completed successfully" });
-    } catch (error) {
-      console.error('Queue processing error:', error);
-      res.status(500).json({ 
-        message: error instanceof Error ? error.message : "Queue processing failed" 
-      });
-    }
-  });
-
-  // Reset failed emails to unprocessed status
-  app.post("/api/emails/reset-failed", async (req, res) => {
-    try {
-      const failedEmails = await storage.getEmailQueue({ status: 'failed' });
-      let resetCount = 0;
-      
-      for (const email of failedEmails) {
-        await storage.updateEmailQueueItem(email.id, { 
-          status: 'unprocessed',
-          processingError: null
-        });
-        resetCount++;
-      }
-      
-      res.json({ 
-        message: `Reset ${resetCount} failed emails to unprocessed status`,
-        resetCount 
-      });
-    } catch (error) {
-      console.error('Reset failed emails error:', error);
-      res.status(500).json({ 
-        message: error instanceof Error ? error.message : "Reset failed" 
-      });
-    }
-  });
-
   // Dashboard metrics
   app.get("/api/dashboard/metrics", async (req, res) => {
     try {
@@ -505,10 +278,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
       console.log(`📧 EMAIL: "${messageToProcess.subject}"`);
       console.log(`   └─ From: ${messageToProcess.sender}`);
       console.log(`   └─ Attachments: ${messageToProcess.attachments.length}`);
-
-      // PERFORMANCE TRACKING: Record email processing start
-      const { performanceMonitor } = await import('./services/performance-monitor');
-      performanceMonitor.startEmailProcessing(messageToProcess.id);
 
       // Check for forwarded email from @highcaliberline.com and extract CNumber
       let isForwardedEmail = false;
@@ -1081,9 +850,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Mark as processed in Gmail with preprocessing result
       await gmailService.markAsProcessed(messageToProcess.id, processingResult.preprocessing);
 
-      // PERFORMANCE TRACKING: Record successful completion
-      performanceMonitor.endEmailProcessing(messageToProcess.id, true);
-
       res.json({ 
         message: `Successfully processed: ${messageToProcess.subject}`,
         processed: 1,
@@ -1116,13 +882,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
     } catch (error) {
       console.error('Error processing single email:', error);
-      
-      // PERFORMANCE TRACKING: Record failed processing
-      if (messageToProcess?.id) {
-        const { performanceMonitor } = await import('./services/performance-monitor');
-        performanceMonitor.endEmailProcessing(messageToProcess.id, false);
-      }
-      
       res.status(500).json({ 
         message: error instanceof Error ? error.message : 'Failed to process single email' 
       });
@@ -3935,89 +3694,6 @@ totalPrice: ${item.totalPrice || 0}`;
         success: false,
         connection: 'failed',
         message: error instanceof Error ? error.message : 'Gmail connection failed' 
-      });
-    }
-  });
-
-  // Scan for all unprocessed emails (including unlabeled ones)
-  app.post("/api/gmail/scan-unprocessed", async (req, res) => {
-    try {
-      console.log('🔍 SCANNING FOR UNPROCESSED EMAILS: Starting comprehensive email scan...');
-      
-      // Get all existing email IDs in our database
-      const existingEmails = await storage.getAllEmailQueueItems();
-      const existingGmailIds = new Set(existingEmails.map(email => email.gmailId));
-      
-      console.log(`📊 Found ${existingGmailIds.size} emails already in database`);
-      
-      // Search for emails that don't have processing labels AND aren't in our database
-      const queries = [
-        'in:inbox -label:processed -label:filtered', // Standard unprocessed
-        'in:inbox', // All inbox emails (will filter existing ones)
-        '-label:processed -label:filtered -label:spam -label:trash', // All non-spam/trash emails without processing labels
-      ];
-      
-      let newEmailsFound = 0;
-      let totalScanned = 0;
-      const newEmails: any[] = [];
-      
-      for (const query of queries) {
-        console.log(`🔍 Scanning with query: "${query}"`);
-        const messages = await gmailService.getMessages(query, 200); // Increased limit
-        totalScanned += messages.length;
-        
-        for (const message of messages) {
-          // Skip if we already have this email
-          if (existingGmailIds.has(message.id)) {
-            continue;
-          }
-          
-          // Add to our queue
-          try {
-            const queueItem = await storage.createEmailQueueItem({
-              gmailId: message.id,
-              sender: message.sender,
-              subject: message.subject || 'No Subject',
-              body: message.body || '',
-              attachments: message.attachments || [],
-              labels: message.labels || [],
-              status: 'unprocessed'
-            });
-            
-            // Add unprocessed label to Gmail
-            await gmailService.addLabelToEmail(message.id, 'unprocessed');
-            
-            newEmailsFound++;
-            newEmails.push({
-              id: queueItem.id,
-              gmailId: message.id,
-              sender: message.sender,
-              subject: message.subject,
-              hasAttachments: (message.attachments?.length || 0) > 0
-            });
-            
-            console.log(`   ✅ Added: ${message.sender} - "${message.subject}"`);
-          } catch (error) {
-            console.log(`   ⚠️  Skipping duplicate: ${message.id}`);
-          }
-        }
-      }
-      
-      console.log(`📈 SCAN COMPLETE: Found ${newEmailsFound} new emails out of ${totalScanned} scanned`);
-      
-      res.json({
-        success: true,
-        scanned: totalScanned,
-        newEmailsFound,
-        newEmails: newEmails.slice(0, 10), // Show first 10 for preview
-        message: `Scan complete! Found ${newEmailsFound} new unprocessed emails.`
-      });
-      
-    } catch (error) {
-      console.error('❌ EMAIL SCAN ERROR:', error);
-      res.status(500).json({
-        success: false,
-        message: error instanceof Error ? error.message : 'Email scan failed'
       });
     }
   });

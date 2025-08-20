@@ -59,82 +59,7 @@ export default function Dashboard() {
     },
   });
 
-  // Scan for new emails mutation
-  const scanForNewEmails = useMutation({
-    mutationFn: async () => {
-      const response = await fetch("/api/gmail/scan-unprocessed", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-      });
-      
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-      
-      return await response.json();
-    },
-    onSuccess: (result) => {
-      toast({
-        title: "Email Scan Complete",
-        description: `Found ${result.newEmailsFound} new emails out of ${result.scanned} scanned`,
-        duration: 5000,
-      });
-      
-      // Refresh email queue and metrics
-      queryClient.invalidateQueries({ queryKey: ["/api/dashboard/metrics"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/email-queue"] });
-    },
-    onError: (error: any) => {
-      console.error("Email scan error:", error);
-      toast({
-        title: "Email Scan Failed",
-        description: error.message || "Failed to scan for new emails",
-        variant: "destructive",
-      });
-    },
-  });
 
-  // Sequential email processing mutation
-  const processAllEmails = useMutation({
-    mutationFn: async () => {
-      const response = await fetch("/api/emails/process", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-      });
-      
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-      
-      return await response.json();
-    },
-    onSuccess: (result) => {
-      toast({
-        title: "Sequential Processing Complete",
-        description: `Processed ${result.processed} emails`,
-        duration: 5000,
-      });
-      
-      // Refresh all data including performance metrics
-      queryClient.invalidateQueries({ queryKey: ["/api/dashboard/metrics"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/email-queue"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/purchase-orders"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/performance/summary"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/performance/memory-trend"] });
-    },
-    onError: (error: any) => {
-      console.error("Sequential processing error:", error);
-      toast({
-        title: "Sequential Processing Failed",
-        description: error.message || "Failed to process emails",
-        variant: "destructive",
-      });
-    },
-  });
 
   // Real-time processing state
   const [processingState, setProcessingState] = useState({
@@ -361,35 +286,6 @@ export default function Dashboard() {
               <i className="fas fa-sync-alt w-4"></i>
               <span>Last sync: 2 minutes ago</span>
             </div>
-            
-            {/* Email Processing Buttons */}
-            <button
-              onClick={() => scanForNewEmails.mutate()}
-              disabled={scanForNewEmails.isPending}
-              className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors disabled:opacity-50"
-            >
-              <i className="fas fa-search mr-2"></i>
-              {scanForNewEmails.isPending ? 'Scanning...' : 'Scan New Emails'}
-            </button>
-            
-            <button
-              onClick={() => processAllEmails.mutate()}
-              disabled={processAllEmails.isPending}
-              className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors disabled:opacity-50"
-            >
-              <i className="fas fa-play mr-2"></i>
-              {processAllEmails.isPending ? 'Processing...' : 'Process All Emails'}
-            </button>
-            
-            <button
-              onClick={() => processSingleEmail.mutate()}
-              disabled={processSingleEmail.isPending}
-              className="px-3 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50"
-            >
-              <i className="fas fa-step-forward mr-2"></i>
-              {processSingleEmail.isPending ? 'Processing...' : 'Process One'}
-            </button>
-            
             <button
               onClick={() => setIsModalOpen(true)}
               className="px-4 py-2 bg-primary text-white rounded-lg hover:bg-blue-600 transition-colors"

@@ -119,21 +119,6 @@ export class GmailService {
     }
   }
 
-  async getMessageById(messageId: string): Promise<GmailMessage | null> {
-    try {
-      const message = await this.gmail.users.messages.get({
-        userId: 'me',
-        id: messageId,
-        format: 'full'
-      });
-
-      return await this.parseMessage(message.data);
-    } catch (error) {
-      console.error(`Gmail API error fetching message ${messageId}:`, error);
-      return null;
-    }
-  }
-
   private async parseMessage(message: gmail_v1.Schema$Message): Promise<GmailMessage | null> {
     try {
       if (!message.id || !message.payload) return null;
