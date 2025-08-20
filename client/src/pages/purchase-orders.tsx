@@ -8,9 +8,11 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useState, useMemo } from "react";
-import { Eye, ExternalLink, FileText, Search, Filter, ArrowUpDown, MoreHorizontal, MapPin, Calendar, User, Users, Mail, Hash, CheckCircle, XCircle, Clock, Plus, Minus, FileText as FileTextIcon, Mail as MailIcon } from "lucide-react";
+import { Eye, ExternalLink, FileText, Search, Filter, ArrowUpDown, MoreHorizontal, MapPin, Calendar, User, Users, Mail, Hash, CheckCircle, XCircle, Clock, Plus, Minus, FileText as FileTextIcon, Mail as MailIcon, Copy } from "lucide-react";
+import { useToast } from "@/hooks/use-toast";
 
 export default function PurchaseOrdersPage() {
+  const { toast } = useToast();
   const [selectedOrder, setSelectedOrder] = useState<PurchaseOrder | null>(null);
   const [isViewModalOpen, setIsViewModalOpen] = useState(false);
   const [expandedCells, setExpandedCells] = useState<Set<string>>(new Set());
@@ -568,6 +570,22 @@ ${lineItems.map((item, i) =>
                             <span className="text-xs font-mono text-gray-600 bg-gray-100 px-2 py-1 rounded">
                               {order.id.substring(0, 8)}...
                             </span>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-6 w-6 p-0 hover:bg-gray-200"
+                              onClick={() => {
+                                navigator.clipboard.writeText(order.id);
+                                toast({
+                                  title: "UUID Copied",
+                                  description: "Database ID copied to clipboard",
+                                  duration: 2000,
+                                });
+                              }}
+                              title="Copy full UUID"
+                            >
+                              <Copy className="h-3 w-3" />
+                            </Button>
                           </div>
                         </TableCell>
                         <TableCell>
