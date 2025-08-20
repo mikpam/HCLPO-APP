@@ -111,15 +111,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
     console.error('Failed to initialize Gmail labels:', error);
   }
 
-  // MEMORY OPTIMIZED AUTO-START: Re-enable automatic processing with optimizations
-  console.log('🚀 SERVER STARTUP: Email processing with memory optimizations active');
-  console.log('🧠 MEMORY OPTIMIZATION: Health checks moved to post-processing stage');
-  
-  // Re-enable automatic startup with optimizations in place
+  // Auto-start with retry mechanism - SEQUENTIAL PROCESSING ARCHITECTURE
+  // ✅ EMAIL PROCESSING ENABLED - ALL EMBEDDINGS COMPLETE (100%)
+  // Contact embeddings: 43,620/43,620 (100%)
+  // Customer embeddings: 13,665/13,665 (100%) 
+  // Item embeddings: 5,373/5,373 (100%)
   setTimeout(async () => {
-    console.log('🔄 AUTO-PROCESSING: Starting memory-optimized email processing');
-    console.log('⚡ ARCHITECTURE: Lightweight health checks after processing completion');
+    console.log('🔄 AUTO-PROCESSING: Starting sequential email processing architecture');
+    console.log('⚡ ARCHITECTURE: Strict per-email processing with health monitoring control');
     console.log('🎯 HYBRID VALIDATION: Full semantic search capabilities active');
+    
+    // Start health monitoring system with pausing capability
+    validatorHealthService.startMonitoring();
     
     // Start processing emails immediately with sequential architecture
     processEmailsInBackground();
@@ -134,7 +137,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
     }, 2 * 60 * 1000); // 2 minutes for responsive email processing
     
-    // Check for stuck purchase orders every 5 minutes
+    // Check for stuck purchase orders every 5 minutes for faster testing
     setInterval(async () => {
       try {
         await retryStuckPurchaseOrders();
@@ -142,7 +145,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         console.error('Error in periodic stuck PO check:', error);
       }
     }, 5 * 60 * 1000); // 5 minutes for faster retry testing
-  }, 3000); // Slight delay to ensure full startup
+  }, 2000);
   
   console.log('✅ EMAIL PROCESSING ENABLED: All embeddings complete (57,058 total)');
   console.log('📊 EMBEDDING STATUS: Contact (43,620), Customer (13,665), Item (5,373) - 100%');
@@ -2519,10 +2522,6 @@ ${messageToProcess.body || ''}`;
         console.log(`   └─ From: ${messageToProcess.sender}`);
         console.log(`   └─ Attachments: ${messageToProcess.attachments.length}`);
 
-        // PERFORMANCE TRACKING: Record email processing start
-        const { performanceMonitor } = await import('./services/performance-monitor');
-        performanceMonitor.startEmailProcessing(messageToProcess.id);
-
         try {
 
           // Check for forwarded email from @highcaliberline.com and extract CNumber
@@ -2910,16 +2909,8 @@ totalPrice: ${item.totalPrice || 0}`;
           processedCount++;
           console.log(`   ✅ Completed processing email ${processedCount}`);
           
-          // PERFORMANCE TRACKING: Record email processing completion
-          const { performanceMonitor } = await import('./services/performance-monitor');
-          performanceMonitor.endEmailProcessing(messageToProcess.id, true);
-          
         } catch (error) {
           console.error(`❌ Error processing email ${messageToProcess?.id}:`, error);
-          
-          // PERFORMANCE TRACKING: Record failed email processing
-          const { performanceMonitor } = await import('./services/performance-monitor');
-          performanceMonitor.endEmailProcessing(messageToProcess?.id || 'unknown', false);
           
           // Log error
           await storage.createErrorLog({
@@ -2945,17 +2936,6 @@ totalPrice: ${item.totalPrice || 0}`;
       }
 
       console.log(`🔄 NORMAL PROCESSING: Completed processing ${processedCount} emails`);
-      
-      // HEALTH CHECK OPTIMIZATION: Run health checks after all processing completes
-      if (processedCount > 0) {
-        try {
-          console.log('🏥 POST-PROCESSING: Running lightweight health checks...');
-          await validatorHealthService.performLightweightHealthCheck();
-        } catch (healthError) {
-          console.error('Health check error (non-blocking):', healthError);
-        }
-      }
-      
       if (remainingUnprocessed > 0) {
         console.log(`⚠️  REMAINING EMAILS: ${remainingUnprocessed} unprocessed emails still remain - run "Process Emails Normally" again to continue`);
       } else {
@@ -3825,70 +3805,6 @@ totalPrice: ${item.totalPrice || 0}`;
 
   // Register validator health monitoring routes
   registerValidatorHealthRoutes(app);
-
-  // Performance monitoring routes
-  const { performanceMonitor } = await import('./services/performance-monitor');
-  
-  // Get current performance metrics
-  app.get("/api/performance/current", async (req, res) => {
-    try {
-      const metrics = await performanceMonitor.collectMetrics();
-      res.json(metrics);
-    } catch (error) {
-      res.status(500).json({ 
-        message: error instanceof Error ? error.message : 'Failed to collect performance metrics' 
-      });
-    }
-  });
-
-  // Get performance summary for dashboard
-  app.get("/api/performance/summary", async (req, res) => {
-    try {
-      const summary = performanceMonitor.getPerformanceSummary();
-      res.json(summary);
-    } catch (error) {
-      res.status(500).json({ 
-        message: error instanceof Error ? error.message : 'Failed to get performance summary' 
-      });
-    }
-  });
-
-  // Get memory usage trend
-  app.get("/api/performance/memory-trend", async (req, res) => {
-    try {
-      const trend = performanceMonitor.getMemoryTrend();
-      res.json(trend);
-    } catch (error) {
-      res.status(500).json({ 
-        message: error instanceof Error ? error.message : 'Failed to get memory trend' 
-      });
-    }
-  });
-
-  // Get email processing statistics
-  app.get("/api/performance/email-stats", async (req, res) => {
-    try {
-      const stats = performanceMonitor.getEmailProcessingStats();
-      res.json(stats);
-    } catch (error) {
-      res.status(500).json({ 
-        message: error instanceof Error ? error.message : 'Failed to get email processing stats' 
-      });
-    }
-  });
-
-  // Get recent performance history
-  app.get("/api/performance/history", async (req, res) => {
-    try {
-      const limit = parseInt(req.query.limit as string) || 20;
-      const history = performanceMonitor.getRecentMetrics(limit);
-      res.json(history);
-    } catch (error) {
-      res.status(500).json({ 
-        message: error instanceof Error ? error.message : 'Failed to get performance history' 
-      });
-    }
-  });
 
   const httpServer = createServer(app);
 

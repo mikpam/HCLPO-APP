@@ -38,9 +38,6 @@ export class ValidatorHealthService {
 
   constructor() {
     this.initializeHealthData();
-    // MEMORY OPTIMIZATION: Disable automatic health monitoring to prevent memory overload
-    // Health checks were causing memory issues by triggering cache loading
-    console.log('🏥 VALIDATOR HEALTH: Initialized but NOT starting automatic monitoring (memory optimization)');
     // DON'T start automatically - only start between emails
     // this.startHealthMonitoring();
   }
@@ -103,35 +100,6 @@ export class ValidatorHealthService {
     }
   }
 
-  /**
-   * MEMORY OPTIMIZED: Lightweight health check that doesn't trigger cache loading
-   */
-  public async performLightweightHealthCheck(): Promise<void> {
-    console.log('🏥 LIGHTWEIGHT HEALTH CHECK: Performing post-processing validation check');
-    
-    try {
-      // Just check if services can be instantiated without triggering heavy operations
-      const startTime = Date.now();
-      
-      // Basic availability checks without cache loading
-      const skuCheck = new OpenAISKUValidatorService();
-      const contactCheck = new OpenAIContactValidatorService(); 
-      const customerCheck = new OpenAICustomerFinderService();
-      
-      const responseTime = Date.now() - startTime;
-      console.log(`   ✅ All validators available (${responseTime}ms) - no cache loading triggered`);
-      
-      // Record lightweight success
-      this.recordSuccess('skuValidator', responseTime);
-      this.recordSuccess('contactValidator', responseTime);
-      this.recordSuccess('customerFinder', responseTime);
-      
-    } catch (error) {
-      console.error('   ❌ Lightweight health check failed:', error);
-      this.recordFailure('skuValidator', error as Error);
-    }
-  }
-
   private async performHealthChecks(): Promise<void> {
     if (this.healthChecksPaused) {
       return; // Skip if paused
@@ -154,17 +122,19 @@ export class ValidatorHealthService {
 
   private async checkSKUValidatorHealth(): Promise<void> {
     try {
-      // MEMORY OPTIMIZATION: Skip actual validation, just check service availability
-      // This prevents cache loading during health checks
+      const validator = new OpenAISKUValidatorService();
       const startTime = Date.now();
       
-      // Simple availability check without triggering cache load
-      const validator = new OpenAISKUValidatorService();
-      // Just verify the service can be instantiated without running validation
+      // Simple health check with minimal data
+      await validator.validateLineItems([{
+        sku: 'HEALTH-CHECK',
+        description: 'Health check item',
+        quantity: 1,
+        itemColor: 'N/A'
+      }]);
       
       const responseTime = Date.now() - startTime;
       this.recordSuccess('skuValidator', responseTime);
-      console.log(`   🟢 skuValidator: Available (${responseTime}ms, health check optimized)`);
     } catch (error) {
       this.recordFailure('skuValidator', error as Error);
     }

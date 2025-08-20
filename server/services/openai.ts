@@ -285,7 +285,7 @@ Provide your answer as a JSON object with two keys:
 ### TASKS
 1. **Attachment Presence** – Detect any attachment.  
 2. **Artwork‑Only Attachments** – If attachments exist, decide if **all** are artwork / proof files  
-   (filename ends in \`.ai|.eps|.svg|.png|.jpg|.jpeg|.tif|.gif\` **or** contentType matches \`image/.*\` or \`application/(illustrator|postscript|eps)\` **or** filename contains \`logo|art|artwork|design|proof|mock|visual|graphic|brand\` patterns).  
+   (filename ends in \`.ai|.eps|.svg|.png|.jpg|.jpeg|.tif|.gif\` **or** contentType matches \`image/.*\` or \`application/(illustrator|postscript|eps)\`).  
    **CRITICAL**: Be very conservative - only mark as artwork-only if 100% certain ALL attachments are purely graphics/art files.
 3. **PO Details in Body** – Decide if the body alone supplies enough structured info to act as a purchase order  
    (item descriptions **and** explicit quantities **and** total / price figures).
