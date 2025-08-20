@@ -476,7 +476,7 @@ export default function PurchaseOrdersPage() {
                     </TableHead>
                     <TableHead className="w-[400px]">Line Items</TableHead>
                     <TableHead className="w-[120px]">Customer Number</TableHead>
-                    <TableHead className="w-[100px]">Purchase Order</TableHead>
+                    <TableHead className="w-[100px]">Source Document</TableHead>
                     <TableHead className="w-[80px]">EML</TableHead>
                     <TableHead className="w-[120px]">Validated JSON</TableHead>
                     <TableHead className="w-[100px]">PO KEY</TableHead>
@@ -668,18 +668,20 @@ export default function PurchaseOrdersPage() {
                           </div>
                         </TableCell>
                         <TableCell>
-                          {order.attachmentPath ? (
+                          {order.extractionSourceFile ? (
                             <Button
                               variant="ghost"
                               size="sm"
-                              onClick={() => handleViewFile(order.attachmentPath!, 'pdf', `${order.poNumber} - Attachment`)}
+                              onClick={() => handleViewFile(order.extractionSourceFile!, 'pdf', `${order.poNumber} - Source Document`)}
                               className="inline-flex items-center space-x-1 text-blue-600 hover:text-blue-800 text-sm h-8"
                             >
                               <FileTextIcon className="w-4 h-4" />
-                              <span>View PDF</span>
+                              <span>View Source</span>
                             </Button>
+                          ) : order.route === 'TEXT_PO' ? (
+                            <span className="text-gray-500 text-sm">Email Text</span>
                           ) : (
-                            <span className="text-gray-400 text-sm">No attachment</span>
+                            <span className="text-gray-400 text-sm">No extraction</span>
                           )}
                         </TableCell>
                         <TableCell>
