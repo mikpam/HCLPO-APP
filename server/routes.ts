@@ -744,7 +744,7 @@ async function processEmailThroughValidationSystem(messageToProcess: any, update
       contactMeta: contactMeta, // Include HCL contact lookup result  
       contact: extractionResult?.purchaseOrder?.contact?.name || null, // Store contact name for NetSuite
       emlFilePath: emlFilePath, // Store EML file path for email preservation
-      attachmentPath: attachmentPaths.length > 0 ? attachmentPaths.map(att => att.storagePath).join(';') : null // Store attachment paths for audit
+      attachmentPaths: attachmentPaths.length > 0 ? attachmentPaths.map(att => att.storagePath) : [] // Store attachment paths as array for proper access
     });
   }
 
@@ -1204,8 +1204,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/objects/:objectPath(*)", async (req, res) => {
     const objectStorageService = new ObjectStorageService();
     try {
+      // Handle single file path (not semicolon-separated)
+      const singleObjectPath = req.path.split(';')[0]; // Take only first path if multiple
+      console.log(`📁 Serving object: ${singleObjectPath}`);
+      
       const objectFile = await objectStorageService.getObjectEntityFile(
-        req.path,
+        singleObjectPath,
       );
       objectStorageService.downloadObject(objectFile, res);
     } catch (error) {
