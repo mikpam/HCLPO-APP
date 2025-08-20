@@ -2499,6 +2499,10 @@ ${messageToProcess.body || ''}`;
         console.log(`   └─ From: ${messageToProcess.sender}`);
         console.log(`   └─ Attachments: ${messageToProcess.attachments.length}`);
 
+        // PERFORMANCE TRACKING: Record email processing start
+        const { performanceMonitor } = await import('./services/performance-monitor');
+        performanceMonitor.startEmailProcessing(messageToProcess.id);
+
         try {
 
           // Check for forwarded email from @highcaliberline.com and extract CNumber
@@ -2886,8 +2890,16 @@ totalPrice: ${item.totalPrice || 0}`;
           processedCount++;
           console.log(`   ✅ Completed processing email ${processedCount}`);
           
+          // PERFORMANCE TRACKING: Record email processing completion
+          const { performanceMonitor } = await import('./services/performance-monitor');
+          performanceMonitor.endEmailProcessing(messageToProcess.id, true);
+          
         } catch (error) {
           console.error(`❌ Error processing email ${messageToProcess?.id}:`, error);
+          
+          // PERFORMANCE TRACKING: Record failed email processing
+          const { performanceMonitor } = await import('./services/performance-monitor');
+          performanceMonitor.endEmailProcessing(messageToProcess?.id || 'unknown', false);
           
           // Log error
           await storage.createErrorLog({
@@ -3793,6 +3805,70 @@ totalPrice: ${item.totalPrice || 0}`;
 
   // Register validator health monitoring routes
   registerValidatorHealthRoutes(app);
+
+  // Performance monitoring routes
+  const { performanceMonitor } = await import('./services/performance-monitor');
+  
+  // Get current performance metrics
+  app.get("/api/performance/current", async (req, res) => {
+    try {
+      const metrics = await performanceMonitor.collectMetrics();
+      res.json(metrics);
+    } catch (error) {
+      res.status(500).json({ 
+        message: error instanceof Error ? error.message : 'Failed to collect performance metrics' 
+      });
+    }
+  });
+
+  // Get performance summary for dashboard
+  app.get("/api/performance/summary", async (req, res) => {
+    try {
+      const summary = performanceMonitor.getPerformanceSummary();
+      res.json(summary);
+    } catch (error) {
+      res.status(500).json({ 
+        message: error instanceof Error ? error.message : 'Failed to get performance summary' 
+      });
+    }
+  });
+
+  // Get memory usage trend
+  app.get("/api/performance/memory-trend", async (req, res) => {
+    try {
+      const trend = performanceMonitor.getMemoryTrend();
+      res.json(trend);
+    } catch (error) {
+      res.status(500).json({ 
+        message: error instanceof Error ? error.message : 'Failed to get memory trend' 
+      });
+    }
+  });
+
+  // Get email processing statistics
+  app.get("/api/performance/email-stats", async (req, res) => {
+    try {
+      const stats = performanceMonitor.getEmailProcessingStats();
+      res.json(stats);
+    } catch (error) {
+      res.status(500).json({ 
+        message: error instanceof Error ? error.message : 'Failed to get email processing stats' 
+      });
+    }
+  });
+
+  // Get recent performance history
+  app.get("/api/performance/history", async (req, res) => {
+    try {
+      const limit = parseInt(req.query.limit as string) || 20;
+      const history = performanceMonitor.getRecentMetrics(limit);
+      res.json(history);
+    } catch (error) {
+      res.status(500).json({ 
+        message: error instanceof Error ? error.message : 'Failed to get performance history' 
+      });
+    }
+  });
 
   const httpServer = createServer(app);
 

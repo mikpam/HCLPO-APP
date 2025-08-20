@@ -8,7 +8,8 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { DashboardMetrics, SystemHealthItem } from "@/types";
 import { PurchaseOrder, ErrorLog, EmailQueue } from "@shared/schema";
 import { useState } from "react";
-import { Eye, AlertTriangle, CheckCircle, Clock, Bug } from "lucide-react";
+import { Eye, AlertTriangle, CheckCircle, Clock, Bug, Activity, Database, Cpu, Timer, TrendingUp, AlertCircle } from "lucide-react";
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, AreaChart, Area, BarChart, Bar } from 'recharts';
 
 export default function AnalyticsPage() {
   const [selectedError, setSelectedError] = useState<ErrorLog | null>(null);
@@ -31,6 +32,27 @@ export default function AnalyticsPage() {
   const { data: emailQueue, isLoading: emailLoading } = useQuery<EmailQueue[]>({
     queryKey: ["/api/email-queue"],
     refetchInterval: 60000
+  });
+
+  // Performance monitoring queries
+  const { data: performanceSummary, isLoading: perfSummaryLoading } = useQuery({
+    queryKey: ["/api/performance/summary"],
+    refetchInterval: 10000 // Update every 10 seconds for real-time monitoring
+  });
+
+  const { data: memoryTrend, isLoading: memoryLoading } = useQuery({
+    queryKey: ["/api/performance/memory-trend"],
+    refetchInterval: 15000 // Update every 15 seconds
+  });
+
+  const { data: emailStats, isLoading: emailStatsLoading } = useQuery({
+    queryKey: ["/api/performance/email-stats"],
+    refetchInterval: 30000 // Update every 30 seconds
+  });
+
+  const { data: performanceHistory, isLoading: historyLoading } = useQuery({
+    queryKey: ["/api/performance/history"],
+    refetchInterval: 20000 // Update every 20 seconds
   });
 
   // Calculate analytics
@@ -168,11 +190,12 @@ export default function AnalyticsPage() {
 
       <div className="p-8">
         <Tabs defaultValue="overview" className="space-y-6">
-          <TabsList className="grid w-full grid-cols-4">
+          <TabsList className="grid w-full grid-cols-5">
             <TabsTrigger value="overview">Overview</TabsTrigger>
             <TabsTrigger value="processing">Processing</TabsTrigger>
             <TabsTrigger value="errors">Errors</TabsTrigger>
             <TabsTrigger value="performance">Performance</TabsTrigger>
+            <TabsTrigger value="monitoring">Monitoring</TabsTrigger>
           </TabsList>
 
           <TabsContent value="overview" className="space-y-6">
@@ -506,18 +529,341 @@ export default function AnalyticsPage() {
           </TabsContent>
 
           <TabsContent value="performance" className="space-y-6">
-            <div className="grid grid-cols-1 gap-6">
+            {/* Performance Summary Cards */}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
               <Card>
-                <CardHeader>
-                  <CardTitle>Performance Metrics</CardTitle>
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm font-medium text-secondary flex items-center gap-2">
+                    <Cpu className="h-4 w-4" />
+                    Memory Usage
+                  </CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <div className="text-center py-12">
-                    <i className="fas fa-chart-line text-6xl text-gray-300 mb-4"></i>
-                    <h3 className="text-lg font-medium text-slate-800 mb-2">Performance Charts Coming Soon</h3>
-                    <p className="text-secondary">
-                      Advanced performance analytics and trending charts will be available in the next update.
-                    </p>
+                  {perfSummaryLoading ? (
+                    <div className="w-16 h-8 bg-gray-200 rounded animate-pulse"></div>
+                  ) : (
+                    <div>
+                      <div className="text-2xl font-bold text-slate-800">
+                        {Math.round(performanceSummary?.memoryUsageMB || 0)}MB
+                      </div>
+                      <div className="text-xs text-secondary mt-1">
+                        {Math.round(performanceSummary?.memoryUsagePercent || 0)}% of heap
+                      </div>
+                      {(performanceSummary?.memoryUsagePercent || 0) > 85 && (
+                        <Badge variant="destructive" className="mt-2 text-xs">High Usage</Badge>
+                      )}
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm font-medium text-secondary flex items-center gap-2">
+                    <Database className="h-4 w-4" />
+                    Database Size
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  {perfSummaryLoading ? (
+                    <div className="w-16 h-8 bg-gray-200 rounded animate-pulse"></div>
+                  ) : (
+                    <div>
+                      <div className="text-2xl font-bold text-slate-800">
+                        {Math.round(performanceSummary?.databaseSizeMB || 0)}MB
+                      </div>
+                      <div className="text-xs text-secondary mt-1">Total storage</div>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm font-medium text-secondary flex items-center gap-2">
+                    <Timer className="h-4 w-4" />
+                    Avg Processing Time
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  {perfSummaryLoading ? (
+                    <div className="w-16 h-8 bg-gray-200 rounded animate-pulse"></div>
+                  ) : (
+                    <div>
+                      <div className="text-2xl font-bold text-slate-800">
+                        {Math.round((performanceSummary?.averageProcessingTime || 0) / 1000)}s
+                      </div>
+                      <div className="text-xs text-secondary mt-1">Per email</div>
+                      {(performanceSummary?.averageProcessingTime || 0) > 30000 && (
+                        <Badge variant="destructive" className="mt-2 text-xs">Slow Processing</Badge>
+                      )}
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm font-medium text-secondary flex items-center gap-2">
+                    <TrendingUp className="h-4 w-4" />
+                    System Uptime
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  {perfSummaryLoading ? (
+                    <div className="w-16 h-8 bg-gray-200 rounded animate-pulse"></div>
+                  ) : (
+                    <div>
+                      <div className="text-2xl font-bold text-slate-800">
+                        {Math.round((performanceSummary?.systemUptime || 0) / 3600)}h
+                      </div>
+                      <div className="text-xs text-secondary mt-1">Running time</div>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            </div>
+
+            {/* System Alerts */}
+            {performanceSummary?.alerts && performanceSummary.alerts.length > 0 && (
+              <Card className="border-red-200 bg-red-50">
+                <CardHeader>
+                  <CardTitle className="text-red-800 flex items-center gap-2">
+                    <AlertCircle className="h-5 w-5" />
+                    System Alerts
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-2">
+                    {performanceSummary.alerts.map((alert, index) => (
+                      <div key={index} className="flex items-center gap-2 p-2 bg-white rounded border-l-4 border-red-400">
+                        <AlertTriangle className="h-4 w-4 text-red-500" />
+                        <span className="text-sm text-red-800">{alert}</span>
+                      </div>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
+            {/* Memory Usage Chart */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Activity className="h-5 w-5" />
+                  Memory Usage Trend
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                {memoryLoading ? (
+                  <div className="h-64 bg-gray-100 rounded animate-pulse"></div>
+                ) : (
+                  <div className="h-64">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <LineChart data={memoryTrend ? memoryTrend.timestamps.map((time, index) => ({
+                        time,
+                        heapUsed: memoryTrend.heapUsed[index],
+                        rss: memoryTrend.rss[index]
+                      })) : []}>
+                        <CartesianGrid strokeDasharray="3 3" />
+                        <XAxis dataKey="time" />
+                        <YAxis label={{ value: 'Memory (MB)', angle: -90, position: 'insideLeft' }} />
+                        <Tooltip formatter={(value, name) => [`${value}MB`, name === 'heapUsed' ? 'Heap Used' : 'RSS']} />
+                        <Line type="monotone" dataKey="heapUsed" stroke="#8884d8" strokeWidth={2} name="Heap Used" />
+                        <Line type="monotone" dataKey="rss" stroke="#82ca9d" strokeWidth={2} name="RSS" />
+                      </LineChart>
+                    </ResponsiveContainer>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
+            {/* Email Processing Performance */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <Timer className="h-5 w-5" />
+                    Email Processing Stats
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  {emailStatsLoading ? (
+                    <div className="space-y-4">
+                      {[...Array(4)].map((_, i) => (
+                        <div key={i} className="flex justify-between p-3 bg-gray-50 rounded animate-pulse">
+                          <div className="w-32 h-4 bg-gray-200 rounded"></div>
+                          <div className="w-16 h-4 bg-gray-200 rounded"></div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="space-y-4">
+                      <div className="flex justify-between p-3 bg-blue-50 rounded">
+                        <span className="font-medium">Total Processed</span>
+                        <Badge variant="secondary">{emailStats?.totalProcessed || 0}</Badge>
+                      </div>
+                      <div className="flex justify-between p-3 bg-green-50 rounded">
+                        <span className="font-medium">Success Rate</span>
+                        <Badge className="bg-green-600">{Math.round(emailStats?.successRate || 0)}%</Badge>
+                      </div>
+                      <div className="flex justify-between p-3 bg-amber-50 rounded">
+                        <span className="font-medium">Average Time</span>
+                        <Badge variant="outline">{Math.round((emailStats?.averageTime || 0) / 1000)}s</Badge>
+                      </div>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader>
+                  <CardTitle>Processing Time Trend</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  {emailStatsLoading ? (
+                    <div className="h-48 bg-gray-100 rounded animate-pulse"></div>
+                  ) : (
+                    <div className="h-48">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <AreaChart data={emailStats ? emailStats.recentTimes.map((time, index) => ({
+                          email: `Email ${index + 1}`,
+                          time: Math.round(time / 1000)
+                        })) : []}>
+                          <CartesianGrid strokeDasharray="3 3" />
+                          <XAxis dataKey="email" />
+                          <YAxis label={{ value: 'Time (seconds)', angle: -90, position: 'insideLeft' }} />
+                          <Tooltip formatter={(value) => [`${value}s`, 'Processing Time']} />
+                          <Area type="monotone" dataKey="time" stroke="#8884d8" fill="#8884d8" fillOpacity={0.3} />
+                        </AreaChart>
+                      </ResponsiveContainer>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            </div>
+          </TabsContent>
+
+          <TabsContent value="monitoring" className="space-y-6">
+            {/* Real-time System Monitoring */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Activity className="h-5 w-5" />
+                  Real-time System Performance
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                {historyLoading ? (
+                  <div className="h-80 bg-gray-100 rounded animate-pulse"></div>
+                ) : (
+                  <div className="h-80">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <LineChart data={performanceHistory ? performanceHistory.map((metric, index) => ({
+                        time: new Date(metric.timestamp).toLocaleTimeString(),
+                        memory: metric.memory.heapUsed,
+                        database: metric.storage.databaseSizeMB,
+                        queue: metric.processing.currentQueueSize,
+                        emailRate: metric.processing.emailsPerMinute
+                      })) : []}>
+                        <CartesianGrid strokeDasharray="3 3" />
+                        <XAxis dataKey="time" />
+                        <YAxis yAxisId="left" label={{ value: 'Memory/DB (MB)', angle: -90, position: 'insideLeft' }} />
+                        <YAxis yAxisId="right" orientation="right" label={{ value: 'Queue/Rate', angle: 90, position: 'insideRight' }} />
+                        <Tooltip />
+                        <Line yAxisId="left" type="monotone" dataKey="memory" stroke="#8884d8" strokeWidth={2} name="Memory (MB)" />
+                        <Line yAxisId="left" type="monotone" dataKey="database" stroke="#82ca9d" strokeWidth={2} name="Database (MB)" />
+                        <Line yAxisId="right" type="monotone" dataKey="queue" stroke="#ffc658" strokeWidth={2} name="Queue Size" />
+                        <Line yAxisId="right" type="monotone" dataKey="emailRate" stroke="#ff7300" strokeWidth={2} name="Emails/min" />
+                      </LineChart>
+                    </ResponsiveContainer>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
+            {/* Performance Breakdown */}
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-sm">Memory Breakdown</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  {perfSummaryLoading ? (
+                    <div className="h-32 bg-gray-100 rounded animate-pulse"></div>
+                  ) : (
+                    <div className="space-y-3">
+                      <div className="flex justify-between text-sm">
+                        <span>Heap Used</span>
+                        <span>{Math.round(performanceSummary?.memoryUsageMB || 0)}MB</span>
+                      </div>
+                      <div className="w-full bg-gray-200 rounded-full h-2">
+                        <div 
+                          className="bg-blue-600 h-2 rounded-full" 
+                          style={{ width: `${Math.min(performanceSummary?.memoryUsagePercent || 0, 100)}%` }}
+                        ></div>
+                      </div>
+                      <div className="text-xs text-gray-500">
+                        {Math.round(performanceSummary?.memoryUsagePercent || 0)}% of available heap
+                      </div>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-sm">Processing Queue</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  {perfSummaryLoading ? (
+                    <div className="h-32 bg-gray-100 rounded animate-pulse"></div>
+                  ) : (
+                    <div className="space-y-3">
+                      <div className="text-center">
+                        <div className="text-3xl font-bold text-slate-800">
+                          {performanceSummary?.emailsPerMinute || 0}
+                        </div>
+                        <div className="text-sm text-gray-500">emails/minute</div>
+                      </div>
+                      <div className="pt-2">
+                        {(performanceSummary?.emailsPerMinute || 0) > 0 ? (
+                          <Badge className="bg-green-600 text-white">Processing Active</Badge>
+                        ) : (
+                          <Badge variant="outline">Idle</Badge>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-sm">Health Status</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm">Memory</span>
+                      {(performanceSummary?.memoryUsagePercent || 0) < 85 ? (
+                        <Badge className="bg-green-600 text-white">Healthy</Badge>
+                      ) : (
+                        <Badge variant="destructive">High</Badge>
+                      )}
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm">Processing</span>
+                      {(performanceSummary?.averageProcessingTime || 0) < 30000 ? (
+                        <Badge className="bg-green-600 text-white">Normal</Badge>
+                      ) : (
+                        <Badge variant="destructive">Slow</Badge>
+                      )}
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm">System</span>
+                      <Badge className="bg-green-600 text-white">Online</Badge>
+                    </div>
                   </div>
                 </CardContent>
               </Card>
