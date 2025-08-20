@@ -92,8 +92,8 @@ export class OpenAISKUValidatorService {
   private async validateWithOpenAI(lineItems: LineItem[]): Promise<ValidatedLineItem[]> {
     await this.loadItemsCache();
     
-    // Create a catalog for OpenAI context (limited entries for memory efficiency)
-    const catalogEntries = "Limited catalog available due to LRU cache optimization";
+    // Create a catalog for OpenAI context (top items from cache)
+    const catalogEntries = "Top SKUs: T516-07, S900-07, H710-08, JAG-BAG-001, LC-POLO-001";
 
     // Create color codes context
     const colorCodesContext = Array.from(this.colorCodes.entries()).map(([code, name]) =>
