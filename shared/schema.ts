@@ -94,7 +94,7 @@ export const customers = pgTable("customers", {
   netsuiteId: text("netsuite_id"),
   isActive: boolean("is_active").default(true),
   searchVector: text("search_vector"), // For full-text search
-  customerEmbedding: text("customer_embedding"), // Will be cast to vector(1536) in SQL
+  customerEmbedding: vector("customer_embedding", { dimensions: 1536 }), // OpenAI text-embedding-3-small vector
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
