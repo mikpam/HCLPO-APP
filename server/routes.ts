@@ -111,18 +111,99 @@ export async function registerRoutes(app: Express): Promise<Server> {
     console.error('Failed to initialize Gmail labels:', error);
   }
 
-  // MEMORY OPTIMIZATION: Disable auto-start to prevent memory overflow on startup
-  // Health checks will run after processing completes instead of on timers
-  console.log('🚀 SERVER STARTUP: Email processing available on-demand to prevent memory issues');
-  console.log('🧠 MEMORY OPTIMIZATION: Health checks moved to post-processing stage');
+  // AUTOMATIC EMAIL PROCESSING: Enable comprehensive scanning and processing
+  console.log('🚀 SERVER STARTUP: Enabling automatic comprehensive email scanning');
+  console.log('📧 COMPREHENSIVE SCANNING: Will find ALL emails including unlabeled ones');
   
-  // Disable automatic startup - call manually via API endpoints when needed
-  // setTimeout(async () => {
-  //   validatorHealthService.startMonitoring();
-  //   processEmailsInBackground();
-  //   setInterval(() => processEmailsInBackground(), 2 * 60 * 1000);
-  //   setInterval(() => retryStuckPurchaseOrders(), 5 * 60 * 1000);
-  // }, 2000);
+  // Background comprehensive email scanning function
+  async function scanAndProcessEmails() {
+    try {
+      console.log('🔍 AUTO-SCAN: Starting comprehensive email scan...');
+      
+      // Get all existing email IDs in our database
+      const existingEmails = await storage.getAllEmailQueueItems();
+      const existingGmailIds = new Set(existingEmails.map(email => email.gmailId));
+      
+      // Search for emails that don't have processing labels AND aren't in our database
+      const queries = [
+        'in:inbox -label:processed -label:filtered', // Standard unprocessed
+        'in:inbox', // All inbox emails (will filter existing ones)
+        '-label:processed -label:filtered -label:spam -label:trash', // All non-spam/trash emails without processing labels
+      ];
+      
+      let newEmailsFound = 0;
+      
+      for (const query of queries) {
+        try {
+          const messages = await gmailService.getMessages(query, 100);
+          
+          for (const message of messages) {
+            // Skip if we already have this email
+            if (existingGmailIds.has(message.id)) {
+              continue;
+            }
+            
+            // Add to our queue
+            try {
+              await storage.createEmailQueueItem({
+                gmailId: message.id,
+                sender: message.sender,
+                subject: message.subject || 'No Subject',
+                body: message.body || '',
+                attachments: message.attachments || [],
+                labels: message.labels || [],
+                status: 'unprocessed'
+              });
+              
+              // Add unprocessed label to Gmail
+              await gmailService.addLabelToEmail(message.id, 'unprocessed');
+              
+              newEmailsFound++;
+              console.log(`   ✅ AUTO-SCAN: Added ${message.sender} - "${message.subject}"`);
+            } catch (error) {
+              // Skip duplicates silently
+            }
+          }
+        } catch (queryError) {
+          console.log(`   ⚠️  AUTO-SCAN: Query "${query}" failed, continuing...`);
+        }
+      }
+      
+      if (newEmailsFound > 0) {
+        console.log(`📈 AUTO-SCAN: Found ${newEmailsFound} new emails`);
+        
+        // Process new emails immediately
+        try {
+          await processEmailsInBackground();
+        } catch (processError) {
+          console.log('⚠️  AUTO-PROCESS: Processing failed, will retry next cycle');
+        }
+      } else {
+        console.log('📧 AUTO-SCAN: No new emails found');
+      }
+      
+    } catch (error) {
+      console.error('❌ AUTO-SCAN ERROR:', error);
+    }
+  }
+  
+  // Enable automatic startup with comprehensive scanning
+  setTimeout(async () => {
+    console.log('🚀 STARTING AUTOMATIC EMAIL PROCESSING...');
+    
+    validatorHealthService.startMonitoring();
+    
+    // Initial scan
+    await scanAndProcessEmails();
+    
+    // Set up automatic scanning every 5 minutes (optimized interval)
+    setInterval(() => scanAndProcessEmails(), 5 * 60 * 1000);
+    
+    // Retry stuck purchase orders every 10 minutes
+    setInterval(() => retryStuckPurchaseOrders(), 10 * 60 * 1000);
+    
+    console.log('✅ AUTOMATIC PROCESSING: Comprehensive email scanning enabled every 5 minutes');
+  }, 3000);
   
   console.log('✅ EMAIL PROCESSING ENABLED: All embeddings complete (57,058 total)');
   console.log('📊 EMBEDDING STATUS: Contact (43,620), Customer (13,665), Item (5,373) - 100%');

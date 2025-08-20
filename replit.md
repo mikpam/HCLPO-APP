@@ -6,7 +6,7 @@ This full-stack web application automates purchase order processing from email s
 ## User Preferences
 Preferred communication style: Simple, everyday language.
 UI Design Priority: Mobile-responsive design is now required across all pages. Users need the system to work well on both desktop and mobile devices.
-System Behavior: Automated email processing now active with full hybrid validation using 100% complete embedding infrastructure.
+System Behavior: **AUTOMATIC COMPREHENSIVE EMAIL SCANNING ENABLED (August 20, 2025)** - Full automation active with comprehensive email detection including unlabeled emails. System automatically scans Gmail every 5 minutes using multiple query strategies to find ALL unprocessed emails, immediately processes them with hybrid validation using 100% complete embedding infrastructure.
 Vector Database Preference: PGvector integration with existing PostgreSQL database preferred over external vector databases like Pinecone for future semantic customer/item matching enhancements.
 Development Priority: **ENHANCED CONTACT VALIDATION SYSTEM OPERATIONAL (August 20, 2025)** - Production-ready hybrid validation system successfully tested with real email data. All 48,815 active contacts embedded with 100% completion. Semantic search achieving 97-100% accuracy for real business contacts from processed purchase orders. System automatically validates contacts through 4-step process and handles all Gmail email processing with enhanced validation capabilities.
 
