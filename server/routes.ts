@@ -619,9 +619,8 @@ async function processEmailThroughValidationSystem(messageToProcess: any, update
       
       // STEP 2 COMPLETION: Update database immediately with contact validation results
       try {
-        const tempPO = await storage.getPurchaseOrderByNumber(poNumber);
-        if (tempPO) {
-          await storage.updatePurchaseOrder(tempPO.id, {
+        if (purchaseOrder) {
+          await storage.updatePurchaseOrder(purchaseOrder.id, {
             contactMeta: contactMeta,
             contact: validatedContact.name || validatedContact.email,
             contactValidated: true
@@ -683,9 +682,8 @@ async function processEmailThroughValidationSystem(messageToProcess: any, update
           
           // STEP 1 COMPLETION: Update database immediately with customer validation results
           try {
-            const tempPO = await storage.getPurchaseOrderByNumber(poNumber);
-            if (tempPO) {
-              await storage.updatePurchaseOrder(tempPO.id, {
+            if (purchaseOrder) {
+              await storage.updatePurchaseOrder(purchaseOrder.id, {
                 customerMeta: customerMeta,
                 status: 'customer_found'
               });
@@ -1026,16 +1024,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   
   // Force validation endpoint for debugging unvalidated POs
-  app.post("/api/force-validation/:poNumber", async (req, res) => {
+  app.post("/api/force-validation/:poId", async (req, res) => {
     try {
-      const { poNumber } = req.params;
+      const { poId } = req.params;
       
-      console.log(`🔧 FORCE VALIDATION: Starting validation for PO ${poNumber}`);
+      console.log(`🔧 FORCE VALIDATION: Starting validation for PO ID ${poId}`);
       
-      // Get the purchase order
-      const purchaseOrder = await storage.getPurchaseOrderByNumber(poNumber);
+      // Get the purchase order by UUID
+      const purchaseOrder = await storage.getPurchaseOrder(poId);
       if (!purchaseOrder) {
-        return res.status(404).json({ error: `PO ${poNumber} not found` });
+        return res.status(404).json({ error: `PO with ID ${poId} not found` });
       }
       
       console.log(`   └─ Found PO: ${purchaseOrder.id}`);
@@ -1049,7 +1047,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
       
       const results = {
-        poNumber,
+        poNumber: purchaseOrder.poNumber,
         poId: purchaseOrder.id,
         customer: null,
         contact: null,
