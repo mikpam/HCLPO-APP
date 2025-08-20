@@ -226,6 +226,7 @@ async function processEmailThroughValidationSystem(messageToProcess: any, update
   let purchaseOrder = null;
   let extractionResult = null;
   let attachmentPaths: Array<{filename: string; storagePath: string; buffer?: Buffer}> = [];
+  let emlFilePath = null;
 
   // Store PDF attachments if any
   if (messageToProcess.attachments.length > 0) {
@@ -244,13 +245,13 @@ async function processEmailThroughValidationSystem(messageToProcess: any, update
       const { ObjectStorageService } = await import('./objectStorage');
       const objectStorageService = new ObjectStorageService();
       
-      const emlPath = await objectStorageService.storeEmailFile(
+      emlFilePath = await objectStorageService.storeEmailFile(
         messageToProcess.id,
         messageToProcess.subject,
         rawEmailContent
       );
       
-      console.log(`   ✅ Email preserved at: ${emlPath}`);
+      console.log(`   ✅ Email preserved at: ${emlFilePath}`);
     } catch (error) {
       console.error(`   ❌ Failed to preserve email:`, error);
     }
@@ -753,7 +754,8 @@ async function processEmailThroughValidationSystem(messageToProcess: any, update
       lineItems: extractionResult?.lineItems || [], // Store line items with merged finalSKU values
       customerMeta: customerMeta, // Include HCL customer lookup result
       contactMeta: contactMeta, // Include HCL contact lookup result  
-      contact: extractionResult?.purchaseOrder?.contact?.name || null // Store contact name for NetSuite
+      contact: extractionResult?.purchaseOrder?.contact?.name || null, // Store contact name for NetSuite
+      emlFilePath: emlFilePath // Store EML file path for email preservation
     });
   }
 
