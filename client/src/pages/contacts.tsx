@@ -77,6 +77,10 @@ interface Contact {
   job_title: string | null;
   phone: string | null;
   email: string | null;
+  company: string | null;
+  office_phone: string | null;
+  fax: string | null;
+  alt_email: string | null;
   inactive: boolean;
   duplicate: boolean;
   login_access: boolean;
@@ -485,6 +489,7 @@ export default function ContactsPage() {
               <TableRow>
                 <TableHead>Name</TableHead>
                 <TableHead>Email</TableHead>
+                <TableHead>Company</TableHead>
                 <TableHead>Job Title</TableHead>
                 <TableHead>Phone</TableHead>
                 <TableHead>Status</TableHead>
@@ -501,6 +506,13 @@ export default function ContactsPage() {
                       <span className="text-blue-600">{contact.email}</span>
                     ) : (
                       <span className="text-muted-foreground">No email</span>
+                    )}
+                  </TableCell>
+                  <TableCell>
+                    {contact.company ? (
+                      <span className="text-sm text-green-700">{contact.company}</span>
+                    ) : (
+                      <span className="text-muted-foreground">No company</span>
                     )}
                   </TableCell>
                   <TableCell>

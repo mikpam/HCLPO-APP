@@ -107,6 +107,10 @@ export const contacts = pgTable("contacts", {
   jobTitle: text("job_title"),
   phone: text("phone"),
   email: text("email"),
+  company: text("company"), // Company name (e.g., "C9272 Halo Branded Solutions")
+  officePhone: text("office_phone"), // Office phone number
+  fax: text("fax"), // Fax number
+  altEmail: text("alt_email"), // Alternative email address
   inactive: boolean("inactive").default(false),
   duplicate: boolean("duplicate").default(false),
   loginAccess: boolean("login_access").default(false),
