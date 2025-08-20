@@ -44,6 +44,7 @@ export const purchaseOrders = pgTable("purchase_orders", {
   validationCompleted: boolean("validation_completed").default(false),
   // File storage paths
   attachmentPaths: text("attachment_paths").array(), // Array of paths to attachments in object storage
+  extractionSourceFile: text("extraction_source_file"), // Specific file path used for successful extraction
   emlFilePath: text("eml_file_path"), // Path to .eml file in object storage
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),

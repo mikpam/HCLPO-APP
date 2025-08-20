@@ -213,6 +213,7 @@ async function processEmailThroughValidationSystem(messageToProcess: any, update
 
   let purchaseOrder = null;
   let extractionResult = null;
+  let extractionSourceFile = null; // Track which specific file was used for extraction
   let attachmentPaths: Array<{filename: string; storagePath: string; buffer?: Buffer}> = [];
   let emlFilePath = null;
 
@@ -335,7 +336,11 @@ async function processEmailThroughValidationSystem(messageToProcess: any, update
                 
                 extractionResult = await aiService.extractPODataFromPDF(pdfAttachment.buffer!, pdfAttachment.filename);
                 
+                // Track which specific file was used for successful extraction
+                extractionSourceFile = pdfAttachment.storagePath;
+                
                 console.log(`   ✅ SUCCESS: Extracted PO data from PDF`);
+                console.log(`   └─ Extraction source: ${pdfAttachment.filename} (${pdfAttachment.storagePath})`);
                 console.log(`   └─ Client PO Number: ${extractionResult?.purchaseOrder?.purchaseOrderNumber || 'NOT FOUND'}`);
                 if (extractionResult?.purchaseOrder?.customer?.company) {
                   console.log(`   └─ Customer: ${extractionResult.purchaseOrder.customer.company}`);
@@ -380,7 +385,12 @@ async function processEmailThroughValidationSystem(messageToProcess: any, update
           messageToProcess.body,
           messageToProcess.sender
         );
+        
+        // For TEXT_PO, extraction source is the email body (no specific attachment file)
+        extractionSourceFile = null;
+        
         console.log(`   ✅ SUCCESS: Extracted PO data from email text`);
+        console.log(`   └─ Extraction source: Email body text`);
         console.log(`   └─ Client PO Number: ${extractionResult?.purchaseOrder?.purchaseOrderNumber || 'NOT FOUND'}`);
         if (extractionResult?.purchaseOrder?.customer?.company) {
           console.log(`   └─ Customer: ${extractionResult.purchaseOrder.customer.company}`);
@@ -744,6 +754,7 @@ async function processEmailThroughValidationSystem(messageToProcess: any, update
       contactMeta: contactMeta, // Include HCL contact lookup result  
       contact: extractionResult?.purchaseOrder?.contact?.name || null, // Store contact name for NetSuite
       emlFilePath: emlFilePath, // Store EML file path for email preservation
+      extractionSourceFile: extractionSourceFile, // Store specific file used for successful extraction
       attachmentPaths: attachmentPaths.length > 0 ? attachmentPaths.map(att => att.storagePath) : [] // Store attachment paths as array for proper access
     });
   }
