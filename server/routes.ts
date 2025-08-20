@@ -1675,6 +1675,101 @@ Content: Original email with attachments
     }
   });
 
+  // NetSuite API Routes
+  app.get("/api/netsuite/test", async (req, res) => {
+    try {
+      const hasCredentials = !!(
+        process.env.NETSUITE_ACCOUNT_ID &&
+        process.env.NETSUITE_CONSUMER_KEY &&
+        process.env.NETSUITE_CONSUMER_SECRET &&
+        process.env.NETSUITE_TOKEN_ID &&
+        process.env.NETSUITE_TOKEN_SECRET &&
+        process.env.NETSUITE_RESTLET_URL
+      );
+
+      res.json({
+        status: hasCredentials ? "configured" : "not_configured",
+        realm: process.env.NETSUITE_ACCOUNT_ID || "NOT_SET",
+        hasConsumerKey: !!process.env.NETSUITE_CONSUMER_KEY,
+        hasConsumerSecret: !!process.env.NETSUITE_CONSUMER_SECRET,
+        hasTokenId: !!process.env.NETSUITE_TOKEN_ID,
+        hasTokenSecret: !!process.env.NETSUITE_TOKEN_SECRET,
+        hasRestletUrl: !!process.env.NETSUITE_RESTLET_URL,
+        message: hasCredentials 
+          ? "NetSuite OAuth 1.0 TBA configured successfully"
+          : "Missing NetSuite OAuth 1.0 TBA credentials"
+      });
+    } catch (error) {
+      res.status(500).json({
+        status: "error",
+        error: error instanceof Error ? error.message : "Unknown error"
+      });
+    }
+  });
+
+  app.post("/api/netsuite/create-sales-order", async (req, res) => {
+    try {
+      const { poId } = req.body;
+      
+      if (!poId) {
+        return res.status(400).json({ error: "Purchase Order ID required" });
+      }
+
+      // Get the purchase order data
+      const purchaseOrder = await storage.getPurchaseOrder(poId);
+      if (!purchaseOrder) {
+        return res.status(404).json({ error: "Purchase order not found" });
+      }
+
+      // Extract customer and line items from PO
+      const extractedData = purchaseOrder.extraction_data as any;
+      
+      const salesOrderData = {
+        customer: extractedData?.customer || "UNKNOWN",
+        lineItems: extractedData?.lineItems || [],
+        shipMethod: extractedData?.shipMethod,
+        shipDate: extractedData?.shipDate,
+        memo: `PO #${purchaseOrder.po_number}`,
+        externalId: purchaseOrder.po_number
+      };
+
+      // Get attachment URLs from object storage
+      const attachmentUrls = purchaseOrder.attachment_paths || [];
+
+      // Create sales order in NetSuite
+      const result = await netsuiteService.createSalesOrder(salesOrderData, attachmentUrls);
+
+      if (result.success) {
+        // Update PO status to integrated
+        const updatedPO = await storage.getPurchaseOrder(poId);
+        if (updatedPO) {
+          await storage.updatePurchaseOrder(poId, { 
+            ...updatedPO, 
+            status: 'integrated' 
+          });
+        }
+        
+        res.json({
+          success: true,
+          message: "Sales order created successfully",
+          internalId: result.internalId,
+          externalId: result.externalId
+        });
+      } else {
+        res.status(400).json({
+          success: false,
+          error: result.error || "Failed to create sales order"
+        });
+      }
+    } catch (error) {
+      console.error("Error creating NetSuite sales order:", error);
+      res.status(500).json({
+        success: false,
+        error: error instanceof Error ? error.message : "Unknown error"
+      });
+    }
+  });
+
   // Deployment verification endpoint
   app.get("/api/deployment-check", async (req, res) => {
     try {
