@@ -352,6 +352,52 @@ async function processEmailThroughValidationSystem(messageToProcess: any, update
                   console.log(`   └─ Line Items: ${extractionResult.lineItems.length}`);
                 }
                 
+                // 🔥 IMMEDIATE STORAGE: Store extraction data right after successful extraction
+                // This ensures validators can access the extracted data, and prevents data loss if validation fails
+                console.log(`   💾 IMMEDIATE STORAGE: Saving Gemini extraction data to database...`);
+                
+                try {
+                  // Create preliminary PO record with extraction data immediately
+                  const preliminaryPONumber = extractionResult?.purchaseOrder?.purchaseOrderNumber || 
+                                            extractionResult?.purchaseOrderNumber ||
+                                            extractionResult?.clientPONumber ||
+                                            `PO-${new Date().getFullYear()}-${String(Date.now()).slice(-6)}`;
+                  
+                  // Check if PO already exists and create unique number if needed
+                  let finalPONumber = preliminaryPONumber;
+                  let suffix = 1;
+                  while (await storage.getPurchaseOrderByNumber(finalPONumber)) {
+                    finalPONumber = `${preliminaryPONumber}-${suffix}`;
+                    suffix++;
+                  }
+                  
+                  // Create purchase order immediately with extraction data
+                  purchaseOrder = await storage.createPurchaseOrder({
+                    poNumber: finalPONumber,
+                    emailId: messageToProcess.id,
+                    sender: messageToProcess.sender,
+                    subject: messageToProcess.subject,
+                    route: processingResult.classification.recommended_route,
+                    confidence: processingResult.classification.analysis_flags?.confidence_score || 0,
+                    status: 'extracting', // Temporary status during processing
+                    originalJson: processingResult.classification,
+                    extractedData: extractionResult, // Store the complete Gemini extraction
+                    lineItems: extractionResult?.lineItems || [],
+                    contact: extractionResult?.purchaseOrder?.contact?.name || null,
+                    customerName: extractionResult?.purchaseOrder?.customer?.company || null,
+                    emlFilePath: emlFilePath,
+                    extractionSourceFile: extractionSourceFile,
+                    attachmentPaths: attachmentPaths.length > 0 ? attachmentPaths.map(att => att.storagePath) : []
+                  });
+                  
+                  console.log(`   ✅ IMMEDIATE STORAGE COMPLETE: PO ${finalPONumber} created with extraction data`);
+                  console.log(`   └─ Database ID: ${purchaseOrder.id}`);
+                  
+                } catch (storageError) {
+                  console.error(`   ❌ IMMEDIATE STORAGE FAILED:`, storageError);
+                  // Continue processing even if immediate storage fails
+                }
+                
                 processedPO = true; // Stop processing additional attachments once we find a valid PO
                 
               } catch (error) {
@@ -400,6 +446,51 @@ async function processEmailThroughValidationSystem(messageToProcess: any, update
         }
         if (extractionResult?.lineItems?.length) {
           console.log(`   └─ Line Items: ${extractionResult.lineItems.length}`);
+        }
+        
+        // 🔥 IMMEDIATE STORAGE: Store TEXT_PO extraction data right after successful extraction
+        console.log(`   💾 IMMEDIATE STORAGE: Saving Gemini TEXT extraction data to database...`);
+        
+        try {
+          // Create preliminary PO record with extraction data immediately
+          const preliminaryPONumber = extractionResult?.purchaseOrder?.purchaseOrderNumber || 
+                                    extractionResult?.purchaseOrderNumber ||
+                                    extractionResult?.clientPONumber ||
+                                    `PO-${new Date().getFullYear()}-${String(Date.now()).slice(-6)}`;
+          
+          // Check if PO already exists and create unique number if needed
+          let finalPONumber = preliminaryPONumber;
+          let suffix = 1;
+          while (await storage.getPurchaseOrderByNumber(finalPONumber)) {
+            finalPONumber = `${preliminaryPONumber}-${suffix}`;
+            suffix++;
+          }
+          
+          // Create purchase order immediately with extraction data
+          purchaseOrder = await storage.createPurchaseOrder({
+            poNumber: finalPONumber,
+            emailId: messageToProcess.id,
+            sender: messageToProcess.sender,
+            subject: messageToProcess.subject,
+            route: processingResult.classification.recommended_route,
+            confidence: processingResult.classification.analysis_flags?.confidence_score || 0,
+            status: 'extracting', // Temporary status during processing
+            originalJson: processingResult.classification,
+            extractedData: extractionResult, // Store the complete Gemini extraction
+            lineItems: extractionResult?.lineItems || [],
+            contact: extractionResult?.purchaseOrder?.contact?.name || null,
+            customerName: extractionResult?.purchaseOrder?.customer?.company || null,
+            emlFilePath: emlFilePath,
+            extractionSourceFile: extractionSourceFile,
+            attachmentPaths: attachmentPaths.length > 0 ? attachmentPaths.map(att => att.storagePath) : []
+          });
+          
+          console.log(`   ✅ IMMEDIATE STORAGE COMPLETE: PO ${finalPONumber} created with extraction data`);
+          console.log(`   └─ Database ID: ${purchaseOrder.id}`);
+          
+        } catch (storageError) {
+          console.error(`   ❌ IMMEDIATE STORAGE FAILED:`, storageError);
+          // Continue processing even if immediate storage fails
         }
       } catch (error) {
         console.error(`   ❌ FAILED: Email text extraction error:`, error);
@@ -706,18 +797,20 @@ async function processEmailThroughValidationSystem(messageToProcess: any, update
             }
           });
           
-          // STEP 3 COMPLETION: Update database immediately with line items validation results
+          // STEP 3 COMPLETION: Update existing purchase order with line items validation results
           try {
-            const tempPO = await storage.getPurchaseOrderByNumber(poNumber);
-            if (tempPO) {
-              await storage.updatePurchaseOrder(tempPO.id, {
+            if (purchaseOrder) {
+              await storage.updatePurchaseOrder(purchaseOrder.id, {
                 lineItems: extractionResult.lineItems,
                 extractedData: {
                   ...extractionResult,
                   validatedLineItems: validatedLineItems
-                }
+                },
+                status: 'validating' // Update status to show validation in progress
               });
-              console.log(`   ✅ STEP 3 COMPLETED: Line items data stored in database`);
+              console.log(`   ✅ STEP 3 COMPLETED: Line items data stored in existing PO ${purchaseOrder.poNumber}`);
+            } else {
+              console.log(`   ⚠️ STEP 3 SKIPPED: No purchase order available for update`);
             }
           } catch (stepError) {
             console.error(`   ❌ STEP 3 FAILED: Could not store line items data:`, stepError);
@@ -1459,6 +1552,71 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       res.status(500).json({ 
         message: error instanceof Error ? error.message : 'Failed to get processing status' 
+      });
+    }
+  });
+
+  // 🔧 POST /api/purchase-orders/fix-extraction-data - Fix missing extraction data for specific POs
+  app.post('/api/purchase-orders/fix-extraction-data', async (req, res) => {
+    try {
+      const { targetSubject, extractedData } = req.body;
+      
+      if (!targetSubject || !extractedData) {
+        return res.status(400).json({ 
+          error: 'Missing required fields: targetSubject and extractedData' 
+        });
+      }
+      
+      console.log(`🔧 EXTRACTION DATA FIX: Searching for PO with subject containing: ${targetSubject}`);
+      
+      // Find PO by subject or PO number
+      const allPOs = await storage.getPurchaseOrders({ limit: 1000 });
+      const targetPO = allPOs.find(po => 
+        po.subject?.includes(targetSubject) || 
+        po.poNumber === targetSubject ||
+        po.poNumber?.includes(targetSubject)
+      );
+      
+      if (!targetPO) {
+        return res.status(404).json({ 
+          error: `No purchase order found with subject/PO number containing: ${targetSubject}` 
+        });
+      }
+      
+      console.log(`   ✅ Found PO: ${targetPO.id} (${targetPO.poNumber})`);
+      console.log(`   └─ Current extraction data: ${targetPO.extractedData ? 'Present' : 'Missing'}`);
+      
+      // Update the PO with the provided extraction data
+      const updatedPO = await storage.updatePurchaseOrder(targetPO.id, {
+        extractedData: extractedData,
+        lineItems: extractedData.lineItems || [],
+        contact: extractedData.purchaseOrder?.contact?.name || targetPO.contact,
+        customerName: extractedData.purchaseOrder?.customer?.company || targetPO.customerName,
+        updatedAt: new Date()
+      });
+      
+      console.log(`   ✅ Successfully updated PO with extraction data`);
+      console.log(`   └─ Contact: ${extractedData.purchaseOrder?.contact?.name || 'Not provided'}`);
+      console.log(`   └─ Company: ${extractedData.purchaseOrder?.customer?.company || 'Not provided'}`);
+      console.log(`   └─ Line Items: ${extractedData.lineItems?.length || 0}`);
+      
+      res.json({
+        success: true,
+        message: 'Extraction data updated successfully',
+        poNumber: targetPO.poNumber,
+        updatedFields: {
+          extractedData: 'Updated',
+          lineItems: extractedData.lineItems?.length || 0,
+          contact: extractedData.purchaseOrder?.contact?.name || null,
+          customerName: extractedData.purchaseOrder?.customer?.company || null
+        }
+      });
+      
+    } catch (error) {
+      console.error('❌ Error fixing extraction data:', error);
+      res.status(500).json({ 
+        error: 'Failed to fix extraction data',
+        details: error.message 
       });
     }
   });
