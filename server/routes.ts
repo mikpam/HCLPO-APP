@@ -29,6 +29,9 @@ import { z } from "zod";
 // 🔥 REAL-TIME PROCESSING STATUS TRACKING (imported from shared module)
 import { updateProcessingStatus, getCurrentProcessingStatus, type ProcessingStatus } from "./utils/processing-status";
 
+// Initialize object storage service for generating presigned URLs
+const objectStorageService = new ObjectStorageService();
+
 // Complete validation system workflow - processes emails with real-time status updates
 async function processEmailWithValidationSystem() {
   console.log(`\n🔄 UNIFIED PROCESSING: Starting automatic email processing through validation system...`);
@@ -1733,8 +1736,39 @@ Content: Original email with attachments
         externalId: purchaseOrder.po_number
       };
 
-      // Get attachment URLs from object storage
-      const attachmentUrls = purchaseOrder.attachment_paths || [];
+      // Generate presigned URLs for attachments
+      const attachmentPaths = purchaseOrder.attachment_paths || [];
+      const attachmentUrls: string[] = [];
+      
+      if (attachmentPaths.length > 0) {
+        console.log(`📎 Generating presigned URLs for ${attachmentPaths.length} attachments...`);
+        
+        for (const path of attachmentPaths) {
+          try {
+            // Skip local fallback paths
+            if (path && !path.startsWith('/local-fallback/')) {
+              const presignedUrl = await objectStorageService.generatePresignedUrl(path, 86400); // 24 hour expiry
+              attachmentUrls.push(presignedUrl);
+              console.log(`   ✅ Generated presigned URL for: ${path}`);
+            }
+          } catch (error) {
+            console.error(`   ⚠️ Failed to generate presigned URL for ${path}:`, error);
+          }
+        }
+        
+        console.log(`   📎 Generated ${attachmentUrls.length} presigned URLs`);
+      }
+
+      // Add extraction source file if present
+      if (purchaseOrder.extraction_source_file && !purchaseOrder.extraction_source_file.startsWith('/local-fallback/')) {
+        try {
+          const sourceUrl = await objectStorageService.generatePresignedUrl(purchaseOrder.extraction_source_file, 86400);
+          attachmentUrls.push(sourceUrl);
+          console.log(`   ✅ Added extraction source file URL`);
+        } catch (error) {
+          console.error(`   ⚠️ Failed to generate URL for extraction source:`, error);
+        }
+      }
 
       // Create sales order in NetSuite
       const result = await netsuiteService.createSalesOrder(salesOrderData, attachmentUrls);

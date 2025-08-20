@@ -409,6 +409,36 @@ export class ObjectStorageService {
     }
   }
 
+  // Generate a presigned URL for an object path
+  async generatePresignedUrl(objectPath: string, ttlSec: number = 3600): Promise<string> {
+    try {
+      // Handle both /objects/ paths and direct bucket paths
+      let fullPath = objectPath;
+      
+      if (objectPath.startsWith('/objects/')) {
+        // Convert /objects/ path to actual storage path
+        const privateObjectDir = this.getPrivateObjectDir();
+        const relativePath = objectPath.replace('/objects/', '');
+        fullPath = `${privateObjectDir}/${relativePath}`;
+      }
+      
+      const { bucketName, objectName } = parseObjectPath(fullPath);
+      
+      // Generate presigned URL for GET access
+      const signedUrl = await signObjectURL({
+        bucketName,
+        objectName,
+        method: 'GET',
+        ttlSec
+      });
+      
+      return signedUrl;
+    } catch (error) {
+      console.error('Error generating presigned URL:', error);
+      throw new Error(`Failed to generate presigned URL: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }
+
   // Clear all files from object storage for testing purposes
   async clearAllFiles(): Promise<{ deleted: number; errors: string[] }> {
     const bucketId = process.env.DEFAULT_OBJECT_STORAGE_BUCKET_ID;
