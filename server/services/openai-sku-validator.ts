@@ -66,7 +66,13 @@ export class OpenAISKUValidatorService {
     }
 
     try {
-      const allItems = await db.select().from(items).where(sql`is_active = true`);
+      // MEMORY OPTIMIZATION: Load only essential data, limit cache size
+      const allItems = await db.select({
+        id: items.id,
+        finalSku: items.finalSku,
+        displayName: items.displayName,
+        description: items.description
+      }).from(items).where(sql`is_active = true`).limit(1000); // Limit to 1000 items
       
       this.itemsCache.clear();
       this.catalogMap.clear();
@@ -77,14 +83,17 @@ export class OpenAISKUValidatorService {
       }
       
       this.lastCacheUpdate = now;
-      console.log(`   📦 Loaded ${this.itemsCache.size} items into cache`);
+      console.log(`   📦 Loaded ${this.itemsCache.size} items into optimized cache (limited for memory efficiency)`);
     } catch (error) {
       console.error('Failed to load items cache:', error);
     }
   }
 
   private async validateWithOpenAI(lineItems: LineItem[]): Promise<ValidatedLineItem[]> {
-    await this.loadItemsCache();
+    // MEMORY OPTIMIZATION: Only load cache when actually needed for validation
+    if (lineItems.length > 0) {
+      await this.loadItemsCache();
+    }
     
     // Create a catalog for OpenAI context (top 200 items for better context)
     const catalogEntries = Array.from(this.catalogMap.entries()).slice(0, 200).map(([sku, productName]) => 

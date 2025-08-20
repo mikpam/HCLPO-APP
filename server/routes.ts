@@ -111,41 +111,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
     console.error('Failed to initialize Gmail labels:', error);
   }
 
-  // Auto-start with retry mechanism - SEQUENTIAL PROCESSING ARCHITECTURE
-  // ✅ EMAIL PROCESSING ENABLED - ALL EMBEDDINGS COMPLETE (100%)
-  // Contact embeddings: 43,620/43,620 (100%)
-  // Customer embeddings: 13,665/13,665 (100%) 
-  // Item embeddings: 5,373/5,373 (100%)
-  setTimeout(async () => {
-    console.log('🔄 AUTO-PROCESSING: Starting sequential email processing architecture');
-    console.log('⚡ ARCHITECTURE: Strict per-email processing with health monitoring control');
-    console.log('🎯 HYBRID VALIDATION: Full semantic search capabilities active');
-    
-    // Start health monitoring system with pausing capability
-    validatorHealthService.startMonitoring();
-    
-    // Start processing emails immediately with sequential architecture
-    processEmailsInBackground();
-    
-    // Schedule continuous email checking every 2 minutes for new emails
-    setInterval(async () => {
-      try {
-        console.log('🔄 SCHEDULED EMAIL SCAN: Checking for new emails...');
-        await processEmailsInBackground();
-      } catch (error) {
-        console.error('Error in scheduled email processing:', error);
-      }
-    }, 2 * 60 * 1000); // 2 minutes for responsive email processing
-    
-    // Check for stuck purchase orders every 5 minutes for faster testing
-    setInterval(async () => {
-      try {
-        await retryStuckPurchaseOrders();
-      } catch (error) {
-        console.error('Error in periodic stuck PO check:', error);
-      }
-    }, 5 * 60 * 1000); // 5 minutes for faster retry testing
-  }, 2000);
+  // MEMORY OPTIMIZATION: Disable auto-start to prevent memory overflow on startup
+  // Health checks will run after processing completes instead of on timers
+  console.log('🚀 SERVER STARTUP: Email processing available on-demand to prevent memory issues');
+  console.log('🧠 MEMORY OPTIMIZATION: Health checks moved to post-processing stage');
+  
+  // Disable automatic startup - call manually via API endpoints when needed
+  // setTimeout(async () => {
+  //   validatorHealthService.startMonitoring();
+  //   processEmailsInBackground();
+  //   setInterval(() => processEmailsInBackground(), 2 * 60 * 1000);
+  //   setInterval(() => retryStuckPurchaseOrders(), 5 * 60 * 1000);
+  // }, 2000);
   
   console.log('✅ EMAIL PROCESSING ENABLED: All embeddings complete (57,058 total)');
   console.log('📊 EMBEDDING STATUS: Contact (43,620), Customer (13,665), Item (5,373) - 100%');
@@ -2936,6 +2913,17 @@ totalPrice: ${item.totalPrice || 0}`;
       }
 
       console.log(`🔄 NORMAL PROCESSING: Completed processing ${processedCount} emails`);
+      
+      // HEALTH CHECK OPTIMIZATION: Run health checks after all processing completes
+      if (processedCount > 0) {
+        try {
+          console.log('🏥 POST-PROCESSING: Running lightweight health checks...');
+          await validatorHealthService.performLightweightHealthCheck();
+        } catch (healthError) {
+          console.error('Health check error (non-blocking):', healthError);
+        }
+      }
+      
       if (remainingUnprocessed > 0) {
         console.log(`⚠️  REMAINING EMAILS: ${remainingUnprocessed} unprocessed emails still remain - run "Process Emails Normally" again to continue`);
       } else {
