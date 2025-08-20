@@ -25,6 +25,22 @@ import { z } from "zod";
 // NOTE: Validator instances are now created per-email to prevent race conditions
 // Previously used singleton validators caused state pollution between sequential emails
 
+// 🔥 REAL-TIME PROCESSING STATUS TRACKING
+let currentProcessingStatus = {
+  isProcessing: false,
+  currentStep: "",
+  currentEmail: "",
+  currentPO: "",
+  emailNumber: 0,
+  totalEmails: 0
+};
+
+// Helper function to update processing status for real-time monitoring
+function updateProcessingStatus(update: Partial<typeof currentProcessingStatus>) {
+  currentProcessingStatus = { ...currentProcessingStatus, ...update };
+  console.log(`📊 PROCESSING STATUS: ${currentProcessingStatus.currentStep || 'Idle'} ${currentProcessingStatus.currentEmail ? `(${currentProcessingStatus.currentEmail})` : ''}`);
+}
+
 // Helper function to process email through complete validation system
 async function processEmailThroughValidationSystem(messageToProcess: any, updateProcessingStatus: Function) {
   // Check for forwarded email from @highcaliberline.com and extract CNumber
@@ -1022,6 +1038,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       res.status(500).json({ 
         message: error instanceof Error ? error.message : 'Failed to get processing status' 
+      });
+    }
+  });
+
+  // Purchase orders endpoint
+  app.get("/api/purchase-orders", async (req, res) => {
+    try {
+      const { status, limit = 50, offset = 0 } = req.query;
+      const purchaseOrders = await storage.getPurchaseOrders({
+        status: status as string,
+        limit: parseInt(limit as string),
+        offset: parseInt(offset as string)
+      });
+      res.json(purchaseOrders);
+    } catch (error) {
+      res.status(500).json({ 
+        message: error instanceof Error ? error.message : 'Failed to fetch purchase orders' 
       });
     }
   });
