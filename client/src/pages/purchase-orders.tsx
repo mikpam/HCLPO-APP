@@ -480,6 +480,18 @@ ${lineItems.map((item, i) =>
                       </Button>
                     </TableHead>
 
+                    <TableHead className="w-[180px]">
+                      <Button 
+                        variant="ghost" 
+                        size="sm" 
+                        onClick={() => handleSort('id')}
+                        className="h-8 p-0 font-medium text-left"
+                      >
+                        Database ID (UUID)
+                        <ArrowUpDown className="ml-2 h-3 w-3" />
+                      </Button>
+                    </TableHead>
+
                     <TableHead className="w-[110px]">
                       <Button 
                         variant="ghost" 
@@ -549,6 +561,13 @@ ${lineItems.map((item, i) =>
                           <div className="flex items-center space-x-2">
                             <Hash className="w-4 h-4 text-gray-400" />
                             <span className="text-blue-600 font-mono">{order.poNumber}</span>
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex items-center space-x-2">
+                            <span className="text-xs font-mono text-gray-600 bg-gray-100 px-2 py-1 rounded">
+                              {order.id.substring(0, 8)}...
+                            </span>
                           </div>
                         </TableCell>
                         <TableCell>
