@@ -755,7 +755,8 @@ async function processEmailThroughValidationSystem(messageToProcess: any, update
       customerMeta: customerMeta, // Include HCL customer lookup result
       contactMeta: contactMeta, // Include HCL contact lookup result  
       contact: extractionResult?.purchaseOrder?.contact?.name || null, // Store contact name for NetSuite
-      emlFilePath: emlFilePath // Store EML file path for email preservation
+      emlFilePath: emlFilePath, // Store EML file path for email preservation
+      attachmentPath: attachmentPaths.length > 0 ? attachmentPaths.map(att => att.storagePath).join(';') : null // Store attachment paths for audit
     });
   }
 
