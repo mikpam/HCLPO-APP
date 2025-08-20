@@ -55,7 +55,10 @@ export default function PurchaseOrdersPage() {
     
     // Check for HCL customer lookup result first (highest priority)
     const customerMeta = order.customerMeta as any;
-    if (customerMeta && customerMeta.customer_number) {
+    if (customerMeta && 
+        customerMeta.customer_number && 
+        customerMeta.customer_number !== 'NO_CUSTOMER_NUMBER' &&
+        customerMeta.customer_name !== 'NO_CUSTOMER_FOUND') {
       const customer = extractedData?.purchaseOrder?.customer || extractedData?.customer || {};
       return {
         name: customerMeta.customer_name,
@@ -77,7 +80,10 @@ export default function PurchaseOrdersPage() {
       const hclCustomer = forwardedEmail.hclCustomerLookup;
       const extractedCustomer = forwardedEmail.extractedCustomer;
       
-      if (hclCustomer && hclCustomer.customer_name) {
+      if (hclCustomer && 
+          hclCustomer.customer_name && 
+          hclCustomer.customer_name !== 'NO_CUSTOMER_FOUND' &&
+          hclCustomer.customer_number !== 'NO_CUSTOMER_NUMBER') {
         // HCL database customer found
         return {
           name: hclCustomer.customer_name,
