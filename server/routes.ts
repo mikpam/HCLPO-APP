@@ -1675,6 +1675,35 @@ Content: Original email with attachments
     }
   });
 
+  // Deployment verification endpoint
+  app.get("/api/deployment-check", async (req, res) => {
+    try {
+      const dbUrl = process.env.DATABASE_URL || "NOT_SET";
+      const isNeonDb = dbUrl.includes("neon.tech");
+      const dbHost = dbUrl.includes("@") ? dbUrl.split("@")[1]?.split("/")[0] : "UNKNOWN";
+      
+      // Test database connection
+      const result = await storage.getDashboardMetrics();
+      
+      res.json({
+        status: "connected",
+        database_host: dbHost,
+        is_neon_db: isNeonDb,
+        environment: process.env.NODE_ENV || "unknown",
+        purchase_orders_count: result.posProcessed || 0,
+        timestamp: new Date().toISOString()
+      });
+    } catch (error) {
+      res.status(500).json({
+        status: "error",
+        database_host: "connection_failed",
+        is_neon_db: false,
+        error: error instanceof Error ? error.message : "Unknown error",
+        timestamp: new Date().toISOString()
+      });
+    }
+  });
+
   const server = createServer(app);
   return server;
 }
