@@ -122,7 +122,78 @@ export class ItemEmbeddingService {
   }
 
   /**
-   * Generate embeddings for items without embeddings
+   * ULTRA-OPTIMIZED: Generate embeddings for items in massive parallel batches
+   * - Batch OpenAI API calls (up to 2000 texts per request)  
+   * - Parallel database updates
+   * - Memory-efficient processing
+   */
+  async generateItemEmbeddingsOptimized(batchSize: number = 2000): Promise<number> {
+    console.log(`🚀 ITEM ULTRA-OPTIMIZED EMBEDDING: Starting mega-batch processing (batch size: ${batchSize})`);
+
+    try {
+      // Get items without embeddings using raw SQL to avoid schema issues
+      const result = await db.execute(sql`
+        SELECT id, sku, final_sku, display_name, description, sub_type, vendor, manufacturer, upc, mpn, attributes
+        FROM items 
+        WHERE item_embedding IS NULL 
+        LIMIT ${batchSize}
+      `);
+      const itemsWithoutEmbeddings = result.rows;
+
+      console.log(`   📊 Found ${itemsWithoutEmbeddings.length} items without embeddings`);
+
+      if (itemsWithoutEmbeddings.length === 0) {
+        console.log(`   ✅ All items already have embeddings`);
+        return 0;
+      }
+
+      // Build all item texts in parallel
+      const itemTexts = itemsWithoutEmbeddings.map(item => ({
+        id: item.id,
+        text: this.generateItemText(item)
+      }));
+
+      console.log(`   🔥 BATCH PROCESSING: Sending ${itemTexts.length} texts to OpenAI in ONE request`);
+
+      // MASSIVE OPTIMIZATION: Single OpenAI API call for entire batch
+      const response = await this.openai.embeddings.create({
+        model: "text-embedding-3-small",
+        input: itemTexts.map(it => it.text), // Send all texts at once
+      });
+
+      console.log(`   ✅ RECEIVED ${response.data.length} embeddings in single API call`);
+
+      // Prepare batch database updates
+      const updates = itemTexts.map((it, index) => ({
+        itemId: it.id,
+        itemText: it.text,
+        embedding: response.data[index].embedding
+      }));
+
+      // ULTRA-FAST: Parallel database updates using raw SQL
+      await Promise.all(
+        updates.map(update => 
+          db.execute(sql`
+            UPDATE items 
+            SET item_text = ${update.itemText},
+                item_embedding = ${JSON.stringify(update.embedding)}::vector,
+                updated_at = NOW()
+            WHERE id = ${update.itemId}
+          `)
+        )
+      );
+
+      console.log(`   💾 Updated ${updates.length} items with embeddings`);
+      return updates.length;
+
+    } catch (error) {
+      console.error(`   ❌ ITEM ULTRA-OPTIMIZED EMBEDDING ERROR:`, error);
+      throw error;
+    }
+  }
+
+  /**
+   * Generate embeddings for items without embeddings (original method kept as fallback)
    */
   async generateMissingEmbeddings(limit: number = 50): Promise<{
     processed: number;
