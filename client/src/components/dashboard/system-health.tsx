@@ -28,7 +28,7 @@ export default function SystemHealth() {
 
   const handleProcessQueue = async () => {
     try {
-      const response = await fetch('/api/processing/process-batch', {
+      const response = await fetch('/api/processing/process-auto', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' }
       });

@@ -23,7 +23,7 @@ export default function Dashboard() {
 
   const processSingleEmail = useMutation({
     mutationFn: async () => {
-      const response = await fetch("/api/emails/process-single", {
+      const response = await fetch("/api/processing/process-auto", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -73,19 +73,22 @@ export default function Dashboard() {
   // Real-time background processing status
   const { data: backgroundStatus } = useQuery({
     queryKey: ["/api/processing/current-status"],
-    refetchInterval: 1000, // Check every 1 second for real-time updates
-    onSuccess: (data) => {
-      if (data) {
-        setProcessingState({
-          isProcessing: data.isProcessing || false,
-          currentEmail: data.currentEmail || null,
-          processedCount: data.emailNumber || 0,
-          totalCount: data.totalEmails || 0,
-          currentStep: data.currentStep || ""
-        });
-      }
-    }
+    refetchInterval: 1000 // Check every 1 second for real-time updates
   });
+
+  // Update processing state when background status changes
+  useEffect(() => {
+    if (backgroundStatus) {
+      const data = backgroundStatus as any;
+      setProcessingState({
+        isProcessing: data.isProcessing || false,
+        currentEmail: data.currentEmail || null,
+        processedCount: data.emailNumber || 0,
+        totalCount: data.totalEmails || 0,
+        currentStep: data.currentStep || ""
+      });
+    }
+  }, [backgroundStatus]);
 
   // SSE-based real-time processing
   const startRealTimeProcessing = () => {
