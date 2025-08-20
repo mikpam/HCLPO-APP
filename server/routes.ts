@@ -10,6 +10,7 @@ import { registerCustomerEmbeddingRoutes } from "./routes/customer-embeddings";
 import { registerItemEmbeddingRoutes } from "./routes/item-embeddings";
 import { validatorHealthService } from "./services/validator-health";
 import { gmailService } from "./services/gmail";
+import { ObjectStorageService, ObjectNotFoundError } from "./objectStorage";
 import { aiService, type AIEngine } from "./services/ai-service";
 import { netsuiteService } from "./services/netsuite";
 // openaiCustomerFinderService now uses per-email instances to prevent race conditions
@@ -917,6 +918,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
   
 
   
+  // Object Storage Routes (must be before static file serving)
+  app.get("/objects/:objectPath(*)", async (req, res) => {
+    const objectStorageService = new ObjectStorageService();
+    try {
+      const objectFile = await objectStorageService.getObjectEntityFile(
+        req.path,
+      );
+      objectStorageService.downloadObject(objectFile, res);
+    } catch (error) {
+      console.error("Error serving object:", error);
+      if (error instanceof ObjectNotFoundError) {
+        return res.status(404).json({ error: "File not found" });
+      }
+      return res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
   // Dashboard metrics
   app.get("/api/dashboard/metrics", async (req, res) => {
     try {
