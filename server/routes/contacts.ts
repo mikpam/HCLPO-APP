@@ -50,6 +50,10 @@ export function registerContactRoutes(app: Express): void {
           job_title: contacts.jobTitle,
           phone: contacts.phone,
           email: contacts.email,
+          company: contacts.company,
+          office_phone: contacts.officePhone,
+          fax: contacts.fax,
+          alt_email: contacts.altEmail,
           inactive: contacts.inactive,
           duplicate: contacts.duplicate,
           login_access: contacts.loginAccess,
@@ -72,7 +76,8 @@ export function registerContactRoutes(app: Express): void {
           ilike(contacts.name, searchTerm),
           ilike(contacts.email, searchTerm),
           ilike(contacts.jobTitle, searchTerm),
-          ilike(contacts.phone, searchTerm)
+          ilike(contacts.phone, searchTerm),
+          ilike(contacts.company, searchTerm)
         );
         whereCondition = whereCondition ? and(whereCondition, searchCondition) : searchCondition;
       }
