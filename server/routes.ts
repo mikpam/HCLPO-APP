@@ -111,14 +111,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
     console.error('Failed to initialize Gmail labels:', error);
   }
 
-  // Auto-start disabled to prevent memory issues
-  // Start health monitoring system without automatic email processing
+  // Auto-start re-enabled after memory optimization success
   setTimeout(async () => {
-    console.log('🟡 AUTO-PROCESSING: DISABLED for memory optimization');
-    console.log('⚡ ARCHITECTURE: Manual processing mode active');
-    console.log('🎯 HYBRID VALIDATION: Available via API endpoints');
+    console.log('🟢 AUTO-PROCESSING: ENABLED with memory optimizations');
+    console.log('⚡ ARCHITECTURE: Automatic processing mode active');
+    console.log('🎯 HYBRID VALIDATION: Full system operational');
     
-    // Start health monitoring system only (lightweight)
+    // Start health monitoring system
     try {
       validatorHealthService.startMonitoring();
       console.log('✅ Health monitoring started successfully');
@@ -126,14 +125,38 @@ export async function registerRoutes(app: Express): Promise<Server> {
       console.log('⚠️ Health monitoring disabled due to memory constraints');
     }
     
-    console.log('📝 To process emails, use the API endpoints:');
-    console.log('   POST /api/emails/process-normal - Process emails manually');
-    console.log('   GET /api/dashboard/metrics - View system status');
+    // Start lightweight email polling with memory optimizations
+    try {
+      console.log('📧 Starting lightweight email polling...');
+      
+      // Create a simple polling function that checks for new emails every 2 minutes
+      const pollEmails = async () => {
+        try {
+          const response = await fetch('http://localhost:5000/api/emails/process-normal', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' }
+          });
+          
+          if (response.ok) {
+            const result = await response.json();
+            if (result.emailsProcessed > 0) {
+              console.log(`📧 Auto-polling: Processed ${result.emailsProcessed} emails`);
+            }
+          }
+        } catch (error) {
+          console.log('📧 Auto-polling: No new emails or service unavailable');
+        }
+      };
+      
+      // Start polling every 2 minutes (120000ms)
+      setInterval(pollEmails, 120000);
+      console.log('✅ Lightweight email polling started (every 2 minutes)');
+      
+    } catch (error) {
+      console.error('❌ Failed to start email polling:', error);
+      console.log('📝 Fallback: Use manual API endpoints for processing');
+    }
   }, 2000);
-  
-  console.log('⚠️ AUTO-PROCESSING DISABLED: Preventing memory overload');
-  console.log('📊 SYSTEM: Ready for manual processing via API endpoints');
-  console.log('🎯 MEMORY OPTIMIZATION: Background processing suspended');
   
 
   
