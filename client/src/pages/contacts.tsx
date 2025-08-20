@@ -1,5 +1,5 @@
 import { useState, useMemo } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -27,6 +27,24 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { 
+  Form,
+  FormControl,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from "@/components/ui/form";
+import { 
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { 
   Search, 
   Users, 
   User, 
@@ -37,8 +55,19 @@ import {
   Download,
   CheckCircle,
   XCircle,
-  Calendar
+  Calendar,
+  Plus,
+  Edit,
+  Trash2,
+  RotateCcw,
+  ChevronLeft,
+  ChevronRight
 } from "lucide-react";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { z } from "zod";
+import { useToast } from "@/hooks/use-toast";
+import { apiRequest } from "@/lib/queryClient";
 
 // Contact interface based on the schema
 interface Contact {
@@ -59,17 +88,59 @@ interface Contact {
   updated_at: string;
 }
 
+interface ContactsResponse {
+  data: Contact[];
+  pagination: {
+    page: number;
+    limit: number;
+    total: number;
+    totalPages: number;
+  };
+}
+
+// Form schemas
+const contactFormSchema = z.object({
+  netsuiteInternalId: z.string().min(1, "NetSuite ID is required"),
+  name: z.string().min(1, "Name is required"),
+  jobTitle: z.string().optional(),
+  phone: z.string().optional(),
+  email: z.string().email("Invalid email").optional().or(z.literal("")),
+  inactive: z.boolean().default(false),
+  duplicate: z.boolean().default(false),
+  loginAccess: z.boolean().default(false),
+});
+
+type ContactFormData = z.infer<typeof contactFormSchema>;
+
 export default function ContactsPage() {
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [verificationFilter, setVerificationFilter] = useState<string>("all");
   const [selectedContact, setSelectedContact] = useState<Contact | null>(null);
   const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
+  const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
+  const [contactToDelete, setContactToDelete] = useState<Contact | null>(null);
+  const [currentPage, setCurrentPage] = useState(1);
+  const pageSize = 50;
 
-  const { data: contacts = [], isLoading } = useQuery({
-    queryKey: ['/api/contacts'],
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+
+  const { data: contactsResponse, isLoading } = useQuery<ContactsResponse>({
+    queryKey: ['/api/contacts', currentPage, searchTerm, statusFilter, verificationFilter],
     queryFn: async () => {
-      const response = await fetch('/api/contacts');
+      const params = new URLSearchParams({
+        page: currentPage.toString(),
+        limit: pageSize.toString(),
+      });
+      
+      if (searchTerm) params.append('search', searchTerm);
+      if (statusFilter !== 'all') params.append('status', statusFilter);
+      if (verificationFilter !== 'all') params.append('verification', verificationFilter);
+      
+      const response = await fetch(`/api/contacts?${params}`);
       if (!response.ok) {
         throw new Error('Failed to fetch contacts');
       }
@@ -77,29 +148,166 @@ export default function ContactsPage() {
     }
   });
 
-  // Filter contacts based on search and filters
-  const filteredContacts = useMemo(() => {
-    return contacts.filter((contact: Contact) => {
-      const matchesSearch = searchTerm === "" || 
-        contact.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        (contact.email && contact.email.toLowerCase().includes(searchTerm.toLowerCase())) ||
-        (contact.job_title && contact.job_title.toLowerCase().includes(searchTerm.toLowerCase()));
+  const contacts = contactsResponse?.data || [];
+  const pagination = contactsResponse?.pagination;
 
-      const matchesStatus = statusFilter === "all" || 
-        (statusFilter === "active" && !contact.inactive) ||
-        (statusFilter === "inactive" && contact.inactive);
+  // Get stats for all contacts (not filtered view)
+  const { data: stats } = useQuery({
+    queryKey: ['/api/contacts/stats'],
+    queryFn: async () => {
+      const response = await fetch('/api/contacts/stats');
+      if (!response.ok) throw new Error('Failed to fetch stats');
+      return response.json();
+    }
+  });
 
-      const matchesVerification = verificationFilter === "all" ||
-        (verificationFilter === "verified" && contact.verified) ||
-        (verificationFilter === "unverified" && !contact.verified);
+  // Create mutation
+  const createMutation = useMutation({
+    mutationFn: async (data: ContactFormData) => {
+      return apiRequest('/api/contacts', 'POST', data);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/contacts'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/contacts/stats'] });
+      setIsCreateModalOpen(false);
+      toast({ title: "Contact created successfully" });
+    },
+    onError: (error: any) => {
+      toast({ 
+        title: "Error creating contact", 
+        description: error.message,
+        variant: "destructive" 
+      });
+    }
+  });
 
-      return matchesSearch && matchesStatus && matchesVerification;
-    });
-  }, [contacts, searchTerm, statusFilter, verificationFilter]);
+  // Update mutation
+  const updateMutation = useMutation({
+    mutationFn: async ({ id, data }: { id: string; data: Partial<ContactFormData> }) => {
+      return apiRequest(`/api/contacts/${id}`, 'PUT', data);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/contacts'] });
+      setIsEditModalOpen(false);
+      setSelectedContact(null);
+      toast({ title: "Contact updated successfully" });
+    },
+    onError: (error: any) => {
+      toast({ 
+        title: "Error updating contact", 
+        description: error.message,
+        variant: "destructive" 
+      });
+    }
+  });
+
+  // Delete mutation
+  const deleteMutation = useMutation({
+    mutationFn: async (id: string) => {
+      return apiRequest(`/api/contacts/${id}`, 'DELETE');
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/contacts'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/contacts/stats'] });
+      setIsDeleteDialogOpen(false);
+      setContactToDelete(null);
+      toast({ title: "Contact deactivated successfully" });
+    },
+    onError: (error: any) => {
+      toast({ 
+        title: "Error deleting contact", 
+        description: error.message,
+        variant: "destructive" 
+      });
+    }
+  });
+
+  // Reactivate mutation
+  const reactivateMutation = useMutation({
+    mutationFn: async (id: string) => {
+      return apiRequest(`/api/contacts/${id}/reactivate`, 'PATCH');
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/contacts'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/contacts/stats'] });
+      toast({ title: "Contact reactivated successfully" });
+    },
+    onError: (error: any) => {
+      toast({ 
+        title: "Error reactivating contact", 
+        description: error.message,
+        variant: "destructive" 
+      });
+    }
+  });
+
+  // Form setup
+  const createForm = useForm<ContactFormData>({
+    resolver: zodResolver(contactFormSchema),
+    defaultValues: {
+      netsuiteInternalId: "",
+      name: "",
+      jobTitle: "",
+      phone: "",
+      email: "",
+      inactive: false,
+      duplicate: false,
+      loginAccess: false,
+    }
+  });
+
+  const editForm = useForm<ContactFormData>({
+    resolver: zodResolver(contactFormSchema),
+    defaultValues: {
+      netsuiteInternalId: "",
+      name: "",
+      jobTitle: "",
+      phone: "",
+      email: "",
+      inactive: false,
+      duplicate: false,
+      loginAccess: false,
+    }
+  });
 
   const handleViewContact = (contact: Contact) => {
     setSelectedContact(contact);
     setIsDetailModalOpen(true);
+  };
+
+  const handleEditContact = (contact: Contact) => {
+    setSelectedContact(contact);
+    editForm.reset({
+      netsuiteInternalId: contact.netsuite_internal_id,
+      name: contact.name,
+      jobTitle: contact.job_title || "",
+      phone: contact.phone || "",
+      email: contact.email || "",
+      inactive: contact.inactive,
+      duplicate: contact.duplicate,
+      loginAccess: contact.login_access,
+    });
+    setIsEditModalOpen(true);
+  };
+
+  const handleDeleteContact = (contact: Contact) => {
+    setContactToDelete(contact);
+    setIsDeleteDialogOpen(true);
+  };
+
+  const handlePageChange = (newPage: number) => {
+    setCurrentPage(newPage);
+  };
+
+  const handleSearch = (term: string) => {
+    setSearchTerm(term);
+    setCurrentPage(1); // Reset to first page
+  };
+
+  const handleFilterChange = (filter: string, value: string) => {
+    if (filter === 'status') setStatusFilter(value);
+    if (filter === 'verification') setVerificationFilter(value);
+    setCurrentPage(1); // Reset to first page
   };
 
   const formatDate = (dateString: string | null) => {
@@ -137,7 +345,7 @@ export default function ContactsPage() {
             <Users className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{contacts.length.toLocaleString()}</div>
+            <div className="text-2xl font-bold">{stats?.total?.toLocaleString() || '0'}</div>
           </CardContent>
         </Card>
         
@@ -148,7 +356,7 @@ export default function ContactsPage() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold text-green-600">
-              {contacts.filter((c: Contact) => c.verified).length.toLocaleString()}
+              {stats?.verified?.toLocaleString() || '0'}
             </div>
           </CardContent>
         </Card>
@@ -160,7 +368,7 @@ export default function ContactsPage() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold text-blue-600">
-              {contacts.filter((c: Contact) => !c.inactive).length.toLocaleString()}
+              {stats?.active?.toLocaleString() || '0'}
             </div>
           </CardContent>
         </Card>
@@ -172,7 +380,7 @@ export default function ContactsPage() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold text-purple-600">
-              {contacts.filter((c: Contact) => c.email).length.toLocaleString()}
+              {stats?.withEmail?.toLocaleString() || '0'}
             </div>
           </CardContent>
         </Card>
@@ -192,13 +400,13 @@ export default function ContactsPage() {
               <Input
                 placeholder="Search by name, email, or job title..."
                 value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
+                onChange={(e) => handleSearch(e.target.value)}
                 className="max-w-sm"
               />
             </div>
             
             <div className="flex gap-2">
-              <Select value={statusFilter} onValueChange={setStatusFilter}>
+              <Select value={statusFilter} onValueChange={(value) => handleFilterChange('status', value)}>
                 <SelectTrigger className="w-32">
                   <SelectValue placeholder="Status" />
                 </SelectTrigger>
@@ -209,7 +417,7 @@ export default function ContactsPage() {
                 </SelectContent>
               </Select>
               
-              <Select value={verificationFilter} onValueChange={setVerificationFilter}>
+              <Select value={verificationFilter} onValueChange={(value) => handleFilterChange('verification', value)}>
                 <SelectTrigger className="w-36">
                   <SelectValue placeholder="Verification" />
                 </SelectTrigger>
@@ -219,11 +427,49 @@ export default function ContactsPage() {
                   <SelectItem value="unverified">Unverified</SelectItem>
                 </SelectContent>
               </Select>
+
+              <Button 
+                onClick={() => setIsCreateModalOpen(true)}
+                className="flex items-center gap-2"
+              >
+                <Plus className="h-4 w-4" />
+                Add Contact
+              </Button>
             </div>
           </div>
           
-          <div className="text-sm text-muted-foreground">
-            Showing {filteredContacts.length} of {contacts.length} contacts
+          <div className="flex justify-between items-center text-sm text-muted-foreground">
+            <span>
+              Showing {contacts.length} of {pagination?.total?.toLocaleString() || 0} contacts
+            </span>
+            
+            {pagination && pagination.totalPages > 1 && (
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => handlePageChange(currentPage - 1)}
+                  disabled={currentPage <= 1}
+                >
+                  <ChevronLeft className="h-4 w-4" />
+                  Previous
+                </Button>
+                
+                <span className="text-sm">
+                  Page {currentPage} of {pagination.totalPages}
+                </span>
+                
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => handlePageChange(currentPage + 1)}
+                  disabled={currentPage >= pagination.totalPages}
+                >
+                  Next
+                  <ChevronRight className="h-4 w-4" />
+                </Button>
+              </div>
+            )}
           </div>
         </CardContent>
       </Card>
@@ -247,7 +493,7 @@ export default function ContactsPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {filteredContacts.map((contact: Contact) => (
+              {contacts.map((contact: Contact) => (
                 <TableRow key={contact.id}>
                   <TableCell className="font-medium">{contact.name}</TableCell>
                   <TableCell>
@@ -281,28 +527,298 @@ export default function ContactsPage() {
                     </div>
                   </TableCell>
                   <TableCell>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => handleViewContact(contact)}
-                    >
-                      <Eye className="h-4 w-4" />
-                      View
-                    </Button>
+                    <div className="flex items-center gap-1">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => handleViewContact(contact)}
+                      >
+                        <Eye className="h-4 w-4" />
+                      </Button>
+                      
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => handleEditContact(contact)}
+                      >
+                        <Edit className="h-4 w-4" />
+                      </Button>
+                      
+                      {contact.inactive ? (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => reactivateMutation.mutate(contact.id)}
+                          disabled={reactivateMutation.isPending}
+                        >
+                          <RotateCcw className="h-4 w-4" />
+                        </Button>
+                      ) : (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => handleDeleteContact(contact)}
+                          disabled={deleteMutation.isPending}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      )}
+                    </div>
                   </TableCell>
                 </TableRow>
               ))}
             </TableBody>
           </Table>
           
-          {filteredContacts.length === 0 && (
+          {contacts.length === 0 && !isLoading && (
             <div className="text-center py-8">
               <Users className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
               <p className="text-muted-foreground">No contacts found matching your criteria</p>
             </div>
           )}
+
+          {isLoading && (
+            <div className="text-center py-8">
+              <p className="text-muted-foreground">Loading contacts...</p>
+            </div>
+          )}
         </CardContent>
       </Card>
+
+      {/* Create Contact Modal */}
+      <Dialog open={isCreateModalOpen} onOpenChange={setIsCreateModalOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Create New Contact</DialogTitle>
+          </DialogHeader>
+          
+          <Form {...createForm}>
+            <form 
+              onSubmit={createForm.handleSubmit((data) => createMutation.mutate(data))}
+              className="space-y-4"
+            >
+              <FormField
+                control={createForm.control}
+                name="netsuiteInternalId"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>NetSuite ID *</FormLabel>
+                    <FormControl>
+                      <Input placeholder="Enter NetSuite internal ID" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              
+              <FormField
+                control={createForm.control}
+                name="name"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Name *</FormLabel>
+                    <FormControl>
+                      <Input placeholder="Enter contact name" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              
+              <FormField
+                control={createForm.control}
+                name="email"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Email</FormLabel>
+                    <FormControl>
+                      <Input placeholder="Enter email address" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              
+              <FormField
+                control={createForm.control}
+                name="jobTitle"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Job Title</FormLabel>
+                    <FormControl>
+                      <Input placeholder="Enter job title" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              
+              <FormField
+                control={createForm.control}
+                name="phone"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Phone</FormLabel>
+                    <FormControl>
+                      <Input placeholder="Enter phone number" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              
+              <div className="flex justify-end gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setIsCreateModalOpen(false)}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  type="submit"
+                  disabled={createMutation.isPending}
+                >
+                  {createMutation.isPending ? "Creating..." : "Create Contact"}
+                </Button>
+              </div>
+            </form>
+          </Form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit Contact Modal */}
+      <Dialog open={isEditModalOpen} onOpenChange={setIsEditModalOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Edit Contact</DialogTitle>
+          </DialogHeader>
+          
+          <Form {...editForm}>
+            <form 
+              onSubmit={editForm.handleSubmit((data) => {
+                if (selectedContact) {
+                  updateMutation.mutate({ id: selectedContact.id, data });
+                }
+              })}
+              className="space-y-4"
+            >
+              <FormField
+                control={editForm.control}
+                name="netsuiteInternalId"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>NetSuite ID *</FormLabel>
+                    <FormControl>
+                      <Input placeholder="Enter NetSuite internal ID" {...field} disabled />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              
+              <FormField
+                control={editForm.control}
+                name="name"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Name *</FormLabel>
+                    <FormControl>
+                      <Input placeholder="Enter contact name" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              
+              <FormField
+                control={editForm.control}
+                name="email"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Email</FormLabel>
+                    <FormControl>
+                      <Input placeholder="Enter email address" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              
+              <FormField
+                control={editForm.control}
+                name="jobTitle"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Job Title</FormLabel>
+                    <FormControl>
+                      <Input placeholder="Enter job title" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              
+              <FormField
+                control={editForm.control}
+                name="phone"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Phone</FormLabel>
+                    <FormControl>
+                      <Input placeholder="Enter phone number" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              
+              <div className="flex justify-end gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setIsEditModalOpen(false)}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  type="submit"
+                  disabled={updateMutation.isPending}
+                >
+                  {updateMutation.isPending ? "Updating..." : "Update Contact"}
+                </Button>
+              </div>
+            </form>
+          </Form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete Confirmation Dialog */}
+      <AlertDialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Deactivate Contact</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to deactivate "{contactToDelete?.name}"? 
+              This will mark the contact as inactive but preserve the record for historical purposes.
+              You can reactivate the contact later if needed.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                if (contactToDelete) {
+                  deleteMutation.mutate(contactToDelete.id);
+                }
+              }}
+              disabled={deleteMutation.isPending}
+            >
+              {deleteMutation.isPending ? "Deactivating..." : "Deactivate"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {/* Contact Detail Modal */}
       <Dialog open={isDetailModalOpen} onOpenChange={setIsDetailModalOpen}>
