@@ -505,14 +505,14 @@ export default function ContactsPage() {
                     {contact.email ? (
                       <span className="text-blue-600">{contact.email}</span>
                     ) : (
-                      <span className="text-muted-foreground">No email</span>
+                      <span className="text-muted-foreground text-xs">-</span>
                     )}
                   </TableCell>
                   <TableCell>
                     {contact.company ? (
                       <span className="text-sm text-green-700">{contact.company}</span>
                     ) : (
-                      <span className="text-muted-foreground">No company</span>
+                      <span className="text-muted-foreground text-xs">-</span>
                     )}
                   </TableCell>
                   <TableCell>
