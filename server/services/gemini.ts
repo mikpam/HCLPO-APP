@@ -214,16 +214,37 @@ export class GeminiService {
     const poKeywords = ['po', 'purchase', 'order', 'requisition', 'buy'];
     const businessFormats = ['pdf', 'doc', 'docx', 'xls', 'xlsx'];
     
+    // Keywords that immediately disqualify a file from being a PO
+    const excludeKeywords = [
+      'shipping', 'label', 'receipt', 'invoice', 'bill', 'statement', 
+      'packing', 'manifest', 'tracking', 'delivery', 'confirmation',
+      'artwork', 'proof', 'design', 'layout', 'mockup', 'logo',
+      'quote', 'estimate', 'proposal', 'rfq', 'bid'
+    ];
+    
+    const filenameLower = filename.toLowerCase();
+    
+    // Immediate exclusion check
+    const hasExcludeKeywords = excludeKeywords.some(keyword => 
+      filenameLower.includes(keyword)
+    );
+    
+    if (hasExcludeKeywords) {
+      console.log(`   ❌ File excluded due to keyword: ${filename}`);
+      return false;
+    }
+    
     const filenameHasPOKeywords = poKeywords.some(keyword => 
-      filename.toLowerCase().includes(keyword)
+      filenameLower.includes(keyword)
     );
     
     const isBusinessFormat = businessFormats.some(format => 
-      filename.toLowerCase().endsWith(`.${format}`) || 
+      filenameLower.endsWith(`.${format}`) || 
       contentType.includes(format) ||
       contentType.includes('application')
     );
     
+    // Only consider it a potential PO if it has explicit PO keywords OR is a business format with no exclusion keywords
     return filenameHasPOKeywords || (isBusinessFormat && !this.isArtworkFile(filename, contentType));
   }
 
@@ -256,6 +277,9 @@ Only classify as "not a purchase order" if the document's PRIMARY purpose is cle
    * **Pure Invoice for payment:** ONLY billing for completed/shipped goods with "Amount Due", "Payment Required"
    * **Pure Packing List:** ONLY shipping contents without order details
    * **Pure Receipt:** ONLY payment confirmation
+   * **Shipping Labels:** ONLY labels for packages already shipped with tracking numbers, barcodes, carrier info
+   * **Delivery Confirmations:** ONLY confirmations that items have been delivered or are in transit
+   * **Return Authorizations:** ONLY forms for returning previously purchased items
 
 **DETAILED ANALYSIS:**
 

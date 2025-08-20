@@ -194,8 +194,32 @@ class AIServiceManager {
     } catch (error) {
       console.error(`${engine} document filtering failed:`, error);
       
-      // Fallback: basic filename analysis
+      // Fallback: enhanced filename analysis with negative keyword filtering
       const filename_lower = filename.toLowerCase();
+      
+      // Keywords that immediately disqualify a file from being a PO
+      const excludeKeywords = [
+        'shipping', 'label', 'receipt', 'invoice', 'bill', 'statement', 
+        'packing', 'manifest', 'tracking', 'delivery', 'confirmation',
+        'artwork', 'proof', 'design', 'layout', 'mockup', 'logo',
+        'quote', 'estimate', 'proposal', 'rfq', 'bid'
+      ];
+      
+      // Check for exclusion keywords first
+      const hasExcludeKeywords = excludeKeywords.some(keyword => 
+        filename_lower.includes(keyword)
+      );
+      
+      if (hasExcludeKeywords) {
+        console.log(`   ❌ File excluded due to keyword in fallback analysis: ${filename}`);
+        return {
+          document_type: 'other',
+          confidence: 0.9,
+          reason: `Excluded due to non-PO keywords in filename: ${filename}`
+        };
+      }
+      
+      // Check for positive PO keywords
       const isPO = filename_lower.includes('purchaseorder') || 
                   filename_lower.includes('purchase_order') || 
                   filename_lower.includes('purchase order') ||
@@ -205,7 +229,7 @@ class AIServiceManager {
       return {
         document_type: isPO ? 'purchase order' : 'other',
         confidence: 0.7,
-        reason: `Filename-based classification: ${filename}`
+        reason: `Enhanced filename-based classification: ${filename}`
       };
     }
   }

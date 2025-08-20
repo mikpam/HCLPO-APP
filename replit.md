@@ -19,6 +19,7 @@ Development Priority: **ENHANCED CONTACT VALIDATION SYSTEM OPERATIONAL (August 2
 **Validation Testing**: Successfully validated real contacts from 4AllPromos (Angela M.), Nadel (15+ contacts), and Promotions N Motion (Deatra Harper)
 **Security**: 133 HCL internal contacts properly filtered from validation process  
 **System Health**: All validators healthy, automatic health monitoring active, complete semantic search operational across contacts, customers, and items
+**Security Fix (August 20, 2025)**: Implemented robust document filtering to prevent non-PO documents (shipping labels, invoices, proof files, artwork) from incorrect processing through extraction pipeline. Enhanced both filename-based filtering and AI document classification with negative keyword detection.
 
 ## System Architecture
 
