@@ -117,7 +117,7 @@ export class HybridContactValidator {
     // Filter out @highcaliberline.com from contact email as well
     if (normalized.contactEmail?.includes('@highcaliberline.com')) {
       console.log(`   🚫 SECURITY FILTER: Filtering out @highcaliberline.com from contact email`);
-      normalized.contactEmail = null; // Clear the HCL email so we use sender fallback
+      normalized.contactEmail = undefined; // Clear the HCL email so we use sender fallback
     }
 
     // Use sender info as fallback (after security filtering)
@@ -446,7 +446,7 @@ export class HybridContactValidator {
           phone: normalizedInput.contactPhone || '',
           role: 'Unknown',
           matched_contact_id: '',
-          match_method: 'extracted_json',
+          match_method: 'extracted_json' as const,
           confidence: 0.5,
           evidence: ['extracted_json_fallback'],
           alternatives: []
@@ -475,7 +475,7 @@ export class HybridContactValidator {
           phone: topCandidate.phone || '',
           role: this.inferRole(topCandidate.jobTitle),
           matched_contact_id: topCandidate.netsuiteInternalId,
-          match_method: 'vector',
+          match_method: 'vector' as const,
           confidence: topScore,
           evidence: this.buildEvidence(topCandidate, normalizedInput),
           alternatives: rankedCandidates.slice(1, 3).map(c => ({
@@ -507,7 +507,7 @@ export class HybridContactValidator {
               phone: selectedCandidate.phone || '',
               role: this.inferRole(selectedCandidate.jobTitle),
               matched_contact_id: selectedCandidate.netsuiteInternalId,
-              match_method: 'vector+llm',
+              match_method: 'vector+llm' as const,
               confidence: 0.8,
               evidence: [...this.buildEvidence(selectedCandidate, normalizedInput), `llm_tiebreak: ${tiebreakResult.reason}`],
               alternatives: rankedCandidates.filter(c => c.netsuiteInternalId !== tiebreakResult.selectedId).slice(0, 2).map(c => ({
@@ -534,7 +534,7 @@ export class HybridContactValidator {
         phone: topCandidate.phone || '',
         role: this.inferRole(topCandidate.jobTitle),
         matched_contact_id: topCandidate.netsuiteInternalId,
-        match_method: 'vector',
+        match_method: 'vector' as const,
         confidence: Math.max(topScore, 0.3), // Minimum confidence
         evidence: [...this.buildEvidence(topCandidate, normalizedInput), 'low_confidence_match'],
         alternatives: rankedCandidates.slice(1, 3).map(c => ({
@@ -559,7 +559,7 @@ export class HybridContactValidator {
         phone: normalizedInput.contactPhone || '',
         role: 'Unknown',
         matched_contact_id: '',
-        match_method: 'extracted_json',
+        match_method: 'extracted_json' as const,
         confidence: 0.3,
         evidence: [`error_fallback: ${(error as Error).message || 'Unknown error'}`],
         alternatives: []
