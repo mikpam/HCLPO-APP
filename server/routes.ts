@@ -17,8 +17,8 @@ import { netsuiteService } from "./services/netsuite";
 import { OpenAISKUValidatorService } from "./services/openai-sku-validator";
 import { OpenAIContactValidatorService } from "./services/openai-contact-validator";
 import { db } from "./db";
-import { purchaseOrders, errorLogs, customers } from "@shared/schema";
-import { eq, desc, and, or, lt, sql } from "drizzle-orm";
+import { purchaseOrders as purchaseOrdersTable, errorLogs, customers } from "@shared/schema";
+import { eq, desc, and, or, lt, sql, isNotNull } from "drizzle-orm";
 
 import { insertPurchaseOrderSchema, insertErrorLogSchema, classificationResultSchema } from "@shared/schema";
 import { z } from "zod";
@@ -1519,6 +1519,92 @@ export async function registerRoutes(app: Express): Promise<Server> {
           totalEmails: 0
         });
       }, 10000); // 10 second delay
+    }
+  });
+
+  // Files listing endpoint for File Management page
+  app.get("/api/files", async (req, res) => {
+    try {
+      console.log('📂 Fetching stored files from database...');
+
+      // Get all file paths from purchase_orders
+      const result = await db.select({
+        po_number: purchaseOrdersTable.poNumber,
+        eml_file_path: purchaseOrdersTable.emlFilePath,
+        attachment_paths: purchaseOrdersTable.attachmentPaths,
+        extraction_source_file: purchaseOrdersTable.extractionSourceFile,
+        created_at: purchaseOrdersTable.createdAt,
+        subject: purchaseOrdersTable.subject
+      }).from(purchaseOrdersTable)
+        .where(
+          or(
+            isNotNull(purchaseOrdersTable.emlFilePath),
+            isNotNull(purchaseOrdersTable.attachmentPaths),
+            isNotNull(purchaseOrdersTable.extractionSourceFile)
+          )
+        )
+        .orderBy(desc(purchaseOrdersTable.createdAt));
+
+      // Transform database results into file list format
+      const files: any[] = [];
+
+      for (const record of result) {
+        // Add EML file if exists
+        if (record.eml_file_path) {
+          files.push({
+            id: `eml_${record.po_number}`,
+            filename: `${record.po_number || 'email'}.eml`,
+            size: 0, // Size not stored in DB
+            uploadedAt: record.created_at,
+            contentType: 'message/rfc822',
+            storagePath: record.eml_file_path,
+            source: 'email',
+            description: record.subject || 'Email file'
+          });
+        }
+
+        // Add attachment files if exist
+        if (record.attachment_paths && Array.isArray(record.attachment_paths)) {
+          record.attachment_paths.forEach((path: string, index: number) => {
+            const filename = path.split('/').pop() || `attachment_${index}`;
+            files.push({
+              id: `att_${record.po_number}_${index}`,
+              filename: filename,
+              size: 0, // Size not stored in DB
+              uploadedAt: record.created_at,
+              contentType: path.endsWith('.pdf') ? 'application/pdf' : 'application/octet-stream',
+              storagePath: path,
+              source: 'attachment',
+              description: `Attachment for ${record.po_number}`
+            });
+          });
+        }
+
+        // Add extraction source file if exists
+        if (record.extraction_source_file) {
+          const filename = record.extraction_source_file.split('/').pop() || 'source_document';
+          files.push({
+            id: `src_${record.po_number}`,
+            filename: filename,
+            size: 0,
+            uploadedAt: record.created_at,
+            contentType: filename.endsWith('.pdf') ? 'application/pdf' : 'application/octet-stream',
+            storagePath: record.extraction_source_file,
+            source: 'extraction_source',
+            description: `Source document for ${record.po_number}`
+          });
+        }
+      }
+
+      console.log(`✅ Found ${files.length} stored files across ${result.length} purchase orders`);
+      res.json(files);
+
+    } catch (error) {
+      console.error('❌ Error fetching files:', error);
+      res.status(500).json({ 
+        error: 'Failed to fetch files',
+        message: error instanceof Error ? error.message : 'Unknown error'
+      });
     }
   });
 
