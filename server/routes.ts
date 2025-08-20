@@ -1126,10 +1126,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       // Get all unvalidated POs
       const unvalidatedPOs = await db
-        .select({ poNumber: purchaseOrders.poNumber, id: purchaseOrders.id })
-        .from(purchaseOrders)
-        .where(eq(purchaseOrders.validationCompleted, false))
-        .orderBy(purchaseOrders.poNumber);
+        .select({ poNumber: purchaseOrdersTable.poNumber, id: purchaseOrdersTable.id })
+        .from(purchaseOrdersTable)
+        .where(eq(purchaseOrdersTable.validationCompleted, false))
+        .orderBy(purchaseOrdersTable.poNumber);
       
       if (unvalidatedPOs.length === 0) {
         return res.json({ 
