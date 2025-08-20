@@ -80,7 +80,7 @@ function parseCompleteCustomerFile(filePath: string): HCLCustomerRecord[] {
       
     } catch (error) {
       console.error(`❌ Error parsing customer section: ${section.substring(0, 100)}...`);
-      console.error('   Error:', error.message);
+      console.error('   Error:', error instanceof Error ? error.message : String(error));
     }
   }
   
@@ -175,7 +175,7 @@ async function importCompleteHCLCustomers() {
     console.log(`\n🎉 Complete HCL customer import finished! Total customers in database: ${totalCustomers.length}`);
     
   } catch (error) {
-    console.error('❌ Import failed:', error);
+    console.error('❌ Import failed:', error instanceof Error ? error.message : String(error));
     throw error;
   }
 }
