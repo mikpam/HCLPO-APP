@@ -80,7 +80,7 @@ async function importItems() {
         
         const itemData = {
           netsuiteId: internalId.trim(),
-          finalSku: finalSku.trim(),
+          sku: finalSku.trim(),
           displayName: displayName.trim() || finalSku.trim(),
           subType: subType?.trim() || null,
           description: description?.trim() || null,

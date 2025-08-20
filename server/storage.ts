@@ -142,13 +142,13 @@ export class DatabaseStorage implements IStorage {
     let query = db.select().from(purchaseOrders);
     
     if (filters?.status) {
-      query = query.where(eq(purchaseOrders.status, filters.status));
+      query = query.where(eq(purchaseOrders.status, filters.status)) as any;
     }
     
-    query = query.orderBy(desc(purchaseOrders.createdAt));
+    query = query.orderBy(desc(purchaseOrders.createdAt)) as any;
     
     if (filters?.limit) {
-      query = query.limit(filters.limit);
+      query = query.limit(filters.limit) as any;
     }
     
     return await query;
@@ -176,13 +176,13 @@ export class DatabaseStorage implements IStorage {
     }
     
     if (conditions.length > 0) {
-      query = query.where(and(...conditions));
+      query = query.where(and(...conditions)) as any;
     }
     
-    query = query.orderBy(desc(errorLogs.createdAt));
+    query = query.orderBy(desc(errorLogs.createdAt)) as any;
     
     if (filters?.limit) {
-      query = query.limit(filters.limit);
+      query = query.limit(filters.limit) as any;
     }
     
     return await query;
@@ -237,13 +237,13 @@ export class DatabaseStorage implements IStorage {
     let query = db.select().from(emailQueue);
     
     if (filters?.status) {
-      query = query.where(eq(emailQueue.status, filters.status));
+      query = query.where(eq(emailQueue.status, filters.status)) as any;
     }
     
-    query = query.orderBy(desc(emailQueue.createdAt));
+    query = query.orderBy(desc(emailQueue.createdAt)) as any;
     
     if (filters?.limit) {
-      query = query.limit(filters.limit);
+      query = query.limit(filters.limit) as any;
     }
     
     return await query;
