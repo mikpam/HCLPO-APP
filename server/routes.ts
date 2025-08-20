@@ -10,7 +10,7 @@ import { registerCustomerEmbeddingRoutes } from "./routes/customer-embeddings";
 import { registerItemEmbeddingRoutes } from "./routes/item-embeddings";
 import { validatorHealthService } from "./services/validator-health";
 import { gmailService } from "./services/gmail";
-import { ObjectStorageService, ObjectNotFoundError } from "./objectStorage";
+import { ObjectStorageService, ObjectNotFoundError, objectStorageClient } from "./objectStorage";
 import { aiService, type AIEngine } from "./services/ai-service";
 import { netsuiteService } from "./services/netsuite";
 // openaiCustomerFinderService now uses per-email instances to prevent race conditions
@@ -1532,12 +1532,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       console.log(`📁 Viewing file: ${path}`);
 
-      // Use ObjectStorageService to fetch the file content
-      const objectStorageService = new ObjectStorageService();
-      
       // Parse the object path to get bucket and file info
       const { bucketName, objectName } = parseObjectPath(path);
-      const bucket = objectStorageService.objectStorageClient.bucket(bucketName);
+      const bucket = objectStorageClient.bucket(bucketName);
       const file = bucket.file(objectName);
 
       // Check if file exists
