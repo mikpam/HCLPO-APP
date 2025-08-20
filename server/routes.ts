@@ -41,8 +41,98 @@ function updateProcessingStatus(update: Partial<typeof currentProcessingStatus>)
   console.log(`📊 PROCESSING STATUS: ${currentProcessingStatus.currentStep || 'Idle'} ${currentProcessingStatus.currentEmail ? `(${currentProcessingStatus.currentEmail})` : ''}`);
 }
 
+// Complete validation system workflow - processes emails with real-time status updates
+async function processEmailWithValidationSystem() {
+  console.log(`\n🔄 UNIFIED PROCESSING: Starting automatic email processing through validation system...`);
+  
+  try {
+    // Step 1: Fetch unprocessed emails
+    updateProcessingStatus({
+      isProcessing: true,
+      currentStep: "fetching_emails",
+      currentEmail: "Checking for new emails...",
+      emailNumber: 0,
+      totalEmails: 0
+    });
+
+    const messages = await gmailService.getMessages('in:inbox -label:processed -label:filtered');
+    console.log(`📧 Found ${messages.length} total inbox messages`);
+
+    // Find first unprocessed message
+    let messageToProcess = null;
+    for (const message of messages) {
+      const existingQueue = await storage.getEmailQueueByGmailId(message.id);
+      if (!existingQueue) {
+        messageToProcess = message;
+        break;
+      }
+    }
+
+    if (!messageToProcess) {
+      updateProcessingStatus({
+        isProcessing: false,
+        currentStep: "no_emails",
+        currentEmail: "No new emails to process",
+        emailNumber: 0,
+        totalEmails: 0
+      });
+      
+      return {
+        message: "No new emails found to process",
+        processed: 0,
+        details: null
+      };
+    }
+
+    // Start processing this email
+    updateProcessingStatus({
+      isProcessing: true,
+      currentStep: "email_preprocessing",
+      currentEmail: `${messageToProcess.subject} (${messageToProcess.sender})`,
+      emailNumber: 1,
+      totalEmails: 1
+    });
+
+    console.log(`\n🔄 PROCESSING EMAIL: "${messageToProcess.subject}"`);
+    console.log(`   └─ From: ${messageToProcess.sender}`);
+    console.log(`   └─ Attachments: ${messageToProcess.attachments.length}`);
+
+    const result = await processEmailThroughValidationSystem(messageToProcess, updateProcessingStatus);
+    
+    return {
+      message: "Email processed successfully",
+      processed: 1,
+      details: {
+        emailId: messageToProcess.id,
+        sender: messageToProcess.sender,
+        subject: messageToProcess.subject,
+        result: result
+      }
+    };
+
+  } catch (error) {
+    console.error('Validation system processing failed:', error);
+    updateProcessingStatus({
+      isProcessing: false,
+      currentStep: "error",
+      currentEmail: `Error: ${error instanceof Error ? error.message : 'Unknown error'}`,
+      emailNumber: 0,
+      totalEmails: 0
+    });
+    throw error;
+  }
+}
+
 // Helper function to process email through complete validation system
 async function processEmailThroughValidationSystem(messageToProcess: any, updateProcessingStatus: Function) {
+  updateProcessingStatus({
+    isProcessing: true,
+    currentStep: "forwarded_email_check",
+    currentEmail: `Checking forwarded email: ${messageToProcess.subject}`,
+    emailNumber: 1,
+    totalEmails: 1
+  });
+
   // Check for forwarded email from @highcaliberline.com and extract CNumber
   let isForwardedEmail = false;
   let extractedCNumber = null;
@@ -574,12 +664,12 @@ async function processEmailThroughValidationSystem(messageToProcess: any, update
         );
         validatedLineItems = await skuValidator.validateLineItems(extractionResult.lineItems);
         
-        console.log(`   ✅ SKU validation complete: ${validatedLineItems.length} items processed`);
+        console.log(`   ✅ SKU validation complete: ${validatedLineItems?.length || 0} items processed`);
         
         // Merge validated SKUs back into original line items structure
-        if (validatedLineItems && extractionResult.lineItems) {
+        if (validatedLineItems && validatedLineItems.length > 0 && extractionResult.lineItems) {
           extractionResult.lineItems.forEach((originalItem: any, index: number) => {
-            const validatedItem = validatedLineItems[index];
+            const validatedItem = validatedLineItems?.[index];
             if (validatedItem) {
               // Preserve original structure and add finalSKU
               originalItem.finalSKU = validatedItem.finalSKU || '';
@@ -900,7 +990,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post("/api/test/customer-format-validation", async (req, res) => {
     try {
       const { testNumbers } = req.body;
-      const { default: CustomerLookupService } = await import("./services/customer-lookup");
+      const { CustomerLookupService } = await import("./services/customer-lookup");
       const customerLookup = new CustomerLookupService();
       
       const results = await Promise.all(
@@ -926,7 +1016,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post("/api/test/customer-finder", async (req, res) => {
     try {
       const { customerName, customerEmail, senderEmail } = req.body;
-      const { default: OpenAICustomerFinderService } = await import("./services/openai-customer-finder");
+      const { OpenAICustomerFinderService } = await import("./services/openai-customer-finder");
       const customerFinder = new OpenAICustomerFinderService();
       
       const result = await customerFinder.findCustomer({
@@ -1045,11 +1135,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Purchase orders endpoint
   app.get("/api/purchase-orders", async (req, res) => {
     try {
-      const { status, limit = 50, offset = 0 } = req.query;
+      const { status, limit = 50 } = req.query;
       const purchaseOrders = await storage.getPurchaseOrders({
         status: status as string,
-        limit: parseInt(limit as string),
-        offset: parseInt(offset as string)
+        limit: parseInt(limit as string)
       });
       res.json(purchaseOrders);
     } catch (error) {
@@ -1061,7 +1150,27 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // UNIFIED PROCESSING ENDPOINT - All processing goes through validation system
   app.post("/api/processing/process-auto", async (req, res) => {
+    console.log('\n🔄 UNIFIED PROCESSING: Manual processing triggered via API endpoint');
+    
     try {
+      // Check if already processing
+      if (currentProcessingStatus.isProcessing) {
+        return res.json({
+          message: "Already processing an email",
+          isProcessing: true,
+          currentStep: currentProcessingStatus.currentStep
+        });
+      }
+
+      // Start the processing workflow
+      updateProcessingStatus({
+        isProcessing: true,
+        currentStep: "starting_processing",
+        currentEmail: "Initializing email processing workflow...",
+        emailNumber: 0,
+        totalEmails: 0
+      });
+      
       const result = await processEmailWithValidationSystem();
       res.json(result);
     } catch (error) {
