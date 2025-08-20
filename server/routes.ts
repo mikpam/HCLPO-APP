@@ -25,21 +25,8 @@ import { z } from "zod";
 // NOTE: Validator instances are now created per-email to prevent race conditions
 // Previously used singleton validators caused state pollution between sequential emails
 
-// 🔥 REAL-TIME PROCESSING STATUS TRACKING
-let currentProcessingStatus = {
-  isProcessing: false,
-  currentStep: "",
-  currentEmail: "",
-  currentPO: "",
-  emailNumber: 0,
-  totalEmails: 0
-};
-
-// Helper function to update processing status for real-time monitoring
-function updateProcessingStatus(update: Partial<typeof currentProcessingStatus>) {
-  currentProcessingStatus = { ...currentProcessingStatus, ...update };
-  console.log(`📊 PROCESSING STATUS: ${currentProcessingStatus.currentStep || 'Idle'} ${currentProcessingStatus.currentEmail ? `(${currentProcessingStatus.currentEmail})` : ''}`);
-}
+// 🔥 REAL-TIME PROCESSING STATUS TRACKING (imported from shared module)
+import { updateProcessingStatus, getCurrentProcessingStatus, type ProcessingStatus } from "./utils/processing-status";
 
 // Complete validation system workflow - processes emails with real-time status updates
 async function processEmailWithValidationSystem() {
@@ -71,8 +58,8 @@ async function processEmailWithValidationSystem() {
     if (!messageToProcess) {
       updateProcessingStatus({
         isProcessing: false,
-        currentStep: "no_emails",
-        currentEmail: "No new emails to process",
+        currentStep: "completed",
+        currentEmail: "No new emails to process - system idle",
         emailNumber: 0,
         totalEmails: 0
       });
@@ -515,8 +502,8 @@ async function processEmailThroughValidationSystem(messageToProcess: any, update
         contactEmail: extractedContact?.email || messageToProcess.sender,
         contactPhone: extractedContact?.phone,
         jobTitle: extractedContact?.jobTitle,
-        resolvedCustomerId: customerMeta?.customer_number,
-        companyId: customerMeta?.customer_number
+        resolvedCustomerId: (customerMeta as any)?.customer_number,
+        companyId: (customerMeta as any)?.customer_number
       });
       
       contactMeta = validatedContact;
@@ -1016,8 +1003,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post("/api/test/customer-format-validation", async (req, res) => {
     try {
       const { testNumbers } = req.body;
-      const { CustomerLookupService } = await import("./services/customer-lookup");
-      const customerLookup = new CustomerLookupService();
+      const { customerLookupService } = await import("./services/customer-lookup");
+      const customerLookup = customerLookupService;
       
       const results = await Promise.all(
         testNumbers.map(async (number: string) => {
@@ -1150,7 +1137,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Current processing status endpoint
   app.get("/api/processing/current-status", async (req, res) => {
     try {
-      res.json(currentProcessingStatus);
+      res.json(getCurrentProcessingStatus());
     } catch (error) {
       res.status(500).json({ 
         message: error instanceof Error ? error.message : 'Failed to get processing status' 
@@ -1180,11 +1167,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
     
     try {
       // Check if already processing
-      if (currentProcessingStatus.isProcessing) {
+      if (getCurrentProcessingStatus().isProcessing) {
         return res.json({
           message: "Already processing an email",
           isProcessing: true,
-          currentStep: currentProcessingStatus.currentStep
+          currentStep: getCurrentProcessingStatus().currentStep
         });
       }
 
@@ -1206,13 +1193,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
         error: 'unified_processing_error'
       });
     } finally {
-      // Always reset processing status
-      updateProcessingStatus({
-        isProcessing: false,
-        currentStep: "",
-        currentEmail: "",
-        currentPO: ""
-      });
+      // Keep processing status visible for 10 seconds so frontend can see it
+      setTimeout(() => {
+        updateProcessingStatus({
+          isProcessing: false,
+          currentStep: "idle",
+          currentEmail: "",
+          currentPO: "",
+          emailNumber: 0,
+          totalEmails: 0
+        });
+      }, 10000); // 10 second delay
     }
   });
 

@@ -105,6 +105,10 @@ export class ValidatorHealthService {
       return; // Skip if paused
     }
     console.log('🏥 VALIDATOR HEALTH: Performing routine health checks...');
+    
+    // Update processing status to show validator health checks are running
+    const { setValidatorHealthStatus } = await import('../utils/processing-status');
+    setValidatorHealthStatus('System Validators', true);
 
     // Check each validator type
     await this.checkSKUValidatorHealth();
@@ -118,6 +122,9 @@ export class ValidatorHealthService {
     if (report.systemHealth !== 'healthy') {
       await this.logHealthAlert(report);
     }
+    
+    // Mark health checks as completed
+    setValidatorHealthStatus('System Validators', false);
   }
 
   private async checkSKUValidatorHealth(): Promise<void> {
