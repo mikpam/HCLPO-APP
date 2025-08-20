@@ -918,6 +918,288 @@ export async function registerRoutes(app: Express): Promise<Server> {
   
 
   
+  // Force validation endpoint for debugging unvalidated POs
+  app.post("/api/force-validation/:poNumber", async (req, res) => {
+    try {
+      const { poNumber } = req.params;
+      
+      console.log(`🔧 FORCE VALIDATION: Starting validation for PO ${poNumber}`);
+      
+      // Get the purchase order
+      const purchaseOrder = await storage.getPurchaseOrderByNumber(poNumber);
+      if (!purchaseOrder) {
+        return res.status(404).json({ error: `PO ${poNumber} not found` });
+      }
+      
+      console.log(`   └─ Found PO: ${purchaseOrder.id}`);
+      
+      // Reset validation flags
+      await storage.updatePurchaseOrder(purchaseOrder.id, {
+        customerValidated: false,
+        contactValidated: false,
+        lineItemsValidated: false,
+        validationCompleted: false
+      });
+      
+      const results = {
+        poNumber,
+        poId: purchaseOrder.id,
+        customer: null,
+        contact: null,
+        lineItems: null,
+        errors: []
+      };
+      
+      // Force customer validation using hybrid validator
+      try {
+        console.log(`   🔍 Running hybrid customer validation...`);
+        
+        const extractedData = purchaseOrder.extractedData as any;
+        const customer = extractedData?.purchaseOrder?.customer || {};
+        
+        // Import and create validator instance
+        const { HybridCustomerValidator } = await import('./services/hybrid-customer-validator');
+        const hybridValidator = new HybridCustomerValidator();
+        
+        // Prepare input for hybrid validator
+        const validationInput = {
+          customerName: customer.company || customer.customerName,
+          customerEmail: customer.email || purchaseOrder.sender,
+          senderEmail: purchaseOrder.sender || undefined,
+          customerNumber: customer.customerNumber,
+          contactName: customer.contactName,
+          address: customer.address
+        };
+        
+        console.log(`   └─ Input:`, validationInput);
+        
+        // Run hybrid validation
+        const customerResult = await hybridValidator.validateCustomer(validationInput);
+        
+        console.log(`   └─ Result:`, customerResult);
+        
+        results.customer = customerResult as any;
+        
+        // Update database with customer validation results
+        if (customerResult.matched) {
+          const customerMeta = {
+            method: customerResult.method,
+            status: "found",
+            resolved: true,
+            confidence: customerResult.confidence,
+            customer_name: customerResult.customerName,
+            customer_number: customerResult.customerNumber
+          };
+          
+          await storage.updatePurchaseOrder(purchaseOrder.id, {
+            customerMeta: customerMeta,
+            customerValidated: true
+          });
+          
+          console.log(`   ✅ Customer validation completed: ${customerResult.customerName} (${customerResult.customerNumber})`);
+        } else {
+          console.log(`   ❌ Customer validation failed: ${customerResult.reasons.join(', ')}`);
+        }
+        
+      } catch (error) {
+        console.error(`   ❌ Customer validation error:`, error);
+        results.errors.push(`Customer validation error: ${(error as Error).message}`);
+      }
+      
+      // Force contact validation
+      try {
+        console.log(`   📞 Running contact validation...`);
+        
+        const contactValidator = await validatorHealthService.recordValidatorCall(
+          'contactValidator',
+          async () => new OpenAIContactValidatorService()
+        );
+        
+        const contactResult = await contactValidator.validateContact(purchaseOrder.sender);
+        
+        results.contact = contactResult;
+        
+        if (contactResult.isValidated) {
+          await storage.updatePurchaseOrder(purchaseOrder.id, {
+            contactMeta: {
+              name: contactResult.contact.name,
+              email: contactResult.contact.email,
+              phone: contactResult.contact.phone,
+              role: contactResult.contact.role,
+              evidence: contactResult.evidence,
+              confidence: contactResult.confidence,
+              match_method: contactResult.matchMethod,
+              matched_contact_id: contactResult.matchedContactId || ""
+            },
+            contactValidated: true
+          });
+          
+          console.log(`   ✅ Contact validation completed: ${contactResult.contact.name} <${contactResult.contact.email}>`);
+        } else {
+          console.log(`   ❌ Contact validation failed`);
+        }
+        
+      } catch (error) {
+        console.error(`   ❌ Contact validation error:`, error);
+        results.errors.push(`Contact validation error: ${(error as Error).message}`);
+      }
+      
+      // Force line items validation
+      try {
+        console.log(`   📦 Running line items validation...`);
+        
+        const extractedData = purchaseOrder.extractedData as any;
+        const lineItems = extractedData?.lineItems || [];
+        
+        if (lineItems.length > 0) {
+          const skuValidator = await validatorHealthService.recordValidatorCall(
+            'skuValidator',
+            async () => new OpenAISKUValidatorService()
+          );
+          
+          const validatedLineItems = await skuValidator.validateLineItems(lineItems);
+          
+          results.lineItems = validatedLineItems;
+          
+          // Update line items with finalSKU
+          if (validatedLineItems && validatedLineItems.length > 0) {
+            lineItems.forEach((originalItem: any, index: number) => {
+              const validatedItem = validatedLineItems[index];
+              if (validatedItem) {
+                originalItem.finalSKU = validatedItem.finalSKU || '';
+              }
+            });
+            
+            await storage.updatePurchaseOrder(purchaseOrder.id, {
+              lineItems: lineItems,
+              lineItemsValidated: true
+            });
+            
+            console.log(`   ✅ Line items validation completed: ${validatedLineItems.length} items processed`);
+          }
+        } else {
+          console.log(`   ⚠️ No line items found to validate`);
+        }
+        
+      } catch (error) {
+        console.error(`   ❌ Line items validation error:`, error);
+        results.errors.push(`Line items validation error: ${(error as Error).message}`);
+      }
+      
+      // Mark validation as completed
+      await storage.updatePurchaseOrder(purchaseOrder.id, {
+        validationCompleted: true
+      });
+      
+      console.log(`✅ FORCE VALIDATION COMPLETED: PO ${poNumber}`);
+      
+      res.json({
+        success: true,
+        message: `Force validation completed for PO ${poNumber}`,
+        results
+      });
+      
+    } catch (error) {
+      console.error(`❌ Force validation failed:`, error);
+      res.status(500).json({ 
+        error: `Force validation failed: ${(error as Error).message}`,
+        success: false 
+      });
+    }
+  });
+
+  // Batch validation endpoint for fixing all unvalidated POs
+  app.post("/api/batch-validation", async (req, res) => {
+    try {
+      console.log(`🔧 BATCH VALIDATION: Starting validation for all unvalidated POs`);
+      
+      // Get all unvalidated POs
+      const unvalidatedPOs = await db
+        .select({ poNumber: purchaseOrders.poNumber, id: purchaseOrders.id })
+        .from(purchaseOrders)
+        .where(eq(purchaseOrders.validationCompleted, false))
+        .orderBy(purchaseOrders.poNumber);
+      
+      if (unvalidatedPOs.length === 0) {
+        return res.json({ 
+          success: true, 
+          message: "No unvalidated POs found",
+          totalProcessed: 0,
+          results: []
+        });
+      }
+      
+      console.log(`   └─ Found ${unvalidatedPOs.length} unvalidated POs`);
+      
+      const batchResults = {
+        totalProcessed: unvalidatedPOs.length,
+        successful: 0,
+        failed: 0,
+        results: [] as any[]
+      };
+      
+      // Process each PO
+      for (const po of unvalidatedPOs) {
+        try {
+          console.log(`   🔍 Processing PO ${po.poNumber}...`);
+          
+          // Force validation using the same logic as single PO endpoint
+          const response = await fetch(`http://localhost:5000/api/force-validation/${po.poNumber}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' }
+          });
+          
+          if (response.ok) {
+            const result = await response.json();
+            batchResults.successful++;
+            batchResults.results.push({
+              poNumber: po.poNumber,
+              success: true,
+              customer: result.results?.customer?.matched || false,
+              customerName: result.results?.customer?.customerName || 'Unknown',
+              customerNumber: result.results?.customer?.customerNumber || null
+            });
+            console.log(`   ✅ PO ${po.poNumber}: Success`);
+          } else {
+            batchResults.failed++;
+            batchResults.results.push({
+              poNumber: po.poNumber,
+              success: false,
+              error: `HTTP ${response.status}`
+            });
+            console.log(`   ❌ PO ${po.poNumber}: Failed (${response.status})`);
+          }
+        } catch (error) {
+          batchResults.failed++;
+          batchResults.results.push({
+            poNumber: po.poNumber,
+            success: false,
+            error: (error as Error).message
+          });
+          console.error(`   ❌ PO ${po.poNumber}: ${(error as Error).message}`);
+        }
+        
+        // Small delay to prevent overwhelming the system
+        await new Promise(resolve => setTimeout(resolve, 100));
+      }
+      
+      console.log(`✅ BATCH VALIDATION COMPLETED: ${batchResults.successful} successful, ${batchResults.failed} failed`);
+      
+      res.json({
+        success: true,
+        message: `Batch validation completed: ${batchResults.successful} successful, ${batchResults.failed} failed`,
+        ...batchResults
+      });
+      
+    } catch (error) {
+      console.error(`❌ Batch validation failed:`, error);
+      res.status(500).json({ 
+        error: `Batch validation failed: ${(error as Error).message}`,
+        success: false 
+      });
+    }
+  });
+
   // Object Storage Routes (must be before static file serving)
   app.get("/objects/:objectPath(*)", async (req, res) => {
     const objectStorageService = new ObjectStorageService();

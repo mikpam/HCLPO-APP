@@ -324,3 +324,24 @@ export const classificationResultSchema = z.object({
 });
 
 export type ClassificationResult = z.infer<typeof classificationResultSchema>;
+
+// Customer Resolution Audit - tracks hybrid customer validation attempts
+export const customerResolutionAudit = pgTable("customer_resolution_audit", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  queryData: jsonb("query_data"),
+  topCandidates: jsonb("top_candidates"), 
+  selectedCustomerId: text("selected_customer_id"),
+  confidenceScore: real("confidence_score"),
+  method: text("method"),
+  reasons: jsonb("reasons"),
+  llmResponse: jsonb("llm_response"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertCustomerResolutionAuditSchema = createInsertSchema(customerResolutionAudit).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type CustomerResolutionAudit = typeof customerResolutionAudit.$inferSelect;
+export type InsertCustomerResolutionAudit = z.infer<typeof insertCustomerResolutionAuditSchema>;
