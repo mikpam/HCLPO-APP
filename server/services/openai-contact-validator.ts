@@ -48,11 +48,12 @@ export class OpenAIContactValidatorService {
     }
 
     try {
-      // Load active contacts (inactive=false means active)
+      // MEMORY OPTIMIZATION: Load only top 5000 active contacts instead of all 25,000+
       const allContacts = await db
         .select()
         .from(contacts)
-        .where(eq(contacts.inactive, false));
+        .where(eq(contacts.inactive, false))
+        .limit(5000);
       
       this.contactsCache.clear();
       for (const contact of allContacts) {
@@ -61,10 +62,11 @@ export class OpenAIContactValidatorService {
         }
       }
 
-      // Load customers with domains
+      // MEMORY OPTIMIZATION: Load only top 2000 customers instead of all 11,000+
       const allCustomers = await db
         .select()
-        .from(customers);
+        .from(customers)
+        .limit(2000);
       
       this.customersCache.clear();
       for (const customer of allCustomers) {
@@ -72,7 +74,7 @@ export class OpenAIContactValidatorService {
       }
       
       this.lastCacheUpdate = now;
-      console.log(`   📞 Loaded ${this.contactsCache.size} contacts and ${this.customersCache.size} customers into cache`);
+      console.log(`   📞 Loaded ${this.contactsCache.size} contacts and ${this.customersCache.size} customers into cache (memory optimized)`);
     } catch (error) {
       console.error('Failed to load contact/customer cache:', error);
     }

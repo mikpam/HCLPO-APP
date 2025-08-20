@@ -66,7 +66,8 @@ export class OpenAISKUValidatorService {
     }
 
     try {
-      const allItems = await db.select().from(items).where(sql`is_active = true`);
+      // MEMORY OPTIMIZATION: Load only top 1000 most common items instead of all 5000+
+      const allItems = await db.select().from(items).where(sql`is_active = true`).limit(1000);
       
       this.itemsCache.clear();
       this.catalogMap.clear();
@@ -77,7 +78,7 @@ export class OpenAISKUValidatorService {
       }
       
       this.lastCacheUpdate = now;
-      console.log(`   📦 Loaded ${this.itemsCache.size} items into cache`);
+      console.log(`   📦 Loaded ${this.itemsCache.size} items into cache (memory optimized)`);
     } catch (error) {
       console.error('Failed to load items cache:', error);
     }

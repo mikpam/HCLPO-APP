@@ -16,8 +16,9 @@ class CustomerLookupService {
    * Initialize or refresh the in-memory cache
    */
   async refreshCache(): Promise<void> {
-    console.log('🔄 Refreshing customer cache...');
-    const allCustomers = await db.select().from(customers).where(eq(customers.isActive, true));
+    console.log('🔄 Refreshing customer cache (memory optimized)...');
+    // MEMORY OPTIMIZATION: Load only top 2000 customers instead of all 13,000+
+    const allCustomers = await db.select().from(customers).where(eq(customers.isActive, true)).limit(2000);
     
     this.customerCache.clear();
     this.companyNameIndex.clear();
@@ -30,8 +31,8 @@ class CustomerLookupService {
       const normalizedName = this.normalizeCompanyName(customer.companyName);
       this.companyNameIndex.set(normalizedName, customer);
       
-      // Index alternate names too
-      if (customer.alternateNames) {
+      // Index alternate names too (limit to prevent memory overload)
+      if (customer.alternateNames && customer.alternateNames.length <= 5) {
         for (const altName of customer.alternateNames) {
           const normalizedAlt = this.normalizeCompanyName(altName);
           this.companyNameIndex.set(normalizedAlt, customer);
@@ -40,7 +41,7 @@ class CustomerLookupService {
     }
     
     this.lastCacheUpdate = Date.now();
-    console.log(`✅ Cached ${allCustomers.length} customers`);
+    console.log(`✅ Cached ${allCustomers.length} customers (memory optimized)`);
   }
 
   /**

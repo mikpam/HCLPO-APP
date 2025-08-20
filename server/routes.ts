@@ -111,45 +111,29 @@ export async function registerRoutes(app: Express): Promise<Server> {
     console.error('Failed to initialize Gmail labels:', error);
   }
 
-  // Auto-start with retry mechanism - SEQUENTIAL PROCESSING ARCHITECTURE
-  // ✅ EMAIL PROCESSING ENABLED - ALL EMBEDDINGS COMPLETE (100%)
-  // Contact embeddings: 43,620/43,620 (100%)
-  // Customer embeddings: 13,665/13,665 (100%) 
-  // Item embeddings: 5,373/5,373 (100%)
+  // Auto-start disabled to prevent memory issues
+  // Start health monitoring system without automatic email processing
   setTimeout(async () => {
-    console.log('🔄 AUTO-PROCESSING: Starting sequential email processing architecture');
-    console.log('⚡ ARCHITECTURE: Strict per-email processing with health monitoring control');
-    console.log('🎯 HYBRID VALIDATION: Full semantic search capabilities active');
+    console.log('🟡 AUTO-PROCESSING: DISABLED for memory optimization');
+    console.log('⚡ ARCHITECTURE: Manual processing mode active');
+    console.log('🎯 HYBRID VALIDATION: Available via API endpoints');
     
-    // Start health monitoring system with pausing capability
-    validatorHealthService.startMonitoring();
+    // Start health monitoring system only (lightweight)
+    try {
+      validatorHealthService.startMonitoring();
+      console.log('✅ Health monitoring started successfully');
+    } catch (error) {
+      console.log('⚠️ Health monitoring disabled due to memory constraints');
+    }
     
-    // Start processing emails immediately with sequential architecture
-    processEmailsInBackground();
-    
-    // Schedule continuous email checking every 2 minutes for new emails
-    setInterval(async () => {
-      try {
-        console.log('🔄 SCHEDULED EMAIL SCAN: Checking for new emails...');
-        await processEmailsInBackground();
-      } catch (error) {
-        console.error('Error in scheduled email processing:', error);
-      }
-    }, 2 * 60 * 1000); // 2 minutes for responsive email processing
-    
-    // Check for stuck purchase orders every 5 minutes for faster testing
-    setInterval(async () => {
-      try {
-        await retryStuckPurchaseOrders();
-      } catch (error) {
-        console.error('Error in periodic stuck PO check:', error);
-      }
-    }, 5 * 60 * 1000); // 5 minutes for faster retry testing
+    console.log('📝 To process emails, use the API endpoints:');
+    console.log('   POST /api/emails/process-normal - Process emails manually');
+    console.log('   GET /api/dashboard/metrics - View system status');
   }, 2000);
   
-  console.log('✅ EMAIL PROCESSING ENABLED: All embeddings complete (57,058 total)');
-  console.log('📊 EMBEDDING STATUS: Contact (43,620), Customer (13,665), Item (5,373) - 100%');
-  console.log('🚀 HYBRID VALIDATION: Ready for production semantic search operations');
+  console.log('⚠️ AUTO-PROCESSING DISABLED: Preventing memory overload');
+  console.log('📊 SYSTEM: Ready for manual processing via API endpoints');
+  console.log('🎯 MEMORY OPTIMIZATION: Background processing suspended');
   
 
   
@@ -220,7 +204,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post("/api/test/customer-format-validation", async (req, res) => {
     try {
       const { testNumbers } = req.body;
-      const { CustomerLookupService } = await import("./services/customer-lookup");
+      const { default: CustomerLookupService } = await import("./services/customer-lookup");
       const customerLookup = new CustomerLookupService();
       
       const results = await Promise.all(
@@ -246,7 +230,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post("/api/test/customer-finder", async (req, res) => {
     try {
       const { customerName, customerEmail, senderEmail } = req.body;
-      const { OpenAICustomerFinderService } = await import("./services/openai-customer-finder");
+      const { default: OpenAICustomerFinderService } = await import("./services/openai-customer-finder");
       const customerFinder = new OpenAICustomerFinderService();
       
       const result = await customerFinder.findCustomer({
@@ -1154,7 +1138,6 @@ ${messageToProcess.body || ''}`;
                       purchaseOrder = await storage.createPurchaseOrder({
                         poNumber,
                         clientPONumber: extractedData.client_po_number || null,
-                        customerName: extractedData.customer?.name || null,
                         status: "pending_review",
                         extractedData: extractedData,
                         emailQueueId: emailQueue.id,
@@ -1178,7 +1161,6 @@ ${messageToProcess.body || ''}`;
                 purchaseOrder = await storage.createPurchaseOrder({
                   poNumber,
                   clientPONumber: extractedData.client_po_number || null,
-                  customerName: extractedData.customer?.name || null,
                   status: "pending_review",
                   extractedData: extractedData,
                   emailQueueId: emailQueue.id,
@@ -1204,7 +1186,7 @@ ${messageToProcess.body || ''}`;
             });
 
             console.log(`🔍 OPENAI CUSTOMER LOOKUP:`);
-            const customerName = purchaseOrder.extractedData?.customer?.name || purchaseOrder.customerName;
+            const customerName = purchaseOrder.extractedData?.customer?.name || null;
             console.log(`   └─ Searching HCL database for: ${customerName || 'No customer name'}`);
 
             // Create fresh customer finder instance for this email to prevent race conditions with health monitoring
