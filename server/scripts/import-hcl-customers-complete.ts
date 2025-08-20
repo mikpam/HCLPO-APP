@@ -13,7 +13,7 @@ interface HCLCustomerRecord {
   searchKey: string;
   emailDomain?: string;
   phoneDigits?: string;
-  aliases?: string;
+  aliases?: string[];
 }
 
 function parseCompleteCustomerFile(filePath: string): HCLCustomerRecord[] {
@@ -62,11 +62,11 @@ function parseCompleteCustomerFile(filePath: string): HCLCustomerRecord[] {
         }
       }
       
-      // Generate a unique internal ID since we don't have one in this format
-      const internalId = `HCL_${customerNumber}`;
+      // Parse aliases into array (pipe-separated values)
+      const aliasArray = aliases ? aliases.split(' | ').map(alias => alias.trim()).filter(alias => alias) : [];
       
       customers.push({
-        internalId,
+        internalId: customerNumber, // Use customer number directly as NetSuite ID
         customerNumber,
         companyName: companyName.trim(),
         email: email || '',
@@ -75,7 +75,7 @@ function parseCompleteCustomerFile(filePath: string): HCLCustomerRecord[] {
         searchKey,
         emailDomain,
         phoneDigits,
-        aliases
+        aliases: aliasArray // Store aliases as array
       });
       
     } catch (error) {
@@ -128,13 +128,15 @@ async function importCompleteHCLCustomers() {
       for (const customer of batch) {
         // Convert to database format
         const customerData = {
-          netsuiteId: customer.internalId,
+          netsuiteId: customer.customerNumber, // Use customer number as NetSuite ID (no HCL_ prefix)
           customerNumber: customer.customerNumber,
           companyName: customer.companyName,
+          alternateNames: customer.aliases, // Store aliases in alternateNames array field
           email: customer.email || null,
           phone: customer.phone || null,
+          phoneDigits: customer.phoneDigits || null,
           isActive: customer.isActive,
-          // Store additional metadata in a structured way
+          // Store search key in searchVector field  
           searchVector: customer.searchKey || customer.companyName.toLowerCase().replace(/[^a-z0-9]/g, ''),
         };
         
@@ -147,7 +149,7 @@ async function importCompleteHCLCustomers() {
         imported += customersToInsert.length;
         console.log(`✅ Batch ${batchIndex + 1}/${batches.length}: Inserted ${customersToInsert.length} customers`);
       } catch (error) {
-        console.error(`❌ Error inserting batch ${batchIndex + 1}:`, error.message);
+        console.error(`❌ Error inserting batch ${batchIndex + 1}:`, error instanceof Error ? error.message : String(error));
         errors += customersToInsert.length;
       }
       
