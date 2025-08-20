@@ -164,7 +164,7 @@ export default function ContactsPage() {
   // Create mutation
   const createMutation = useMutation({
     mutationFn: async (data: ContactFormData) => {
-      return apiRequest('/api/contacts', 'POST', data);
+      return apiRequest('POST', '/api/contacts', data);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/contacts'] });
@@ -184,7 +184,7 @@ export default function ContactsPage() {
   // Update mutation
   const updateMutation = useMutation({
     mutationFn: async ({ id, data }: { id: string; data: Partial<ContactFormData> }) => {
-      return apiRequest(`/api/contacts/${id}`, 'PUT', data);
+      return apiRequest('PUT', `/api/contacts/${id}`, data);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/contacts'] });
@@ -204,7 +204,7 @@ export default function ContactsPage() {
   // Delete mutation
   const deleteMutation = useMutation({
     mutationFn: async (id: string) => {
-      return apiRequest(`/api/contacts/${id}`, 'DELETE');
+      return apiRequest('DELETE', `/api/contacts/${id}`);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/contacts'] });
@@ -225,7 +225,7 @@ export default function ContactsPage() {
   // Reactivate mutation
   const reactivateMutation = useMutation({
     mutationFn: async (id: string) => {
-      return apiRequest(`/api/contacts/${id}/reactivate`, 'PATCH');
+      return apiRequest('PATCH', `/api/contacts/${id}/reactivate`);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/contacts'] });
