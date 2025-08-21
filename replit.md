@@ -10,6 +10,10 @@ This full-stack web application automates purchase order processing from email s
   - **Single PO Creation Point**: Step 10 creates complete PO with all validation results in one atomic operation
   - **Validation Independence**: All validations run on extracted data, not dependent on PO existence
   - **Unstuck 12 POs**: Updated stuck POs from "validating" to proper status ("new_customer")
+- **🔥 CONTACT VALIDATION ENHANCED**: Fixed field mapping and added unverified contact preservation
+  - **Fixed Field Mapping**: Contact validator now properly receives extracted contact data via `extractedData` field
+  - **Unverified Contact Storage**: When validation fails, extracted contact details are preserved as "unverified"
+  - **Contact Meta Enhanced**: Added source tracking ('validated' vs 'extracted_unverified'), phone, and verification status
 - **🔥 CONSOLIDATION TO AUTO-PROCESSING ONLY**: Integrated complete validation pipeline into automatic email processing
   - **Steps 7-8 Integration**: Customer and Contact validation now run automatically during email processing
   - **Manual Trigger Removal**: Removed `/api/force-validation` and `/api/batch-validation` endpoints

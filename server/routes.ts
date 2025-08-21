@@ -976,13 +976,13 @@ async function processEmailThroughValidationSystem(messageToProcess: any, update
         const { OpenAIContactValidatorService } = await import('./services/openai-contact-validator');
         const contactValidator = new OpenAIContactValidatorService();
         
-        // Prepare input for contact validator
+        // Prepare input for contact validator - using the correct interface fields
         const contactInput = {
-          contactName: contact.name || customer.contactName || '',
-          contactEmail: contact.email || customer.email || effectiveSenderForPO,
-          senderEmail: effectiveSenderForPO || '',
-          customerName: customer.company || customer.customerName || '',
-          phoneNumber: contact.phone || customer.phone || undefined
+          extractedData: extractionResult,
+          senderName: contact.name || customer.contactName || effectiveSenderForPO?.split('<')[0]?.trim() || '',
+          senderEmail: contact.email || customer.email || effectiveSenderForPO || '',
+          resolvedCustomerId: customerValidationResult?.customerNumber || customerMeta?.customer_number || '',
+          companyId: customerValidationResult?.customerNumber || ''
         };
         
         console.log(`   📞 Contact validation input:`, contactInput);
@@ -996,13 +996,20 @@ async function processEmailThroughValidationSystem(messageToProcess: any, update
         contactValidated = contactValidationResult.match_method !== 'UNKNOWN' && 
                           contactValidationResult.confidence > 0.5;
         
+        // If validation failed but we have extracted contact data, use it as unverified
+        const extractedContact = extractionResult?.purchaseOrder?.contact || {};
+        const hasExtractedContact = extractedContact.name || extractedContact.email;
+        
         const updatedContactMeta = {
           method: contactValidationResult.match_method,
-          status: contactValidated ? "found" : "not_found",
+          status: contactValidated ? "found" : (hasExtractedContact ? "unverified" : "not_found"),
           resolved: contactValidated,
           confidence: contactValidationResult.confidence,
-          contact_name: contactValidationResult.name,
-          contact_email: contactValidationResult.email
+          contact_name: contactValidated ? contactValidationResult.name : (extractedContact.name || ''),
+          contact_email: contactValidated ? contactValidationResult.email : (extractedContact.email || ''),
+          contact_phone: extractedContact.phone || '',
+          is_verified: contactValidated,
+          source: contactValidated ? 'validated' : 'extracted_unverified'
         };
         
         contactMeta = updatedContactMeta;
@@ -1090,7 +1097,7 @@ async function processEmailThroughValidationSystem(messageToProcess: any, update
         lineItems: extractionResult?.lineItems || [],
         customerMeta: customerMeta,
         contactMeta: contactMeta,
-        contact: contactValidationResult?.name || extractionResult?.purchaseOrder?.contact?.name || null,
+        contact: contactMeta?.contact_name || extractionResult?.purchaseOrder?.contact?.name || null,
         emlFilePath: emlFilePath,
         extractionSourceFile: extractionSourceFile,
         attachmentPaths: attachmentPaths.length > 0 ? attachmentPaths.map(att => att.storagePath) : [],
@@ -1117,7 +1124,7 @@ async function processEmailThroughValidationSystem(messageToProcess: any, update
         lineItems: extractionResult?.lineItems || [],
         customerMeta: customerMeta,
         contactMeta: contactMeta,
-        contact: contactValidationResult?.name || extractionResult?.purchaseOrder?.contact?.name || null,
+        contact: contactMeta?.contact_name || extractionResult?.purchaseOrder?.contact?.name || null,
         emlFilePath: emlFilePath,
         extractionSourceFile: extractionSourceFile,
         attachmentPaths: attachmentPaths.length > 0 ? attachmentPaths.map(att => att.storagePath) : [],
