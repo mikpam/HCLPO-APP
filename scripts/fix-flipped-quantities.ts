@@ -32,20 +32,49 @@ async function fixFlippedQuantities(poId: string) {
       console.log(`  ${index + 1}. SKU: "${item.sku}" → finalSKU: "${item.finalSKU}" | Qty: ${item.quantity} | ${item.description}`);
     });
     
-    // Fix the specific issue: T871 and SETUP are flipped
+    // Fix the flipped finalSKUs
     const fixedItems = lineItems.map((item) => {
       const updatedItem = { ...item };
       
-      // T871 item should have T871-CL as finalSKU, not SETUP
-      if (item.sku === 'T871' && item.finalSKU === 'SETUP') {
-        updatedItem.finalSKU = 'T871-CL';  // or just 'T871' depending on validation
-        console.log(`  ✅ Fixed T871: finalSKU "${item.finalSKU}" → "${updatedItem.finalSKU}"`);
+      // Product items with finalSKU "SETUP" should use their actual SKU
+      if (item.finalSKU === 'SETUP' && item.sku !== 'SETUP') {
+        // Build proper finalSKU with color code if present
+        if (item.itemColor) {
+          const colorMap: Record<string, string> = {
+            'Clear': 'CL',
+            'Red': '02',
+            'Black': '06',
+            'Blue': '03',
+            'White': '01'
+          };
+          const colorCode = colorMap[item.itemColor] || item.itemColor.substring(0, 2).toUpperCase();
+          updatedItem.finalSKU = `${item.sku}-${colorCode}`;
+        } else {
+          updatedItem.finalSKU = item.sku;
+        }
+        console.log(`  ✅ Fixed ${item.sku}: finalSKU "${item.finalSKU}" → "${updatedItem.finalSKU}"`);
       }
       
-      // SETUP item should have SETUP as finalSKU, not T871-CL
-      if (item.sku === 'SETUP' && item.finalSKU === 'T871-CL') {
+      // SETUP charges should have finalSKU "SETUP"
+      if (item.sku === 'SETUP' && item.finalSKU !== 'SETUP' && item.finalSKU !== 'EPROOF-KC') {
         updatedItem.finalSKU = 'SETUP';
         console.log(`  ✅ Fixed SETUP: finalSKU "${item.finalSKU}" → "${updatedItem.finalSKU}"`);
+      }
+      
+      // OE-MISC-CHARGE items - analyze description
+      if (item.sku === 'OE-MISC-CHARGE') {
+        const desc = (item.description || '').toLowerCase();
+        if (desc.includes('setup')) {
+          updatedItem.finalSKU = 'SETUP';
+          console.log(`  ✅ Fixed OE-MISC-CHARGE: "${item.description}" → SETUP`);
+        } else if (desc.includes('run charge')) {
+          updatedItem.finalSKU = 'RUN-CHARGE';
+          console.log(`  ✅ Fixed OE-MISC-CHARGE: "${item.description}" → RUN-CHARGE`);
+        } else if (desc.includes('s & h') || desc.includes('shipping')) {
+          // Keep as OE-MISC-CHARGE for shipping charges
+          updatedItem.finalSKU = 'OE-MISC-CHARGE';
+        }
+        // Otherwise keep OE-MISC-CHARGE
       }
       
       return updatedItem;
