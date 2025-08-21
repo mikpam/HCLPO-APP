@@ -321,29 +321,53 @@ ${JSON.stringify(lineItems, null, 2)}`;
       
       const validatedItems = JSON.parse(cleanContent) as ValidatedLineItem[];
       
-      // CRITICAL: Ensure finalSKUs match the original line item order and quantities
-      // This prevents the issue where SETUP gets assigned to product quantities
-      for (let i = 0; i < validatedItems.length && i < lineItems.length; i++) {
-        const validated = validatedItems[i];
-        const original = lineItems[i];
+      // CRITICAL: Re-match validated items to original items by SKU to prevent order-based confusion
+      // The OpenAI may return items in different order, causing finalSKU misalignment
+      const correctedItems: ValidatedLineItem[] = [];
+      
+      for (const original of lineItems) {
+        // Find the validated item that corresponds to this original item
+        const matchedValidated = validatedItems.find(v => 
+          v.sku === original.sku || 
+          (v.sku && original.sku && v.sku.toUpperCase() === original.sku.toUpperCase())
+        );
         
-        // If the validated item has a different quantity than original, something went wrong
-        if (validated.quantity !== original.quantity) {
-          console.warn(`   ⚠️ Quantity mismatch detected: Line ${i+1} original qty ${original.quantity} vs validated qty ${validated.quantity}`);
-          // Preserve original quantity
-          validated.quantity = original.quantity;
-        }
-        
-        // If this looks like a charge code assigned to high quantity, it's likely wrong
-        if (this.chargeCodebook.has(validated.finalSKU) && validated.quantity > 10) {
-          console.warn(`   ⚠️ Suspicious: Charge code ${validated.finalSKU} with qty ${validated.quantity} - likely misassigned`);
-          // Keep the original SKU if it exists
-          if (original.sku && !this.chargeCodebook.has(original.sku.toUpperCase())) {
-            validated.finalSKU = original.sku.toUpperCase();
-            console.log(`   🔧 Corrected: Using original SKU ${validated.finalSKU} instead of charge code`);
+        if (matchedValidated) {
+          // Ensure quantities match exactly 
+          matchedValidated.quantity = original.quantity;
+          
+          // If this is a charge code with high quantity, it's wrong
+          if (this.chargeCodebook.has(matchedValidated.finalSKU) && matchedValidated.quantity > 10) {
+            console.warn(`   ⚠️ DATA INTEGRITY: Charge code ${matchedValidated.finalSKU} assigned qty ${matchedValidated.quantity} - correcting`);
+            // Use the original SKU for high quantities
+            if (original.sku && !this.chargeCodebook.has(original.sku.toUpperCase())) {
+              matchedValidated.finalSKU = original.sku.toUpperCase();
+              console.log(`   🔧 CORRECTED: ${original.sku} (qty ${original.quantity}) keeps its original SKU`);
+            }
           }
+          
+          correctedItems.push(matchedValidated);
+        } else {
+          // If no match found, create a fallback item preserving original data
+          console.warn(`   ⚠️ No validated match found for SKU: ${original.sku}, creating fallback`);
+          correctedItems.push({
+            sku: original.sku || '',
+            description: original.description,
+            itemColor: original.itemColor || '',
+            quantity: original.quantity,
+            unitPrice: original.unitPrice,
+            totalPrice: original.totalPrice,
+            imprintColor: original.imprintColor,
+            finalSKU: original.sku?.toUpperCase() || 'OE-MISC-ITEM',
+            isValidSKU: false,
+            validationNotes: 'No AI match found, using original SKU'
+          });
         }
       }
+      
+      // Replace the validated items with the correctly matched ones
+      validatedItems.length = 0;
+      validatedItems.push(...correctedItems);
       
       // Add validation metadata  
       for (const item of validatedItems) {
