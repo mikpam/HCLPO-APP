@@ -4,10 +4,16 @@
 This full-stack web application automates purchase order processing from email sources, integrating with external services to manage the workflow from ingestion to sales order creation. The system provides a dashboard for monitoring and management, aiming to streamline operations and enhance efficiency in handling purchase orders. The business vision is to provide a robust, automated solution for managing the entire purchase order lifecycle, significantly reducing manual effort and improving data accuracy. This system has high market potential for businesses dealing with large volumes of email-based purchase orders, offering a competitive advantage through operational efficiency and enhanced data management. The project ambition is to become a leading solution in automated PO processing, continuously integrating advanced AI and robust ERP capabilities.
 
 ## Recent Changes (August 21, 2025)
+- **🔥 VALIDATION FLOW RESTRUCTURED**: Complete alignment with SYSTEM_LOGIC_FLOW.md sequence
+  - **Fixed Validation Order**: Steps 7-9 (Customer, Contact, SKU validation) now run BEFORE PO creation (Step 10)
+  - **Eliminated Race Conditions**: Removed duplicate PO creation attempts that caused "duplicate key" errors
+  - **Single PO Creation Point**: Step 10 creates complete PO with all validation results in one atomic operation
+  - **Validation Independence**: All validations run on extracted data, not dependent on PO existence
+  - **Unstuck 12 POs**: Updated stuck POs from "validating" to proper status ("new_customer")
 - **🔥 CONSOLIDATION TO AUTO-PROCESSING ONLY**: Integrated complete validation pipeline into automatic email processing
   - **Steps 7-8 Integration**: Customer and Contact validation now run automatically during email processing
   - **Manual Trigger Removal**: Removed `/api/force-validation` and `/api/batch-validation` endpoints
-  - **Single Path Architecture**: Email → Classification → Extraction → SKU → Customer → Contact → Status → Complete PO
+  - **Single Path Architecture**: Email → Classification → Extraction → Validation → Storage → Status → Complete PO
   - **SYSTEM_LOGIC_FLOW.md Compliance**: Full 12-step workflow now runs automatically without manual intervention
   - **Enhanced Polling**: Automatic email polling enabled with 1-minute intervals (reduced from 2 minutes)
   - **JSON Logging Fix**: Resolved error logging serialization issues for complete audit trails

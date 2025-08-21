@@ -902,105 +902,11 @@ async function processEmailThroughValidationSystem(messageToProcess: any, update
       effectiveSenderForPO = customerInfo.email || messageToProcess.sender;
     }
 
-    // 🔥 UPDATE STATUS: Line Item Validation
-    updateProcessingStatus({
-      currentStep: "line_item_validation"
-    });
-
-    // SKU Validation for extracted line items
-    let validatedLineItems: any[] | null = null;
-    if (extractionResult?.lineItems?.length > 0) {
-      console.log(`\n🤖 OPENAI SKU VALIDATOR: Processing ${extractionResult.lineItems.length} extracted line items...`);
-      
-      try {
-        // Create fresh validator instance for this email to prevent race conditions
-        console.log(`   └─ Processing ${extractionResult.lineItems.length} line items for validation`);
-        
-        // Validate line items with OpenAI using isolated instance
-        // Create fresh validator instance for this email to prevent race conditions with health monitoring
-        const skuValidator = await validatorHealthService.recordValidatorCall(
-          'skuValidator',
-          async () => new OpenAISKUValidatorService()
-        );
-        validatedLineItems = await skuValidator.validateLineItems(extractionResult.lineItems);
-        
-        console.log(`   ✅ SKU validation complete: ${validatedLineItems?.length || 0} items processed`);
-        
-        // Merge validated SKUs back into original line items structure
-        if (validatedLineItems && validatedLineItems.length > 0 && extractionResult.lineItems) {
-          extractionResult.lineItems.forEach((originalItem: any, index: number) => {
-            const validatedItem = validatedLineItems?.[index];
-            if (validatedItem) {
-              // Preserve original structure and add finalSKU
-              originalItem.finalSKU = validatedItem.finalSKU || '';
-              
-              // Log validation results
-              if (originalItem.sku !== validatedItem.finalSKU && validatedItem.finalSKU) {
-                console.log(`      ${index + 1}. "${originalItem.sku || validatedItem.sku}" → "${validatedItem.finalSKU}"`);
-              }
-            }
-          });
-          
-          // STEP 3 COMPLETION: Update existing purchase order with line items validation results
-          try {
-            if (purchaseOrder) {
-              await storage.updatePurchaseOrder(purchaseOrder.id, {
-                lineItems: extractionResult.lineItems,
-                extractedData: {
-                  ...extractionResult,
-                  validatedLineItems: validatedLineItems
-                },
-                status: 'validating' // Update status to show validation in progress
-              });
-              console.log(`   ✅ STEP 3 COMPLETED: Line items data stored in existing PO ${purchaseOrder.poNumber}`);
-            } else {
-              console.log(`   ⚠️ STEP 3 SKIPPED: No purchase order available for update`);
-            }
-          } catch (stepError) {
-            console.error(`   ❌ STEP 3 FAILED: Could not store line items data:`, stepError);
-          }
-        }
-        
-      } catch (error) {
-        console.error(`   ❌ SKU validation failed:`, error);
-        console.log(`   └─ Continuing with original line items`);
-        // Continue without validation rather than failing the entire process
-      }
-    }
-
-    // 🔥 CREATE INITIAL PO RECORD
-    purchaseOrder = await storage.createPurchaseOrder({
-      poNumber,
-      emailId: messageToProcess.id,
-      sender: effectiveSenderForPO,
-      subject: messageToProcess.subject,
-      route: processingResult.classification.recommended_route,
-      confidence: processingResult.classification.analysis_flags?.confidence_score || 0,
-      status: 'validating', // Always start with validating status
-      originalJson: processingResult.classification,
-      extractedData: {
-        ...extractionResult,
-        // Line items now have finalSKU merged in from validation
-        forwardedEmail: isForwardedEmail ? {
-          originalSender: messageToProcess.sender,
-          cNumber: extractedCNumber,
-          hclCustomerLookup: hclCustomerLookup,
-          extractedCustomer: customerInfo || hclCustomerLookup // Use Gemini extraction first, fallback to HCL lookup
-        } : undefined
-      },
-      lineItems: extractionResult?.lineItems || [], // Store line items with merged finalSKU values
-      customerMeta: customerMeta, // Include HCL customer lookup result
-      contactMeta: contactMeta, // Include HCL contact lookup result  
-      contact: extractionResult?.purchaseOrder?.contact?.name || null, // Store contact name for NetSuite
-      emlFilePath: emlFilePath, // Store EML file path for email preservation
-      extractionSourceFile: extractionSourceFile, // Store specific file used for successful extraction
-      attachmentPaths: attachmentPaths.length > 0 ? attachmentPaths.map(att => att.storagePath) : [] // Store attachment paths as array for proper access
-    });
-
     // 🔥 STEP 7: AUTOMATIC CUSTOMER VALIDATION (from SYSTEM_LOGIC_FLOW.md)
     let customerValidationResult: any = null;
-    if (extractionResult && purchaseOrder) {
-      console.log(`\n🔍 STEP 7: Running automatic customer validation for PO ${purchaseOrder.poNumber}...`);
+    let customerValidated = false;
+    if (extractionResult) {
+      console.log(`\n🔍 STEP 7: Running automatic customer validation for PO ${poNumber}...`);
       
       updateProcessingStatus({
         currentStep: "customer_validation"
@@ -1016,8 +922,8 @@ async function processEmailThroughValidationSystem(messageToProcess: any, update
         // Prepare input for hybrid validator
         const validationInput = {
           customerName: customer.company || customer.customerName,
-          customerEmail: customer.email || purchaseOrder.sender,
-          senderEmail: purchaseOrder.sender || undefined,
+          customerEmail: customer.email || effectiveSenderForPO,
+          senderEmail: effectiveSenderForPO || undefined,
           customerNumber: customer.customerNumber,
           contactName: customer.contactName,
           address: customer.address
@@ -1030,9 +936,10 @@ async function processEmailThroughValidationSystem(messageToProcess: any, update
         
         console.log(`   ✅ Customer validation result:`, customerValidationResult);
         
-        // Update database with customer validation results
+        // Store validation result for later use when creating PO
         if (customerValidationResult.matched) {
-          const updatedCustomerMeta = {
+          customerValidated = true;
+          customerMeta = {
             method: customerValidationResult.method,
             status: "found",
             resolved: true,
@@ -1041,31 +948,21 @@ async function processEmailThroughValidationSystem(messageToProcess: any, update
             customer_number: customerValidationResult.customerNumber
           };
           
-          await storage.updatePurchaseOrder(purchaseOrder.id, {
-            customerMeta: updatedCustomerMeta,
-            customerValidated: true
-          });
-          
           console.log(`   ✅ Customer validation completed: ${customerValidationResult.customerName} (${customerValidationResult.customerNumber})`);
         } else {
           console.log(`   ❌ Customer validation failed: ${customerValidationResult.reasons?.join(', ') || 'Unknown reason'}`);
-          await storage.updatePurchaseOrder(purchaseOrder.id, {
-            customerValidated: false
-          });
         }
         
       } catch (error) {
         console.error(`   ❌ Customer validation error:`, error);
-        await storage.updatePurchaseOrder(purchaseOrder.id, {
-          customerValidated: false
-        });
       }
     }
 
     // 🔥 STEP 8: AUTOMATIC CONTACT VALIDATION (from SYSTEM_LOGIC_FLOW.md)
     let contactValidationResult: any = null;
-    if (extractionResult && purchaseOrder) {
-      console.log(`\n📞 STEP 8: Running automatic contact validation for PO ${purchaseOrder.poNumber}...`);
+    let contactValidated = false;
+    if (extractionResult) {
+      console.log(`\n📞 STEP 8: Running automatic contact validation for PO ${poNumber}...`);
       
       updateProcessingStatus({
         currentStep: "contact_validation"
@@ -1082,8 +979,8 @@ async function processEmailThroughValidationSystem(messageToProcess: any, update
         // Prepare input for contact validator
         const contactInput = {
           contactName: contact.name || customer.contactName || '',
-          contactEmail: contact.email || customer.email || purchaseOrder.sender,
-          senderEmail: purchaseOrder.sender,
+          contactEmail: contact.email || customer.email || effectiveSenderForPO,
+          senderEmail: effectiveSenderForPO || '',
           customerName: customer.company || customer.customerName || '',
           phoneNumber: contact.phone || customer.phone || undefined
         };
@@ -1095,9 +992,9 @@ async function processEmailThroughValidationSystem(messageToProcess: any, update
         
         console.log(`   ✅ Contact validation result:`, contactValidationResult);
         
-        // Update database with contact validation results
-        const contactValidated = contactValidationResult.match_method !== 'UNKNOWN' && 
-                                contactValidationResult.confidence > 0.5;
+        // Store validation result for later use when creating PO
+        contactValidated = contactValidationResult.match_method !== 'UNKNOWN' && 
+                          contactValidationResult.confidence > 0.5;
         
         const updatedContactMeta = {
           method: contactValidationResult.match_method,
@@ -1108,11 +1005,7 @@ async function processEmailThroughValidationSystem(messageToProcess: any, update
           contact_email: contactValidationResult.email
         };
         
-        await storage.updatePurchaseOrder(purchaseOrder.id, {
-          contactMeta: updatedContactMeta,
-          contactValidated: contactValidated,
-          contact: contactValidationResult.name || null
-        });
+        contactMeta = updatedContactMeta;
         
         if (contactValidated) {
           console.log(`   ✅ Contact validation completed: ${contactValidationResult.name} <${contactValidationResult.email}>`);
@@ -1122,10 +1015,116 @@ async function processEmailThroughValidationSystem(messageToProcess: any, update
         
       } catch (error) {
         console.error(`   ❌ Contact validation error:`, error);
-        await storage.updatePurchaseOrder(purchaseOrder.id, {
-          contactValidated: false
-        });
       }
+    }
+
+    // 🔥 STEP 9: SKU/LINE ITEM VALIDATION (from SYSTEM_LOGIC_FLOW.md)
+    let validatedLineItems: any[] | null = null;
+    let lineItemsValidated = false;
+    if (extractionResult?.lineItems?.length > 0) {
+      console.log(`\n🔍 STEP 9: Running SKU/Line item validation for PO ${poNumber}...`);
+      
+      updateProcessingStatus({
+        currentStep: "line_item_validation"
+      });
+      
+      console.log(`   └─ Processing ${extractionResult.lineItems.length} line items for validation`);
+      
+      try {
+        // Create fresh validator instance for this email to prevent race conditions with health monitoring
+        const skuValidator = await validatorHealthService.recordValidatorCall(
+          'skuValidator',
+          async () => new OpenAISKUValidatorService()
+        );
+        validatedLineItems = await skuValidator.validateLineItems(extractionResult.lineItems);
+        
+        console.log(`   ✅ SKU validation complete: ${validatedLineItems?.length || 0} items processed`);
+        lineItemsValidated = true;
+        
+        // Merge validated SKUs back into original line items structure
+        if (validatedLineItems && validatedLineItems.length > 0 && extractionResult.lineItems) {
+          extractionResult.lineItems.forEach((originalItem: any, index: number) => {
+            const validatedItem = validatedLineItems?.[index];
+            if (validatedItem) {
+              // Preserve original structure and add finalSKU
+              originalItem.finalSKU = validatedItem.finalSKU || '';
+              
+              // Log validation results
+              if (originalItem.sku !== validatedItem.finalSKU && validatedItem.finalSKU) {
+                console.log(`      ${index + 1}. "${originalItem.sku || validatedItem.sku}" → "${validatedItem.finalSKU}"`);
+              }
+            }
+          });
+        }
+        
+      } catch (error) {
+        console.error(`   ❌ SKU validation failed:`, error);
+        console.log(`   └─ Continuing with original line items`);
+        // Continue without validation rather than failing the entire process
+      }
+    }
+
+    // 🔥 STEP 10: DATABASE STORAGE (from SYSTEM_LOGIC_FLOW.md) - Create complete PO with all validation results
+    if (!purchaseOrder) {
+      console.log(`\n💾 STEP 10: Creating complete PO record with all validation results for ${poNumber}...`);
+      
+      purchaseOrder = await storage.createPurchaseOrder({
+        poNumber,
+        emailId: messageToProcess.id,
+        sender: effectiveSenderForPO,
+        subject: messageToProcess.subject,
+        route: processingResult.classification.recommended_route,
+        confidence: processingResult.classification.analysis_flags?.confidence_score || 0,
+        status: 'validating', // Will be updated in Step 11
+        originalJson: processingResult.classification,
+        extractedData: {
+          ...extractionResult,
+          validatedLineItems: validatedLineItems,
+          forwardedEmail: isForwardedEmail ? {
+            originalSender: messageToProcess.sender,
+            cNumber: extractedCNumber,
+            hclCustomerLookup: hclCustomerLookup,
+            extractedCustomer: customerInfo || hclCustomerLookup
+          } : undefined
+        },
+        lineItems: extractionResult?.lineItems || [],
+        customerMeta: customerMeta,
+        contactMeta: contactMeta,
+        contact: contactValidationResult?.name || extractionResult?.purchaseOrder?.contact?.name || null,
+        emlFilePath: emlFilePath,
+        extractionSourceFile: extractionSourceFile,
+        attachmentPaths: attachmentPaths.length > 0 ? attachmentPaths.map(att => att.storagePath) : [],
+        // Include validation flags
+        customerValidated: customerValidated,
+        contactValidated: contactValidated,
+        lineItemsValidated: lineItemsValidated
+      });
+      console.log(`   ✅ Complete PO record created: ${purchaseOrder.id}`);
+    } else {
+      console.log(`   ⚠️ PO already exists: ${purchaseOrder.id} - updating with validation results`);
+      // Update the existing PO with validation results
+      await storage.updatePurchaseOrder(purchaseOrder.id, {
+        extractedData: {
+          ...extractionResult,
+          validatedLineItems: validatedLineItems,
+          forwardedEmail: isForwardedEmail ? {
+            originalSender: messageToProcess.sender,
+            cNumber: extractedCNumber,
+            hclCustomerLookup: hclCustomerLookup,
+            extractedCustomer: customerInfo || hclCustomerLookup
+          } : undefined
+        },
+        lineItems: extractionResult?.lineItems || [],
+        customerMeta: customerMeta,
+        contactMeta: contactMeta,
+        contact: contactValidationResult?.name || extractionResult?.purchaseOrder?.contact?.name || null,
+        emlFilePath: emlFilePath,
+        extractionSourceFile: extractionSourceFile,
+        attachmentPaths: attachmentPaths.length > 0 ? attachmentPaths.map(att => att.storagePath) : [],
+        customerValidated: customerValidated,
+        contactValidated: contactValidated,
+        lineItemsValidated: lineItemsValidated
+      });
     }
 
     // 🔥 STEP 11: AUTOMATIC STATUS DETERMINATION (from SYSTEM_LOGIC_FLOW.md)
@@ -1142,7 +1141,7 @@ async function processEmailThroughValidationSystem(messageToProcess: any, update
       const updatedPO = await storage.getPurchaseOrder(purchaseOrder.id);
       const hasCustomer = updatedPO?.customerValidated || false;
       const hasContact = updatedPO?.contactValidated || false;
-      const hasLineItems = updatedPO?.lineItemsValidated || (validatedLineItems ? true : false);
+      const hasLineItems = updatedPO?.lineItemsValidated || lineItemsValidated;
       
       // Status logic from SYSTEM_LOGIC_FLOW.md Step 11
       if (hasCustomer && hasContact && hasLineItems) {
@@ -1160,7 +1159,7 @@ async function processEmailThroughValidationSystem(messageToProcess: any, update
       await storage.updatePurchaseOrder(purchaseOrder.id, {
         status: finalStatus,
         validationCompleted: true,
-        lineItemsValidated: validatedLineItems ? true : false // Set based on whether SKU validation ran
+        lineItemsValidated: lineItemsValidated // Set based on whether SKU validation ran
       });
       
       console.log(`   🎯 Final status assigned: ${finalStatus}`);
@@ -1236,7 +1235,6 @@ async function logProcessingError(
       relatedPoId: poId || null,
       relatedPoNumber: poNumber || null,
       resolved: false,
-      additionalData: additionalData ? JSON.stringify(additionalData) : null, // Fix JSON serialization
       metadata: {
         emailId,
         timestamp: new Date().toISOString(),
