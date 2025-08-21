@@ -454,6 +454,73 @@ async function processEmailThroughValidationSystem(messageToProcess: any, update
         if (!processedPO && pdfAttachments.length > 0) {
           console.log(`\n⚠️  NO PURCHASE ORDERS FOUND: All ${pdfAttachments.length} attachments were filtered out`);
           console.log(`   └─ Attachments appear to be artwork, proofs, invoices, or other non-PO documents`);
+          
+          // 🔄 FALLBACK MECHANISM: If all attachments were filtered out, try extracting from email body text
+          console.log(`\n🔄 FALLBACK: Attempting to extract PO data from email body text...`);
+          try {
+            extractionResult = await aiService.extractPODataFromText(
+              messageToProcess.subject,
+              messageToProcess.body,
+              messageToProcess.sender
+            );
+            
+            if (extractionResult && (extractionResult.purchaseOrder || extractionResult.lineItems?.length > 0)) {
+              console.log(`   ✅ FALLBACK SUCCESS: Found PO data in email body text`);
+              console.log(`   └─ Client PO Number: ${extractionResult?.purchaseOrder?.purchaseOrderNumber || extractionResult?.clientPONumber || 'NOT FOUND'}`);
+              if (extractionResult?.purchaseOrder?.customer?.company) {
+                console.log(`   └─ Customer: ${extractionResult.purchaseOrder.customer.company}`);
+              }
+              if (extractionResult?.lineItems?.length) {
+                console.log(`   └─ Line Items: ${extractionResult.lineItems.length}`);
+              }
+              
+              // Create PO record with fallback extraction data
+              console.log(`   💾 FALLBACK STORAGE: Saving email text extraction data to database...`);
+              
+              const preliminaryPONumber = extractionResult?.purchaseOrder?.purchaseOrderNumber || 
+                                        extractionResult?.purchaseOrderNumber ||
+                                        extractionResult?.clientPONumber ||
+                                        `PO-${new Date().getFullYear()}-${String(Date.now()).slice(-6)}`;
+              
+              // Check if PO already exists and create unique number if needed
+              let finalPONumber = preliminaryPONumber;
+              let suffix = 1;
+              while (await storage.getPurchaseOrderByNumber(finalPONumber)) {
+                finalPONumber = `${preliminaryPONumber}-${suffix}`;
+                suffix++;
+              }
+              
+              // Create purchase order with fallback extraction data
+              purchaseOrder = await storage.createPurchaseOrder({
+                poNumber: finalPONumber,
+                emailId: messageToProcess.id,
+                sender: messageToProcess.sender,
+                subject: messageToProcess.subject,
+                route: 'ATTACHMENT_PO_FALLBACK', // Special route to indicate fallback was used
+                confidence: processingResult.classification.analysis_flags?.confidence_score || 0,
+                status: 'extracting',
+                originalJson: processingResult.classification,
+                extractedData: extractionResult,
+                lineItems: extractionResult?.lineItems || [],
+                contact: extractionResult?.purchaseOrder?.contact?.name || null,
+                customerName: extractionResult?.purchaseOrder?.customer?.company || null,
+                emlFilePath: emlFilePath,
+                extractionSourceFile: null, // No specific file, extracted from email body
+                attachmentPaths: attachmentPaths.length > 0 ? attachmentPaths.map(att => att.storagePath) : []
+              });
+              
+              console.log(`   ✅ FALLBACK STORAGE COMPLETE: PO ${finalPONumber} created with email text extraction`);
+              console.log(`   └─ Database ID: ${purchaseOrder.id}`);
+              
+              processedPO = true; // Mark as processed
+              
+            } else {
+              console.log(`   ❌ FALLBACK FAILED: No PO data found in email body text either`);
+            }
+            
+          } catch (fallbackError) {
+            console.error(`   ❌ FALLBACK EXTRACTION FAILED:`, fallbackError);
+          }
         }
       }
     } else if (processingResult.classification.recommended_route === 'TEXT_PO') {
