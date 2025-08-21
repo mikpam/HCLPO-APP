@@ -150,12 +150,13 @@ export default function PurchaseOrdersPage() {
     
     if (contactMeta) {
       // Use validated contact from HCL database
+      // Backend stores as contact_name, contact_email, contact_phone
       return {
-        name: contactMeta.name || 'N/A',
-        email: contactMeta.email || 'N/A',
-        phone: contactMeta.phone || 'N/A',
+        name: contactMeta.contact_name || contactMeta.name || 'N/A',
+        email: contactMeta.contact_email || contactMeta.email || 'N/A',
+        phone: contactMeta.contact_phone || contactMeta.phone || 'N/A',
         jobTitle: contactMeta.job_title || 'N/A',
-        isValidated: true
+        isValidated: contactMeta.is_verified || true
       };
     } else if (contact) {
       // Use extracted contact information
