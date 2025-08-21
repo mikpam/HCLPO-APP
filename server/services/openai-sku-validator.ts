@@ -207,97 +207,77 @@ Return **only** a JSON array. Each element is an object with exactly these keys,
 * sku        (string; original as seen, or empty if none)
 * description (string)
 * itemColor   (string; as seen or empty)
-* quantity    (integer; MUST MATCH INPUT EXACTLY - DO NOT CHANGE)
+* quantity    (integer; **copy exactly from the input line at the same index**)
 * finalSKU    (string; uppercase; strictly formatted)
 
 No markdown, no comments, no trailing text.
 
-### CRITICAL RULE: PRESERVE QUANTITIES
-**NEVER change the quantity values from the input.** Each line item's quantity must remain exactly as provided in the input data. Only validate and correct the finalSKU, never the quantities.
+### Non-negotiable invariants
+
+1. **1:1 index mapping**: For input array index \`i\`, output exactly one object at index \`i\`. **No reordering, merging, or splitting.**
+2. **Quantity lock**: \`output[i].quantity = input[i].quantity\` exactly.
+   * Never normalize, round, or move quantities.
+   * Never force charges to \`1\`.
+   * If quantity is missing in the input only, default to \`1\`.
+3. **Do not re-segment**: The input array is pre-segmented line items.
 
 ---
 
-### Inputs & resources (system context)
+### System resources (available)
 
-* **ItemsDB**: PostgreSQL table of all valid HCL SKUs and variants (base + color codes).
-* **Catalog**: { sku → productName } map for fuzzy matching.
-* **ColorCodes**: canonical map of HCL color codes (${colorCodesContext}).
-* **ChargeCodebook**: explicit non-inventory/charge codes (${chargeCodesContext}) with phrase synonyms.
-* **OE-MISC Fallbacks**: OE-MISC-ITEM for unknown products, OE-MISC-CHARGE for ambiguous charge lines.
+* **ItemsDB**: PostgreSQL table with all valid HCL SKUs and variants (base + color codes).
+* **Item Embeddings**: Vector search available for semantic product matching.
+* **ColorCodes**: canonical map (${colorCodesContext}).
+* **ChargeCodebook**: explicit charge codes (${chargeCodesContext}) with phrase synonyms.
+* **Fallbacks**: \`OE-MISC-ITEM\` (unknown product), \`OE-MISC-CHARGE\` (ambiguous charge).
 
-### CRITICAL: OE-MISC-CHARGE Analysis
-When you encounter an item with SKU or finalSKU "OE-MISC-CHARGE", this is a placeholder that needs analysis:
-1. **Check for known charge patterns first**:
-   - "Run Charge" → Use "RUN-CHARGE" 
-   - "PMS Matching" → Keep as "OE-MISC-CHARGE"
-   - "Set Up" or "Setup" → Use "SETUP"
-2. **Examine the description for actual product information**
-3. **Look for real SKU patterns** (like T339, B515, etc.) mentioned in the description
-4. **Match against the catalog** using fuzzy matching on product names
-5. **PRESERVE ORIGINAL QUANTITIES** - Don't change quantities to 1 for charges
+### Validation flow (per line item \`i\`)
 
-Examples:
-- "Run Charge" (qty: 130) → "RUN-CHARGE" (qty: 130) ✅
-- "PMS Matching Charge" (qty: 1) → "OE-MISC-CHARGE" (qty: 1) ✅
-- "Lanyard with custom logo, blue" → Find actual lanyard SKU like "L401-BL"
-- "Setup Charge" (qty: 4) → "SETUP" (qty: 4) ✅
+**A. Copy-through fields**
+* Set \`sku\`, \`description\`, \`itemColor\`, \`quantity\` from \`input[i]\` **verbatim**.
+* \`quantity\` must match input exactly.
 
-**CRITICAL**: Always preserve the original quantity - do not force charges to quantity=1!
-**CRITICAL**: Return items in the SAME ORDER as provided in the input array!
+**B. Direct SKU check**
+1. If \`sku\` equals an existing product SKU (case-insensitive), use it as base.
+2. Try normalized versions (remove prefixes like \`199-\`, \`ALLP-\`).
+3. If still no match, proceed to semantic search.
 
----
+**C. Semantic product search**
+1. Build query from: SKU token + description + color words
+2. Use vector similarity search for products
+3. Accept top candidate if:
+   * **score ≥ 0.85** → accept
+   * **0.75 ≤ score < 0.85** → accept only with valid color match
+   * Otherwise continue to charge detection
 
-### Item segmentation & extraction
+**D. Charge detection (preserve quantity)**
+* Map charge patterns deterministically:
+  * "Set Up/Setup" → \`SETUP\`
+  * "Run Charge/Extra Color/EC" → \`RUN-CHARGE\`
+  * "48 hour rush" → \`48-RUSH\`
+  * "Drop ship" → \`DROP-SHIP\`
+  * "PMS match" → \`OE-MISC-CHARGE\`
+* **Never modify quantity for charges**
 
-1. Split incoming line items on ____.
-2. For each line:
-   * sku: keep raw alphanumeric/dash token if present.
-   * description: free text remainder.
-   * itemColor: explicit color string if present, else "".
-   * quantity: PRESERVE EXACTLY from input - DO NOT MODIFY. If missing in input only, default to 1.
+**E. Color resolution**
+1. Normalize color via ColorCodes
+2. If base SKU has dash variant, validate it
+3. Else compose \`BASESKU-COLORCODE\` and validate
+4. If no valid variant, keep bare base
 
----
+**F. Fallback**
+* Charge-like but ambiguous → \`OE-MISC-CHARGE\`
+* Otherwise → \`OE-MISC-ITEM\`
 
-### Determining finalSKU
+### Critical: Quantity Examples
+* "Run Charge" (qty **130**) → \`RUN-CHARGE\` (qty **130**)
+* "Setup Charge" (qty **4**) → \`SETUP\` (qty **4**)
+* "Product SKU" (qty **250**) → Product finalSKU (qty **250**)
 
-**A) Direct product match**
-1. Check sku exact match in **ItemsDB**.
-2. Normalize prefixes/suffixes (allow-list only: 199-, ALLP-, etc.) and retry.
-3. If still no match → continue to fuzzy match.
-
-**B) Charge codes**
-1. If line contains explicit charge tokens (SETUP, 48-RUSH, EC, RUN-CHARGE, etc.), map directly.
-2. Else if line matches phrase synonyms ("set up charge", "run charge", "48 hour rush", "drop ship"), map.
-3. **PRESERVE original quantities** - do not force charges to quantity = 1 unless originally absent.
-
-**C) Fuzzy match**
-If not resolved above:
-- Compute composite similarity = (cosine(description vs Catalog) + Levenshtein(sku vs Catalog SKU))/2.
-- Accept if ≥0.85.  
-- If 0.75–0.85, require either a valid color match or a charge keyword.
-- If still unresolved → fallback.
-
-**D) Color resolution**
-1. Map itemColor or description tokens via **ColorCodes** / synonyms.
-2. If sku already includes dash (e.g., T339-CL), keep as candidate.
-3. Else append -COLORCODE to base SKU.
-4. Validate against **ItemsDB**.
-5. If none valid → OE-MISC-ITEM.
-
-**E) Fallback guard**
-Before finalizing OE-MISC-ITEM, retry exact + fuzzy lookups once more.
-
----
-
-### Rules
-* Always uppercase finalSKU.
-* Valid forms: SKUCODE-COLORCODE, bare SKUCODE, charge code, or misc fallback.
-* Deterministic tie-breaks: highest similarity → prefix match → longest common subsequence → alphanumeric order.
-
-### Available SKU catalog (top 200 items):
+### Available SKU catalog:
 ${catalogEntries}
 
-### Line items to validate:
+### Line items to validate (already segmented; do not re-segment):
 ${JSON.stringify(lineItems, null, 2)}`;
 
     try {
@@ -323,68 +303,82 @@ ${JSON.stringify(lineItems, null, 2)}`;
       
       const validatedItems = JSON.parse(cleanContent) as ValidatedLineItem[];
       
-      // CRITICAL: Match validated items to original items by INDEX POSITION to prevent finalSKU misalignment  
-      // The AI is instructed to return items in the same order, so index-based matching is more reliable
+      // ENFORCE 1:1 INDEX MAPPING AND QUANTITY LOCK
+      // The new prompt enforces these constraints, but we double-check here
       const correctedItems: ValidatedLineItem[] = [];
+      
+      // Validate AI response structure
+      if (validatedItems.length !== lineItems.length) {
+        console.warn(`   ⚠️ AI VIOLATION: Expected ${lineItems.length} items, got ${validatedItems.length}. Creating fallbacks.`);
+      }
       
       for (let i = 0; i < lineItems.length; i++) {
         const original = lineItems[i];
-        const validated = validatedItems[i]; // Match by position, not SKU
+        const validated = validatedItems[i]; // Strict index-based matching
         
         if (validated) {
-          // Preserve original data that should never change
-          validated.sku = original.sku || '';
-          validated.description = original.description;
-          validated.itemColor = original.itemColor || '';
-          validated.quantity = original.quantity; // CRITICAL: Force exact quantity match
-          validated.unitPrice = original.unitPrice;
-          validated.totalPrice = original.totalPrice;
-          validated.imprintColor = original.imprintColor;
+          // ENFORCE INVARIANTS: Copy original data exactly, only trust finalSKU from AI
+          const correctedItem = {
+            sku: original.sku || '',                    // LOCK: Use original
+            description: original.description,          // LOCK: Use original  
+            itemColor: original.itemColor || '',        // LOCK: Use original
+            quantity: original.quantity,                // LOCK: Use original quantity
+            unitPrice: original.unitPrice,              // LOCK: Use original
+            totalPrice: original.totalPrice,            // LOCK: Use original
+            imprintColor: original.imprintColor,        // LOCK: Use original
+            finalSKU: validated.finalSKU?.toUpperCase() || 'OE-MISC-ITEM', // Only trust finalSKU from AI
+            isValidSKU: false,                          // Will be set below
+            validationNotes: 'AI validation'
+          };
           
-          // Data integrity check: Charge codes should typically have low quantities
-          if (this.chargeCodebook.has(validated.finalSKU) && validated.quantity > 10) {
-            console.warn(`   ⚠️ DATA INTEGRITY: Charge code ${validated.finalSKU} assigned qty ${validated.quantity} - likely swapped`);
+          // Business logic validation: Detect obvious swaps and correct them
+          if (this.chargeCodebook.has(correctedItem.finalSKU) && correctedItem.quantity > 10) {
+            console.warn(`   🚨 BUSINESS RULE VIOLATION: Charge code ${correctedItem.finalSKU} assigned qty ${correctedItem.quantity} - auto-correcting`);
             
-            // Look for a product SKU that makes sense for this quantity
+            // Force use original SKU for high quantities
             if (original.sku && !this.chargeCodebook.has(original.sku.toUpperCase())) {
-              console.log(`   🔧 CORRECTED: High qty item should use original SKU ${original.sku} instead of charge code`);
-              validated.finalSKU = original.sku.toUpperCase();
+              correctedItem.finalSKU = original.sku.toUpperCase();
+              console.log(`   🔧 AUTO-CORRECTED: High qty item uses original SKU ${original.sku}`);
+            } else {
+              correctedItem.finalSKU = 'OE-MISC-ITEM';
+              console.log(`   🔧 AUTO-CORRECTED: High qty unknown item fallback`);
             }
           }
           
-          // Product SKUs with quantity 1 might be swapped charge codes
-          if (!this.chargeCodebook.has(validated.finalSKU) && validated.quantity === 1 && validated.finalSKU !== 'PROOF') {
-            // Check if this might be a setup/charge item based on description
+          // Check for setup/charge patterns in low quantity items
+          if (correctedItem.quantity === 1) {
             const desc = original.description.toLowerCase();
-            if (desc.includes('setup') || desc.includes('artwork') || desc.includes('proof')) {
-              console.log(`   🔧 LOW QTY CHECK: Item with qty=1 and setup-like description might need charge code`);
-              if (desc.includes('setup') && !desc.includes('proof')) {
-                validated.finalSKU = 'SETUP';
-                console.log(`   🔧 CORRECTED: Setup item assigned SETUP charge code`);
-              } else if (desc.includes('proof')) {
-                validated.finalSKU = 'PROOF';
-                console.log(`   🔧 CORRECTED: Proof item assigned PROOF charge code`);
-              }
+            if (desc.includes('setup') && !desc.includes('proof')) {
+              correctedItem.finalSKU = 'SETUP';
+              console.log(`   🔧 PATTERN MATCH: Setup description → SETUP charge code`);
+            } else if (desc.includes('proof')) {
+              correctedItem.finalSKU = 'PROOF';
+              console.log(`   🔧 PATTERN MATCH: Proof description → PROOF charge code`);
             }
           }
           
-          correctedItems.push(validated);
+          correctedItems.push(correctedItem);
         } else {
-          // If AI returned fewer items than input, create fallback
-          console.warn(`   ⚠️ AI returned fewer items than input, creating fallback for position ${i}`);
+          // AI returned fewer items - create strict fallback
+          console.warn(`   ⚠️ AI MISSING ITEM: Creating fallback for index ${i}`);
           correctedItems.push({
             sku: original.sku || '',
             description: original.description,
             itemColor: original.itemColor || '',
-            quantity: original.quantity,
+            quantity: original.quantity,                // PRESERVE exact quantity
             unitPrice: original.unitPrice,
             totalPrice: original.totalPrice,
             imprintColor: original.imprintColor,
             finalSKU: original.sku?.toUpperCase() || 'OE-MISC-ITEM',
             isValidSKU: false,
-            validationNotes: 'AI validation incomplete, using original SKU'
+            validationNotes: 'Fallback - AI response incomplete'
           });
         }
+      }
+      
+      // Final validation: Ensure we have exactly the right number of items
+      if (correctedItems.length !== lineItems.length) {
+        throw new Error(`Index mapping violation: Expected ${lineItems.length} items, created ${correctedItems.length}`);
       }
       
       // Replace the validated items with the correctly matched ones
