@@ -4,6 +4,12 @@
 This full-stack web application automates purchase order processing from email sources, integrating with external services to manage the workflow from ingestion to sales order creation. The system provides a dashboard for monitoring and management, aiming to streamline operations and enhance efficiency in handling purchase orders. The business vision is to provide a robust, automated solution for managing the entire purchase order lifecycle, significantly reducing manual effort and improving data accuracy. This system has high market potential for businesses dealing with large volumes of email-based purchase orders, offering a competitive advantage through operational efficiency and enhanced data management. The project ambition is to become a leading solution in automated PO processing, continuously integrating advanced AI and robust ERP capabilities.
 
 ## Recent Changes (August 21, 2025)
+- **🔥 HYBRID VALIDATION FULLY OPERATIONAL**: All validators now use embeddings with DB → Vector → AI approach
+  - **Contact Validator Enhanced**: Returns verified contact data with associated customer information
+  - **Customer Association Logic**: When contact is found, system uses their associated customer if regular customer validation fails
+  - **Vector Search Working**: Successfully finding contacts with 85%+ similarity using 49K contact embeddings
+  - **SKU Validator Enhanced**: Now uses vector search on 5K item embeddings before AI validation
+  - **All 3 Validators Hybrid**: Customer (16K embeddings), Contact (49K embeddings), SKU (5K embeddings)
 - **🔥 VALIDATION FLOW RESTRUCTURED**: Complete alignment with SYSTEM_LOGIC_FLOW.md sequence
   - **Fixed Validation Order**: Steps 7-9 (Customer, Contact, SKU validation) now run BEFORE PO creation (Step 10)
   - **Eliminated Race Conditions**: Removed duplicate PO creation attempts that caused "duplicate key" errors
@@ -13,7 +19,7 @@ This full-stack web application automates purchase order processing from email s
 - **🔥 CONTACT VALIDATION ENHANCED**: Fixed field mapping and added unverified contact preservation
   - **Fixed Field Mapping**: Contact validator now properly receives extracted contact data via `extractedData` field
   - **Unverified Contact Storage**: When validation fails, extracted contact details are preserved as "unverified"
-  - **Contact Meta Enhanced**: Added source tracking ('validated' vs 'extracted_unverified'), phone, and verification status
+  - **Contact Meta Enhanced**: Added source tracking ('validated' vs 'extracted_unverified'), phone, verification status, and customer associations
 - **🔥 CONSOLIDATION TO AUTO-PROCESSING ONLY**: Integrated complete validation pipeline into automatic email processing
   - **Steps 7-8 Integration**: Customer and Contact validation now run automatically during email processing
   - **Manual Trigger Removal**: Removed `/api/force-validation` and `/api/batch-validation` endpoints
