@@ -9,6 +9,7 @@ This full-stack web application automates purchase order processing from email s
   - **Manual Trigger Removal**: Removed `/api/force-validation` and `/api/batch-validation` endpoints
   - **Single Path Architecture**: Email → Classification → Extraction → SKU → Customer → Contact → Status → Complete PO
   - **SYSTEM_LOGIC_FLOW.md Compliance**: Full 12-step workflow now runs automatically without manual intervention
+  - **Enhanced Polling**: Automatic email polling enabled with 1-minute intervals (reduced from 2 minutes)
   - **JSON Logging Fix**: Resolved error logging serialization issues for complete audit trails
 - **Company Analysis Removal**: Completely removed all company analysis functionality, including:
   - `/api/analysis/company-crossref` and `/api/analysis/missing-companies/download` endpoints
@@ -54,7 +55,7 @@ Vector Database Preference: PGvector integration with existing PostgreSQL databa
 - **AI Document Filtering**: Pre-screens attachments to filter non-PO documents using filename-based filtering and AI document classification with negative keyword detection.
 - **Multi-Format Support**: Enhanced processing for Gemini-compatible formats (PDFs, images, Word docs, CSVs, Excel, text files).
 - **Dual Gemini Extraction Routes**: ATTACHMENT_PO for multi-format document processing; TEXT_PO for email body text processing.
-- **Processing Flow**: Gmail ingestion → Pre-processing → Detailed analysis → AI document filtering → Gemini extraction → PO extraction → NetSuite import.
+- **Processing Flow**: Gmail ingestion (1-minute polling) → Pre-processing → Detailed analysis → AI document filtering → Gemini extraction → PO extraction → NetSuite import.
 - **Data Storage**: Preprocessing, classification, and extracted data stored in Neon PostgreSQL.
 - **Email/Attachment Preservation**: Automatic .eml file and attachment storage to object storage, with file paths stored in database records for audit trails.
 - **Customer Lookup**: High-performance customer database with NetSuite integration, advanced matching, and disambiguation, including a 5-step hybrid validation system (Exact DB → Vector → Rules → LLM).
