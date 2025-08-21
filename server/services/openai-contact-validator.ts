@@ -48,12 +48,11 @@ export class OpenAIContactValidatorService {
     }
 
     try {
-      // MEMORY OPTIMIZATION: Load only top 5000 active contacts instead of all 25,000+
+      // Load ALL active contacts for better matching (we have 49K contacts)
       const allContacts = await db
         .select()
         .from(contacts)
-        .where(eq(contacts.inactive, false))
-        .limit(5000);
+        .where(eq(contacts.inactive, false));
       
       this.contactsCache.clear();
       for (const contact of allContacts) {
@@ -289,6 +288,51 @@ ${JSON.stringify(relevantContacts, null, 2)}`;
     console.log(`   └─ Sender: ${input.senderName || 'N/A'} <${input.senderEmail || 'N/A'}>`);
     
     try {
+      // Load cache first
+      await this.loadCaches();
+      
+      // STEP 1: Check for exact email match in DB first (hybrid approach)
+      const extractedEmail = input.extractedData?.purchaseOrder?.contact?.email || 
+                           input.extractedData?.purchaseOrder?.customer?.email ||
+                           input.senderEmail;
+                           
+      if (extractedEmail) {
+        const exactContact = this.contactsCache.get(extractedEmail.toLowerCase());
+        if (exactContact && !exactContact.inactive) {
+          console.log(`   ✅ EXACT DB MATCH: Found contact by email`);
+          return {
+            name: exactContact.name || '',
+            email: exactContact.email || '',
+            phone: exactContact.phone || '',
+            role: 'Unknown',
+            matched_contact_id: exactContact.id,
+            match_method: 'SENDER_EMAIL_EXACT',
+            confidence: 0.95,
+            evidence: ['Exact email match in database']
+          };
+        }
+      }
+      
+      // STEP 2: Check by sender email if different
+      if (input.senderEmail && input.senderEmail !== extractedEmail) {
+        const senderContact = this.contactsCache.get(input.senderEmail.toLowerCase());
+        if (senderContact && !senderContact.inactive) {
+          console.log(`   ✅ SENDER EMAIL MATCH: Found contact by sender email`);
+          return {
+            name: senderContact.name || '',
+            email: senderContact.email || '',
+            phone: senderContact.phone || '',
+            role: 'Unknown',
+            matched_contact_id: senderContact.id,
+            match_method: 'SENDER_EMAIL_EXACT',
+            confidence: 0.90,
+            evidence: ['Sender email match in database']
+          };
+        }
+      }
+      
+      // STEP 3: If no exact match, then use AI validation
+      console.log(`   🤖 No exact DB match, proceeding to AI validation...`);
       const validatedContact = await this.validateWithOpenAI(input);
       
       console.log(`✅ Contact validated: ${validatedContact.name} <${validatedContact.email}>`);

@@ -310,22 +310,81 @@ ${JSON.stringify(lineItems, null, 2)}`;
       }
     }
     
-    try {
-      const validatedItems = await this.validateWithOpenAI(lineItems);
-      
-      console.log(`✅ Total validated: ${validatedItems.length} line items`);
-      console.log(`   ✅ Line items validated: ${validatedItems.length} items processed`);
-      for (let i = 0; i < validatedItems.length; i++) {
-        const item = validatedItems[i];
-        const itemType = this.chargeCodebook.has(item.finalSKU?.toUpperCase() || '') ? 'Charge' : 'Product';
-        console.log(`   └─ Item ${i + 1}: ${item.finalSKU} - ${item.description} (Qty: ${item.quantity}) [${itemType}]`);
+    // Load cache for DB lookup
+    await this.loadItemsCache();
+    
+    // HYBRID APPROACH: Check DB first, then AI
+    const hybridValidated: ValidatedLineItem[] = [];
+    const needsAIValidation: LineItem[] = [];
+    
+    for (const item of lineItems) {
+      if (item.sku) {
+        // Check exact match in DB
+        const dbItem = this.itemsCache.get(item.sku.toUpperCase());
+        if (dbItem) {
+          console.log(`   ✅ DB MATCH: ${item.sku} → ${dbItem.finalSku}`);
+          hybridValidated.push({
+            sku: item.sku,
+            description: item.description || dbItem.description || '',
+            itemColor: item.itemColor || '',
+            quantity: item.quantity || 1,
+            finalSKU: dbItem.finalSku,
+            productName: dbItem.displayName,
+            isValidSKU: true,
+            validationNotes: 'Exact DB match'
+          });
+        } else if (this.chargeCodebook.has(item.sku.toUpperCase())) {
+          // Known charge code - keep as is
+          hybridValidated.push({
+            sku: item.sku,
+            description: item.description || '',
+            itemColor: item.itemColor || '',
+            quantity: item.quantity || 1,
+            finalSKU: item.finalSKU || item.sku.toUpperCase(),
+            isValidSKU: true,
+            validationNotes: this.chargeCodebook.get(item.sku.toUpperCase())
+          });
+        } else {
+          // Needs AI validation
+          needsAIValidation.push(item);
+        }
+      } else {
+        needsAIValidation.push(item);
       }
-      
-      return validatedItems;
-    } catch (error) {
-      console.error('Line items validation failed:', error);
-      throw error;
     }
+    
+    // Use AI for remaining items
+    if (needsAIValidation.length > 0) {
+      console.log(`   🤖 ${needsAIValidation.length} items need AI validation...`);
+      try {
+        const aiValidated = await this.validateWithOpenAI(needsAIValidation);
+        hybridValidated.push(...aiValidated);
+      } catch (error) {
+        console.error('OpenAI SKU validation failed:', error);
+        // Fallback for AI failure
+        for (const item of needsAIValidation) {
+          hybridValidated.push({
+            sku: item.sku || '',
+            description: item.description || '',
+            itemColor: item.itemColor || '',
+            quantity: item.quantity || 1,
+            finalSKU: item.finalSKU || item.sku || 'UNKNOWN',
+            isValidSKU: false,
+            validationNotes: 'AI validation failed'
+          });
+        }
+      }
+    }
+    
+    console.log(`✅ Total validated: ${hybridValidated.length} line items`);
+    console.log(`   ✅ Line items validated: ${hybridValidated.length} items processed`);
+    for (let i = 0; i < hybridValidated.length; i++) {
+      const item = hybridValidated[i];
+      const itemType = this.chargeCodebook.has(item.finalSKU?.toUpperCase() || '') ? 'Charge' : 'Product';
+      console.log(`   └─ Item ${i + 1}: ${item.finalSKU} - ${item.description} (Qty: ${item.quantity}) [${itemType}]`);
+    }
+    
+    return hybridValidated;
   }
 
   /**
