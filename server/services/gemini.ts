@@ -41,18 +41,43 @@ export class GeminiService {
   private ai = ai;
 
   private isArtworkFile(filename: string, contentType: string): boolean {
-    const artworkExtensions = ['.ai', '.eps', '.svg', '.png', '.jpg', '.jpeg', '.tif', '.gif'];
+    const artworkExtensions = ['.ai', '.eps', '.svg', '.png', '.jpg', '.jpeg', '.tif', '.gif', '.bmp', '.psd'];
     const artworkMimeTypes = ['application/postscript', 'image/', 'application/illustrator'];
     
+    // Enhanced artwork filename patterns - key improvement!
+    const artworkKeywords = [
+      'art', 'artwork', 'logo', 'proof', 'design', 'mockup', 'layout', 
+      'image', 'visual', 'graphic', 'creative', 'brand', 'branding',
+      'signature', 'watermark', 'template'
+    ];
+    
+    // Common artwork filename patterns
+    const artworkPatterns = [
+      /\b(art|artwork|logo|proof|design)\b/i,           // Words like ART, ARTWORK, LOGO, PROOF, DESIGN
+      /^image\d*\./i,                                   // Generic image files like image001.png
+      /_(art|artwork|logo|proof|design)(_|\.|$)/i,      // Underscore separated like PO_ART.pdf
+      /\b(mockup|layout|creative|visual|graphic)\b/i    // Design-related terms
+    ];
+    
+    const filenameLower = filename.toLowerCase();
+    
     const hasArtworkExtension = artworkExtensions.some(ext => 
-      filename.toLowerCase().endsWith(ext)
+      filenameLower.endsWith(ext)
     );
     
     const hasArtworkMimeType = artworkMimeTypes.some(mime => 
       contentType.toLowerCase().includes(mime)
     );
     
-    return hasArtworkExtension || hasArtworkMimeType;
+    const hasArtworkKeyword = artworkKeywords.some(keyword => 
+      filenameLower.includes(keyword)
+    );
+    
+    const hasArtworkPattern = artworkPatterns.some(pattern => 
+      pattern.test(filename)
+    );
+    
+    return hasArtworkExtension || hasArtworkMimeType || hasArtworkKeyword || hasArtworkPattern;
   }
 
   private checkBodySufficiency(body: string): boolean {
