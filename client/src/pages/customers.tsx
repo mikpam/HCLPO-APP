@@ -173,7 +173,11 @@ export default function CustomersPage() {
   const [debouncedSearchTerm, setDebouncedSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState<"all" | "active" | "inactive">("all");
   const [currentPage, setCurrentPage] = useState(1);
-  const itemsPerPage = 50;
+  
+  // Use larger limit when searching to show all results, smaller limit for initial load
+  const itemsPerPage = debouncedSearchTerm && debouncedSearchTerm.trim() 
+    ? 10000  // Show all search results
+    : 50;    // Initial load: 50 records
   
   // CRUD modal states
   const [createModalOpen, setCreateModalOpen] = useState(false);
