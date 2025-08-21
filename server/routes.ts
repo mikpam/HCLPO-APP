@@ -1166,6 +1166,55 @@ export async function registerRoutes(app: Express): Promise<Server> {
   
 
   
+  // Reset stuck emails endpoint
+  app.post("/api/reset-stuck-emails", async (req, res) => {
+    try {
+      console.log('🔧 RESET STUCK EMAILS: Finding emails stuck in processing status...');
+      
+      // Find all emails stuck in processing status
+      const stuckEmails = await storage.getEmailQueueItems({ status: 'processing' });
+      
+      if (stuckEmails.length === 0) {
+        return res.json({
+          message: "No stuck emails found",
+          reset: 0
+        });
+      }
+      
+      console.log(`🔧 RESET STUCK EMAILS: Found ${stuckEmails.length} emails stuck in processing status`);
+      
+      let resetCount = 0;
+      for (const email of stuckEmails) {
+        try {
+          await storage.updateEmailQueueItem(email.id, {
+            status: 'pending',
+            processedAt: null,
+            preprocessingResult: null,
+            classificationResult: null,
+            route: null,
+            confidence: null
+          });
+          resetCount++;
+          console.log(`   ✅ Reset email: ${email.subject}`);
+        } catch (error) {
+          console.log(`   ❌ Failed to reset email ${email.id}:`, error.message);
+        }
+      }
+      
+      console.log(`🔧 RESET STUCK EMAILS: Successfully reset ${resetCount} emails`);
+      
+      res.json({
+        message: `Successfully reset ${resetCount} stuck emails`,
+        reset: resetCount,
+        found: stuckEmails.length
+      });
+      
+    } catch (error) {
+      console.error('❌ Failed to reset stuck emails:', error);
+      res.status(500).json({ error: "Failed to reset stuck emails" });
+    }
+  });
+
   // Force validation endpoint for debugging unvalidated POs with retry limits
   app.post("/api/force-validation/:poId", async (req, res) => {
     try {
