@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -170,6 +170,7 @@ function CustomerModal({ customer }: { customer: CustomerApiResponse }) {
 
 export default function CustomersPage() {
   const [searchTerm, setSearchTerm] = useState("");
+  const [debouncedSearchTerm, setDebouncedSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState<"all" | "active" | "inactive">("all");
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 50;
@@ -180,15 +181,32 @@ export default function CustomersPage() {
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   const [selectedCustomer, setSelectedCustomer] = useState<CustomerType | undefined>(undefined);
 
+  // Debounce search term to avoid API calls on every keystroke
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearchTerm(searchTerm);
+      // Reset to page 1 when search changes
+      if (searchTerm !== debouncedSearchTerm) {
+        setCurrentPage(1);
+      }
+    }, 500); // 500ms delay
+
+    return () => clearTimeout(timer);
+  }, [searchTerm, debouncedSearchTerm]);
+
   const { data: customers = [], isLoading, error } = useQuery<CustomerApiResponse[]>({
-    queryKey: ["/api/customers", currentPage, searchTerm, statusFilter],
+    queryKey: ["/api/customers", currentPage, debouncedSearchTerm, statusFilter],
     queryFn: async () => {
       const params = new URLSearchParams({
         page: currentPage.toString(),
         limit: itemsPerPage.toString(),
-        search: searchTerm,
         status: statusFilter,
       });
+      
+      if (debouncedSearchTerm) {
+        params.append('search', debouncedSearchTerm);
+      }
+      
       const response = await fetch(`/api/customers?${params}`);
       if (!response.ok) {
         throw new Error("Failed to fetch customers");
