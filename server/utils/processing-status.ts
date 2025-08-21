@@ -19,8 +19,43 @@ let currentProcessingStatus: ProcessingStatus = {
   totalEmails: 0
 };
 
+// ATOMIC PROCESSING LOCK: Ensures only one email processes at a time
+export function tryAcquireProcessingLock(initialStatus: Partial<ProcessingStatus>): boolean {
+  if (currentProcessingStatus.isProcessing) {
+    return false; // Lock already held
+  }
+  
+  // Atomically acquire lock and set initial status
+  currentProcessingStatus = { 
+    ...currentProcessingStatus, 
+    isProcessing: true,
+    ...initialStatus 
+  };
+  
+  console.log(`🔒 PROCESSING LOCK ACQUIRED: ${currentProcessingStatus.currentStep || 'Processing'} ${currentProcessingStatus.currentEmail ? `(${currentProcessingStatus.currentEmail})` : ''}`);
+  return true; // Lock successfully acquired
+}
+
+// Release processing lock
+export function releaseProcessingLock(finalStatus?: Partial<ProcessingStatus>) {
+  currentProcessingStatus = {
+    ...currentProcessingStatus,
+    isProcessing: false,
+    currentStep: finalStatus?.currentStep || "idle",
+    currentEmail: finalStatus?.currentEmail || "System idle",
+    emailNumber: 0,
+    totalEmails: 0,
+    ...finalStatus
+  };
+  console.log(`🔓 PROCESSING LOCK RELEASED: ${currentProcessingStatus.currentStep}`);
+}
+
 // Helper function to update processing status for real-time monitoring
 export function updateProcessingStatus(update: Partial<ProcessingStatus>) {
+  if (!currentProcessingStatus.isProcessing && update.isProcessing) {
+    throw new Error("Cannot set isProcessing=true. Use tryAcquireProcessingLock() instead.");
+  }
+  
   currentProcessingStatus = { ...currentProcessingStatus, ...update };
   console.log(`📊 PROCESSING STATUS: ${currentProcessingStatus.currentStep || 'Idle'} ${currentProcessingStatus.currentEmail ? `(${currentProcessingStatus.currentEmail})` : ''}`);
 }
@@ -34,28 +69,4 @@ export function getCurrentProcessingStatus(): ProcessingStatus {
 export function setValidatorHealthStatus(validatorName: string, isRunning: boolean) {
   // Health checks no longer update the processing status UI
   // They run silently in the background without showing "processing" state
-}
-
-// 🔒 CRITICAL: Sequential Processing Lock - ONLY ONE EMAIL AT A TIME
-export function tryAcquireProcessingLock(): boolean {
-  if (currentProcessingStatus.isProcessing) {
-    console.log(`🚫 PROCESSING LOCK: Already processing - cannot start concurrent processing`);
-    return false; // Lock already held
-  }
-  
-  // Atomically acquire the lock
-  currentProcessingStatus.isProcessing = true;
-  console.log(`🔒 PROCESSING LOCK: Acquired successfully - sequential processing enforced`);
-  return true; // Lock acquired
-}
-
-// Release the processing lock
-export function releaseProcessingLock() {
-  currentProcessingStatus.isProcessing = false;
-  currentProcessingStatus.currentStep = "idle";
-  currentProcessingStatus.currentEmail = "";
-  currentProcessingStatus.currentPO = "";
-  currentProcessingStatus.emailNumber = 0;
-  currentProcessingStatus.totalEmails = 0;
-  console.log(`🔓 PROCESSING LOCK: Released - system ready for next email`);
 }
