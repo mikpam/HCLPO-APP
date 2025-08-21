@@ -284,44 +284,35 @@ export class GeminiService {
 
       const prompt = `Analyze the provided document to determine its primary function: Is it a purchase order (including sample orders/requests) or something else?
 
-**PRIORITY PURCHASE ORDER INDICATORS (Check First):**
+**LENIENT CLASSIFICATION - DEFAULT TO PURCHASE ORDER WHEN IN DOUBT**
 
-Look for these strong purchase order signals:
-- **PO Number:** "PO:", "Purchase Order #", "New PO:", "PO #" followed by a number/code
-- **Order Intent:** "Purchase Order", "Sample Order", "Request for Sample", "Order Confirmation"
-- **Item + Quantity + Company combo:** Specific items with quantities being ordered TO or FROM a company
-- **"Ship to" addresses:** Clear shipping instructions for order fulfillment
+**STRONG PURCHASE ORDER SIGNALS (If ANY present = likely PO):**
+- Contains "PO" or "P.O." or "PO#" or "PO:" anywhere in the document
+- Contains "Purchase Order" or "Order" or "Sample" in a business context
+- Shows any items/products with quantities or prices
+- Has shipping or delivery information
+- References a vendor/supplier and buyer/customer
+- Contains any order number or reference number
 
-**If ANY of these strong indicators are present, likely a purchase order - continue to detailed analysis.**
+**ONLY REJECT as "not a purchase order" if document is CLEARLY and EXCLUSIVELY:**
+- PURE artwork/logo file with NO text or order information
+- PURE invoice asking for payment on already delivered items
+- PURE shipping label or tracking info for already shipped packages
+- PURE marketing material or catalog with no specific order
 
-**EXCLUSION CHECK (Only if no strong PO indicators found):**
+**SCORING (BE LENIENT - Need only 2 of these):**
+1. Any reference number (PO#, order#, reference#, etc.)
+2. Company names (buyer OR seller)
+3. Any product/item mentions
+4. Any quantities or amounts
+5. Any dates (order date, ship date, need by date)
+6. Any shipping/delivery information
 
-Only classify as "not a purchase order" if the document's PRIMARY purpose is clearly one of these:
-   * **Pure Artwork/Proof:** ONLY design mockups, layouts, color palettes, approval forms with NO clear order transaction
-   * **Pure Quote/Estimate:** ONLY pricing proposals for potential future work with "Quote", "Estimate", "Valid Until" 
-   * **Pure Invoice for payment:** ONLY billing for completed/shipped goods with "Amount Due", "Payment Required"
-   * **Pure Packing List:** ONLY shipping contents without order details
-   * **Pure Receipt:** ONLY payment confirmation
-   * **Shipping Labels:** ONLY labels for packages already shipped with tracking numbers, barcodes, carrier info
-   * **Delivery Confirmations:** ONLY confirmations that items have been delivered or are in transit
-   * **Return Authorizations:** ONLY forms for returning previously purchased items
-
-**DETAILED ANALYSIS:**
-
-Count these purchase order elements (need at least 3):
-1. **Explicit Order Intent:** PO numbers, "Purchase Order", "Sample Order", "Order Confirmation" 
-2. **Supplier/Vendor Info:** Company providing goods/services
-3. **Buyer Information:** Company receiving goods/services  
-4. **Item Details:** Specific products, SKUs, descriptions being ordered
-5. **Quantities:** Number of units for the transaction
-6. **Pricing:** Costs associated with the order
-7. **Delivery/Ship-to:** Where items should be sent
-8. **Order Dates:** When items are needed
-
-**IMPORTANT NOTES:**
-- Documents can have mixed elements (invoice headers + PO content) - focus on PRIMARY FUNCTION
-- If document shows ordering/requesting specific items TO be delivered, it's likely a purchase order
-- Sample requests and rush orders ARE purchase orders if they meet the criteria
+**IMPORTANT - ERR ON THE SIDE OF INCLUSION:**
+- If document mentions ordering, requesting, or needing items = PURCHASE ORDER
+- If unclear or mixed content = PURCHASE ORDER
+- If low quality scan but seems business-related = PURCHASE ORDER
+- Only reject if 100% certain it's not an order
 
 **Response Format:**
 
