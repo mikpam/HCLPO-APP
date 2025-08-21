@@ -1027,7 +1027,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   
 
   
-  // Force validation endpoint for debugging unvalidated POs
+  // Force validation endpoint for debugging unvalidated POs with retry limits
   app.post("/api/force-validation/:poId", async (req, res) => {
     try {
       const { poId } = req.params;
@@ -1040,14 +1040,31 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ error: `PO with ID ${poId} not found` });
       }
       
-      console.log(`   └─ Found PO: ${purchaseOrder.id}`);
+      console.log(`   └─ Found PO: ${purchaseOrder.id} (Current retry count: ${purchaseOrder.retryCount || 0})`);
       
-      // Reset validation flags
+      // 🛡️ RETRY LIMIT: Check if maximum retries exceeded (3 attempts)
+      const currentRetryCount = purchaseOrder.retryCount || 0;
+      if (currentRetryCount >= 3) {
+        console.log(`   ❌ RETRY LIMIT EXCEEDED: PO has already been retried ${currentRetryCount} times (max: 3)`);
+        return res.status(400).json({ 
+          error: `Retry limit exceeded: PO has been retried ${currentRetryCount} times (maximum: 3)`,
+          poId: purchaseOrder.id,
+          poNumber: purchaseOrder.poNumber,
+          retryCount: currentRetryCount,
+          suggestion: "Manual review required - check for systematic issues with this PO"
+        });
+      }
+      
+      console.log(`   🔄 RETRY ATTEMPT ${currentRetryCount + 1}/3: Proceeding with validation...`);
+      
+      // Reset validation flags and increment retry count
       await storage.updatePurchaseOrder(purchaseOrder.id, {
         customerValidated: false,
         contactValidated: false,
         lineItemsValidated: false,
-        validationCompleted: false
+        validationCompleted: false,
+        retryCount: currentRetryCount + 1,
+        lastRetryAt: new Date()
       });
       
       const results = {
@@ -1200,11 +1217,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
         validationCompleted: true
       });
       
-      console.log(`✅ FORCE VALIDATION COMPLETED: PO ${poNumber}`);
+      console.log(`✅ FORCE VALIDATION COMPLETED: PO ${purchaseOrder.poNumber}`);
       
       res.json({
         success: true,
-        message: `Force validation completed for PO ${poNumber}`,
+        message: `Force validation completed for PO ${purchaseOrder.poNumber}`,
+        retryAttempt: currentRetryCount + 1,
+        maxRetries: 3,
         results
       });
       
