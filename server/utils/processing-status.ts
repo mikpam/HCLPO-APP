@@ -35,3 +35,27 @@ export function setValidatorHealthStatus(validatorName: string, isRunning: boole
   // Health checks no longer update the processing status UI
   // They run silently in the background without showing "processing" state
 }
+
+// 🔒 CRITICAL: Sequential Processing Lock - ONLY ONE EMAIL AT A TIME
+export function tryAcquireProcessingLock(): boolean {
+  if (currentProcessingStatus.isProcessing) {
+    console.log(`🚫 PROCESSING LOCK: Already processing - cannot start concurrent processing`);
+    return false; // Lock already held
+  }
+  
+  // Atomically acquire the lock
+  currentProcessingStatus.isProcessing = true;
+  console.log(`🔒 PROCESSING LOCK: Acquired successfully - sequential processing enforced`);
+  return true; // Lock acquired
+}
+
+// Release the processing lock
+export function releaseProcessingLock() {
+  currentProcessingStatus.isProcessing = false;
+  currentProcessingStatus.currentStep = "idle";
+  currentProcessingStatus.currentEmail = "";
+  currentProcessingStatus.currentPO = "";
+  currentProcessingStatus.emailNumber = 0;
+  currentProcessingStatus.totalEmails = 0;
+  console.log(`🔓 PROCESSING LOCK: Released - system ready for next email`);
+}

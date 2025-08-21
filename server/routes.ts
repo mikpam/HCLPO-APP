@@ -27,7 +27,7 @@ import { z } from "zod";
 // Previously used singleton validators caused state pollution between sequential emails
 
 // 🔥 REAL-TIME PROCESSING STATUS TRACKING (imported from shared module)
-import { updateProcessingStatus, getCurrentProcessingStatus, type ProcessingStatus } from "./utils/processing-status";
+import { updateProcessingStatus, getCurrentProcessingStatus, type ProcessingStatus, tryAcquireProcessingLock, releaseProcessingLock } from "./utils/processing-status";
 
 // Initialize object storage service for generating presigned URLs
 const objectStorageService = new ObjectStorageService();
@@ -60,13 +60,8 @@ async function processEmailWithValidationSystem() {
     }
 
     if (!messageToProcess) {
-      updateProcessingStatus({
-        isProcessing: false,
-        currentStep: "completed",
-        currentEmail: "No new emails to process - system idle",
-        emailNumber: 0,
-        totalEmails: 0
-      });
+      // 🔓 Release lock when no emails to process
+      releaseProcessingLock();
       
       return {
         message: "No new emails found to process",
@@ -88,13 +83,8 @@ async function processEmailWithValidationSystem() {
       console.log(`   ❌ DUPLICATE DETECTED: Gmail message ${messageToProcess.id} already processed as PO ${existingPO[0].poNumber}`);
       console.log(`   └─ Skipping duplicate processing to prevent duplicate PO creation`);
       
-      updateProcessingStatus({
-        isProcessing: false,
-        currentStep: "completed",
-        currentEmail: `Skipped duplicate: ${messageToProcess.subject}`,
-        emailNumber: 0,
-        totalEmails: 0
-      });
+      // 🔓 Release lock for duplicate case
+      releaseProcessingLock();
       
       return {
         message: "Email already processed - skipping duplicate",
@@ -138,13 +128,8 @@ async function processEmailWithValidationSystem() {
 
   } catch (error) {
     console.error('Validation system processing failed:', error);
-    updateProcessingStatus({
-      isProcessing: false,
-      currentStep: "error",
-      currentEmail: `Error: ${error instanceof Error ? error.message : 'Unknown error'}`,
-      emailNumber: 0,
-      totalEmails: 0
-    });
+    // 🔓 Release lock on error to prevent system from getting stuck
+    releaseProcessingLock();
     throw error;
   }
 }
@@ -2031,16 +2016,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
     console.log('\n🔄 UNIFIED PROCESSING: Manual processing triggered via API endpoint');
     
     try {
-      // Check if already processing
-      if (getCurrentProcessingStatus().isProcessing) {
+      // 🔒 CRITICAL: Atomic lock acquisition - ENFORCES SEQUENTIAL PROCESSING
+      if (!tryAcquireProcessingLock()) {
         return res.json({
-          message: "Already processing an email",
+          message: "Already processing an email - sequential processing enforced",
           isProcessing: true,
-          currentStep: getCurrentProcessingStatus().currentStep
+          currentStep: getCurrentProcessingStatus().currentStep,
+          rejected: true
         });
       }
 
-      // Start the processing workflow
+      // Start the processing workflow (lock already acquired)
       updateProcessingStatus({
         isProcessing: true,
         currentStep: "starting_processing",
@@ -2058,17 +2044,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         error: 'unified_processing_error'
       });
     } finally {
-      // Keep processing status visible for 10 seconds so frontend can see it
-      setTimeout(() => {
-        updateProcessingStatus({
-          isProcessing: false,
-          currentStep: "idle",
-          currentEmail: "",
-          currentPO: "",
-          emailNumber: 0,
-          totalEmails: 0
-        });
-      }, 10000); // 10 second delay
+      // 🔓 CRITICAL: Always release the processing lock
+      releaseProcessingLock();
     }
   });
 
