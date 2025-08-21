@@ -20,9 +20,14 @@ interface ValidatedContact {
   phone: string;
   role: 'Purchasing' | 'Accounts Payable' | 'Sales' | 'Owner' | 'CSR' | 'Unknown';
   matched_contact_id: string;
-  match_method: 'EXTRACTED_JSON' | 'SENDER_EMAIL_EXACT' | 'SENDER_DOMAIN' | 'THREAD_PARTICIPANT' | 'CUSTOMER_DEFAULT' | 'FUZZY_NAME' | 'SIG_PARSE' | 'UNKNOWN';
+  match_method: 'EXTRACTED_JSON' | 'SENDER_EMAIL_EXACT' | 'SENDER_DOMAIN' | 'THREAD_PARTICIPANT' | 'CUSTOMER_DEFAULT' | 'FUZZY_NAME' | 'SIG_PARSE' | 'UNKNOWN' | 'VECTOR_SEARCH';
   confidence: number;
   evidence: string[];
+  verified?: boolean;
+  associated_customer?: {
+    customer_number: string;
+    company_name: string;
+  };
 }
 
 export class OpenAIContactValidatorService {
@@ -295,16 +300,32 @@ ${JSON.stringify(relevantContacts, null, 2)}`;
       if (vectorMatches.rows.length > 0) {
         const match = vectorMatches.rows[0];
         console.log(`   ✅ VECTOR MATCH: Found contact with similarity ${match.cosine_sim}`);
-        return {
+        
+        // Look up the full contact data from cache
+        const fullContact = this.contactsCache.get((match.email as string || '').toLowerCase());
+        
+        const response: ValidatedContact = {
           name: match.name as string || '',
           email: match.email as string || '',
           phone: match.phone as string || '',
           role: 'Unknown',
           matched_contact_id: match.id as string,
-          match_method: 'VECTOR_SEARCH' as any,
+          match_method: 'VECTOR_SEARCH',
           confidence: parseFloat(match.cosine_sim as string),
-          evidence: [`Vector similarity: ${(parseFloat(match.cosine_sim as string) * 100).toFixed(1)}%`]
+          evidence: [`Vector similarity: ${(parseFloat(match.cosine_sim as string) * 100).toFixed(1)}%`],
+          verified: true
         };
+        
+        // Add associated customer info if available
+        if (fullContact && (fullContact.customer_number || fullContact.company_name)) {
+          response.associated_customer = {
+            customer_number: fullContact.customer_number || '',
+            company_name: fullContact.company_name || fullContact.company || ''
+          };
+          console.log(`   └─ Associated Customer: ${response.associated_customer.company_name} (${response.associated_customer.customer_number})`);
+        }
+        
+        return response;
       }
       
       return null;
@@ -361,16 +382,30 @@ ${JSON.stringify(relevantContacts, null, 2)}`;
         const exactContact = this.contactsCache.get(extractedEmail.toLowerCase());
         if (exactContact && !exactContact.inactive) {
           console.log(`   ✅ EXACT DB MATCH: Found contact by email`);
-          return {
+          
+          // Build response with verified data
+          const response: ValidatedContact = {
             name: exactContact.name || '',
             email: exactContact.email || '',
-            phone: exactContact.phone || '',
+            phone: exactContact.phone || exactContact.office_phone || '',
             role: 'Unknown',
             matched_contact_id: exactContact.id,
             match_method: 'SENDER_EMAIL_EXACT',
             confidence: 0.95,
-            evidence: ['Exact email match in database']
+            evidence: ['Exact email match in database'],
+            verified: true
           };
+          
+          // Add associated customer info if available
+          if (exactContact.customer_number || exactContact.company_name) {
+            response.associated_customer = {
+              customer_number: exactContact.customer_number || '',
+              company_name: exactContact.company_name || exactContact.company || ''
+            };
+            console.log(`   └─ Associated Customer: ${response.associated_customer.company_name} (${response.associated_customer.customer_number})`);
+          }
+          
+          return response;
         }
       }
       
@@ -379,16 +414,29 @@ ${JSON.stringify(relevantContacts, null, 2)}`;
         const senderContact = this.contactsCache.get(input.senderEmail.toLowerCase());
         if (senderContact && !senderContact.inactive) {
           console.log(`   ✅ SENDER EMAIL MATCH: Found contact by sender email`);
-          return {
+          
+          const response: ValidatedContact = {
             name: senderContact.name || '',
             email: senderContact.email || '',
-            phone: senderContact.phone || '',
+            phone: senderContact.phone || senderContact.office_phone || '',
             role: 'Unknown',
             matched_contact_id: senderContact.id,
             match_method: 'SENDER_EMAIL_EXACT',
             confidence: 0.90,
-            evidence: ['Sender email match in database']
+            evidence: ['Sender email match in database'],
+            verified: true
           };
+          
+          // Add associated customer info if available
+          if (senderContact.customer_number || senderContact.company_name) {
+            response.associated_customer = {
+              customer_number: senderContact.customer_number || '',
+              company_name: senderContact.company_name || senderContact.company || ''
+            };
+            console.log(`   └─ Associated Customer: ${response.associated_customer.company_name} (${response.associated_customer.customer_number})`);
+          }
+          
+          return response;
         }
       }
       

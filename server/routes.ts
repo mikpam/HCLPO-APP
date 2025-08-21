@@ -763,11 +763,19 @@ async function processEmailThroughValidationSystem(messageToProcess: any, update
       console.log(`   └─ Role: ${validatedContact.role}`);
       console.log(`   └─ Evidence: ${validatedContact.evidence?.join(', ') || 'None provided'}`);
       
+      // If contact has associated customer info and current customer is not found, use it
+      if (validatedContact.associated_customer && validatedContact.associated_customer.customer_number) {
+        console.log(`   🏢 Contact has associated customer: ${validatedContact.associated_customer.company_name} (${validatedContact.associated_customer.customer_number})`);
+      }
+      
       // STEP 2 COMPLETION: Update database immediately with contact validation results
       try {
         if (purchaseOrder) {
           await storage.updatePurchaseOrder(purchaseOrder.id, {
-            contactMeta: contactMeta,
+            contactMeta: {
+              ...contactMeta,
+              verified: validatedContact.verified || false
+            },
             contact: validatedContact.name || validatedContact.email,
             contactValidated: true
           });
@@ -951,10 +959,54 @@ async function processEmailThroughValidationSystem(messageToProcess: any, update
           console.log(`   ✅ Customer validation completed: ${customerValidationResult.customerName} (${customerValidationResult.customerNumber})`);
         } else {
           console.log(`   ❌ Customer validation failed: ${customerValidationResult.reasons?.join(', ') || 'Unknown reason'}`);
+          
+          // Check if contact validation provided associated customer info
+          if (contactMeta?.associated_customer?.customer_number) {
+            console.log(`   🔄 Using customer info from contact association: ${contactMeta.associated_customer.company_name} (${contactMeta.associated_customer.customer_number})`);
+            customerValidated = true;
+            customerMeta = {
+              method: 'contact_association',
+              status: "found",
+              resolved: true,
+              confidence: 0.85,
+              customer_name: contactMeta.associated_customer.company_name,
+              customer_number: contactMeta.associated_customer.customer_number
+            };
+            customerValidationResult = {
+              matched: true,
+              method: 'contact_association',
+              confidence: 0.85,
+              customerName: contactMeta.associated_customer.company_name,
+              customerNumber: contactMeta.associated_customer.customer_number,
+              reasons: ['Customer found via contact association']
+            };
+          }
         }
         
       } catch (error) {
         console.error(`   ❌ Customer validation error:`, error);
+        
+        // Check if contact validation provided associated customer info even on error
+        if (contactMeta?.associated_customer?.customer_number) {
+          console.log(`   🔄 Using customer info from contact association (fallback): ${contactMeta.associated_customer.company_name} (${contactMeta.associated_customer.customer_number})`);
+          customerValidated = true;
+          customerMeta = {
+            method: 'contact_association',
+            status: "found",
+            resolved: true,
+            confidence: 0.85,
+            customer_name: contactMeta.associated_customer.company_name,
+            customer_number: contactMeta.associated_customer.customer_number
+          };
+          customerValidationResult = {
+            matched: true,
+            method: 'contact_association',
+            confidence: 0.85,
+            customerName: contactMeta.associated_customer.company_name,
+            customerNumber: contactMeta.associated_customer.customer_number,
+            reasons: ['Customer found via contact association']
+          };
+        }
       }
     }
 
@@ -1016,6 +1068,28 @@ async function processEmailThroughValidationSystem(messageToProcess: any, update
         
         if (contactValidated) {
           console.log(`   ✅ Contact validation completed: ${contactValidationResult.name} <${contactValidationResult.email}>`);
+          
+          // If contact has associated customer info and customer wasn't found earlier, use it
+          if (contactValidationResult.associated_customer?.customer_number && !customerValidated) {
+            console.log(`   🔄 Updating customer from contact association: ${contactValidationResult.associated_customer.company_name} (${contactValidationResult.associated_customer.customer_number})`);
+            customerValidated = true;
+            customerMeta = {
+              method: 'contact_association',
+              status: "found",
+              resolved: true,
+              confidence: 0.85,
+              customer_name: contactValidationResult.associated_customer.company_name,
+              customer_number: contactValidationResult.associated_customer.customer_number
+            };
+            customerValidationResult = {
+              matched: true,
+              method: 'contact_association',
+              confidence: 0.85,
+              customerName: contactValidationResult.associated_customer.company_name,
+              customerNumber: contactValidationResult.associated_customer.customer_number,
+              reasons: ['Customer found via contact association']
+            };
+          }
         } else {
           console.log(`   ❌ Contact validation failed: ${contactValidationResult.evidence?.join(', ') || 'No valid contact found'}`);
         }
