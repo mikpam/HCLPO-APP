@@ -35,6 +35,7 @@ Vector Database Preference: PGvector integration with existing PostgreSQL databa
 
 ### Email Processing Pipeline
 - **Architecture**: Two-step sequential processing, unified into a single `/api/processing/process-auto` endpoint. Enforces sequential "one email at a time" processing.
+- **Sequential Processing Lock**: System uses `isProcessing` flag to prevent concurrent operations. All processing endpoints (email processing, batch validation) check and set this lock to maintain sequential architecture.
 - **Classification**: OpenAI GPT-4o for intent classification and advanced 5-route classification (TEXT_PO, TEXT_SAMPLE, ATTACHMENT_PO, ATTACHMENT_SAMPLE, REVIEW), with priority logic for attachments.
 - **AI Document Filtering**: Pre-screens attachments to filter non-PO documents using filename-based filtering and AI document classification with negative keyword detection.
 - **Multi-Format Support**: Enhanced processing for Gemini-compatible formats (PDFs, images, Word docs, CSVs, Excel, text files).

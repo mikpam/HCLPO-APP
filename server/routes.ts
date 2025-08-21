@@ -1275,6 +1275,24 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       console.log(`🔧 BATCH VALIDATION: Starting validation for all unvalidated POs`);
       
+      // Check if already processing - RESPECT SEQUENTIAL ARCHITECTURE
+      if (getCurrentProcessingStatus().isProcessing) {
+        return res.json({
+          message: "Cannot start batch validation - system is already processing emails",
+          isProcessing: true,
+          currentStep: getCurrentProcessingStatus().currentStep
+        });
+      }
+
+      // Set processing lock to prevent concurrent email processing
+      updateProcessingStatus({
+        isProcessing: true,
+        currentStep: "batch_validation",
+        currentEmail: "Running batch validation of unvalidated POs...",
+        emailNumber: 0,
+        totalEmails: 0
+      });
+      
       // Get all unvalidated POs
       const unvalidatedPOs = await db
         .select({ poNumber: purchaseOrdersTable.poNumber, id: purchaseOrdersTable.id })
@@ -1358,6 +1376,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.status(500).json({ 
         error: `Batch validation failed: ${(error as Error).message}`,
         success: false 
+      });
+    } finally {
+      // Always release the processing lock to restore sequential processing
+      updateProcessingStatus({
+        isProcessing: false,
+        currentStep: "idle",
+        currentEmail: "",
+        currentPO: "",
+        emailNumber: 0,
+        totalEmails: 0
       });
     }
   });
