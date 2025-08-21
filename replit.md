@@ -4,6 +4,14 @@
 This full-stack web application automates purchase order processing from email sources, integrating with external services to manage the workflow from ingestion to sales order creation. The system provides a dashboard for monitoring and management, aiming to streamline operations and enhance efficiency in handling purchase orders. The business vision is to provide a robust, automated solution for managing the entire purchase order lifecycle, significantly reducing manual effort and improving data accuracy. This system has high market potential for businesses dealing with large volumes of email-based purchase orders, offering a competitive advantage through operational efficiency and enhanced data management. The project ambition is to become a leading solution in automated PO processing, continuously integrating advanced AI and robust ERP capabilities.
 
 ## Recent Changes (August 21, 2025)
+- **🔥 STUCK PROCESS PREVENTION & RECOVERY**: Comprehensive system to prevent and recover stuck POs
+  - **Extraction Status Fix**: POs now transition from "extracting" → "pending_validation" immediately after Gemini extraction completes
+  - **Timeout Detection**: Automatic detection of stuck POs in transitional states (extracting, pending_validation, validating, processing, importing)
+  - **Auto-Recovery**: Runs every 5 minutes during polling, recovers stuck POs or moves to dead letter after 3 failures
+  - **Dead Letter Queue**: Failed POs move to "manual_review" status with failure tracking for manual intervention
+  - **Processing Timestamps**: Added `processingStartedAt` and `statusChangedAt` fields for accurate timeout tracking
+  - **Monitoring Endpoints**: `/api/processing/check-stuck-processes`, `/api/processing/dead-letter-stats`, `/api/processing/daily-report`
+  - **Root Cause Fixed**: Eliminated race condition where extraction completed but status never updated
 - **🔥 HYBRID VALIDATION FULLY OPERATIONAL**: All validators now use embeddings with DB → Vector → AI approach
   - **Contact Validator Enhanced**: Returns verified contact data with associated customer information
   - **Customer Association Logic**: When contact is found, system uses their associated customer if regular customer validation fails

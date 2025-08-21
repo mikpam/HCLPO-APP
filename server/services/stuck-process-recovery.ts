@@ -15,13 +15,14 @@ import { and, eq, sql, inArray, lt, or, isNull } from 'drizzle-orm';
 // Configuration
 const TIMEOUT_MINUTES = {
   extracting: 10,     // 10 minutes for extraction
+  pending_validation: 5, // 5 minutes to start validation
   validating: 5,      // 5 minutes for validation  
   processing: 15,     // 15 minutes for general processing
   importing: 10       // 10 minutes for NetSuite import
 };
 
 const MAX_FAILURES = 3; // Move to dead letter after 3 failures
-const TRANSITIONAL_STATES = ['extracting', 'validating', 'processing', 'importing'];
+const TRANSITIONAL_STATES = ['extracting', 'pending_validation', 'validating', 'processing', 'importing'];
 
 interface StuckPO {
   id: string;

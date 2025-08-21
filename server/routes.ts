@@ -458,7 +458,7 @@ async function processEmailThroughValidationSystem(messageToProcess: any, update
                     subject: messageToProcess.subject,
                     route: processingResult.classification.recommended_route,
                     confidence: processingResult.classification.analysis_flags?.confidence_score || 0,
-                    status: 'extracting', // Temporary status during processing
+                    status: 'pending_validation', // Updated status - extraction complete, pending validation
                     originalJson: processingResult.classification,
                     extractedData: extractionResult, // Store the complete Gemini extraction
                     lineItems: extractionResult?.lineItems || [],
@@ -466,11 +466,14 @@ async function processEmailThroughValidationSystem(messageToProcess: any, update
                     customerMeta: extractionResult?.purchaseOrder?.customer || null,
                     emlFilePath: emlFilePath,
                     extractionSourceFile: extractionSourceFile,
-                    attachmentPaths: attachmentPaths.length > 0 ? attachmentPaths.map(att => att.storagePath) : []
+                    attachmentPaths: attachmentPaths.length > 0 ? attachmentPaths.map(att => att.storagePath) : [],
+                    processingStartedAt: new Date(), // Track when processing started
+                    statusChangedAt: new Date() // Track when status changed
                   });
                   
                   console.log(`   ✅ IMMEDIATE STORAGE COMPLETE: PO ${finalPONumber} created with extraction data`);
                   console.log(`   └─ Database ID: ${purchaseOrder.id}`);
+                  console.log(`   └─ Status: pending_validation (extraction complete)`);
                   
                 } catch (storageError) {
                   console.error(`   ❌ IMMEDIATE STORAGE FAILED:`, storageError);
@@ -620,7 +623,7 @@ async function processEmailThroughValidationSystem(messageToProcess: any, update
             subject: messageToProcess.subject,
             route: processingResult.classification.recommended_route,
             confidence: processingResult.classification.analysis_flags?.confidence_score || 0,
-            status: 'extracting', // Temporary status during processing
+            status: 'pending_validation', // Updated status - extraction complete, pending validation
             originalJson: processingResult.classification,
             extractedData: extractionResult, // Store the complete Gemini extraction
             lineItems: extractionResult?.lineItems || [],
@@ -628,11 +631,14 @@ async function processEmailThroughValidationSystem(messageToProcess: any, update
             customerMeta: extractionResult?.purchaseOrder?.customer || null,
             emlFilePath: emlFilePath,
             extractionSourceFile: extractionSourceFile,
-            attachmentPaths: attachmentPaths.length > 0 ? attachmentPaths.map(att => att.storagePath) : []
+            attachmentPaths: attachmentPaths.length > 0 ? attachmentPaths.map(att => att.storagePath) : [],
+            processingStartedAt: new Date(), // Track when processing started
+            statusChangedAt: new Date() // Track when status changed
           });
           
           console.log(`   ✅ IMMEDIATE STORAGE COMPLETE: PO ${finalPONumber} created with extraction data`);
           console.log(`   └─ Database ID: ${purchaseOrder.id}`);
+          console.log(`   └─ Status: pending_validation (extraction complete)`);
           
         } catch (storageError) {
           console.error(`   ❌ IMMEDIATE STORAGE FAILED:`, storageError);
