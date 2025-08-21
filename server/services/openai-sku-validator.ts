@@ -73,15 +73,21 @@ export class OpenAISKUValidatorService {
   private analyzeChargeDescription(description: string): string | null {
     const descLower = description.toLowerCase();
     
-    // Check for specific charge patterns
+    // Check for specific charge patterns that should be converted to known charge codes
     if (descLower.includes('less') && descLower.includes('minimum')) return 'LTM';
     if (descLower.includes('ltm fee')) return 'LTM';
     if (descLower.includes('setup') || descLower.includes('set up')) return 'SETUP';
     if (descLower.includes('run charge')) return 'RUN-CHARGE';
     if (descLower.includes('rush') && (descLower.includes('48') || descLower.includes('hour'))) return '48-RUSH';
-    if (descLower.includes('freight') || descLower.includes('shipping')) return 'FREIGHT';
+    if (descLower.includes('freight')) return 'FREIGHT';
     if (descLower.includes('proof')) return 'PROOF';
-    if (descLower.includes('pms match')) return 'OE-MISC-CHARGE';
+    
+    // For shipping, PMS match, and other unidentifiable charges, keep OE-MISC-CHARGE
+    // This is a valid finalSKU in the items database for unsolvable charge items
+    if (descLower.includes('shipping') || descLower.includes('s & h') || 
+        descLower.includes('pms match') || descLower.includes('handling')) {
+      return 'OE-MISC-CHARGE';
+    }
     
     return null;
   }
@@ -418,7 +424,8 @@ ${JSON.stringify(lineItems, null, 2)}`;
       if (item.sku === 'OE-MISC-CHARGE' || item.finalSKU === 'OE-MISC-CHARGE') {
         const chargeType = this.analyzeChargeDescription(item.description);
         if (chargeType) {
-          console.log(`   💡 OE-MISC-CHARGE resolved: "${item.description}" → ${chargeType}`);
+          // chargeType might be OE-MISC-CHARGE itself for shipping/unidentifiable charges
+          console.log(`   💡 OE-MISC-CHARGE analyzed: "${item.description}" → ${chargeType}`);
           hybridValidated.push({
             sku: item.sku || '',
             description: item.description || '',
@@ -428,9 +435,28 @@ ${JSON.stringify(lineItems, null, 2)}`;
             totalPrice: item.totalPrice,
             imprintColor: item.imprintColor,
             finalSKU: chargeType,
-            productName: this.chargeCodebook.get(chargeType),
+            productName: chargeType === 'OE-MISC-CHARGE' ? 'Unidentified Charge' : this.chargeCodebook.get(chargeType),
             isValidSKU: true,
-            validationNotes: `Resolved from OE-MISC-CHARGE: ${item.description}`
+            validationNotes: chargeType === 'OE-MISC-CHARGE' ? 
+              'Valid placeholder for unidentifiable charge' : 
+              `Resolved from OE-MISC-CHARGE: ${item.description}`
+          });
+          continue;
+        } else {
+          // No specific charge pattern found, keep as OE-MISC-CHARGE (valid finalSKU)
+          console.log(`   💡 OE-MISC-CHARGE kept as placeholder for: "${item.description}"`);
+          hybridValidated.push({
+            sku: item.sku || '',
+            description: item.description || '',
+            itemColor: item.itemColor || '',
+            quantity: item.quantity || 1,
+            unitPrice: item.unitPrice,
+            totalPrice: item.totalPrice,
+            imprintColor: item.imprintColor,
+            finalSKU: 'OE-MISC-CHARGE',
+            productName: 'Unidentified Charge',
+            isValidSKU: true,
+            validationNotes: 'Valid placeholder for unidentifiable charge'
           });
           continue;
         }

@@ -61,20 +61,25 @@ async function fixFlippedQuantities(poId: string) {
         console.log(`  ✅ Fixed SETUP: finalSKU "${item.finalSKU}" → "${updatedItem.finalSKU}"`);
       }
       
-      // OE-MISC-CHARGE items - analyze description
-      if (item.sku === 'OE-MISC-CHARGE') {
+      // OE-MISC-CHARGE items - only convert if it's a recognizable charge type
+      // Otherwise keep OE-MISC-CHARGE as it's a valid finalSKU for unsolvable charges
+      if (item.sku === 'OE-MISC-CHARGE' && item.finalSKU !== 'OE-MISC-CHARGE') {
         const desc = (item.description || '').toLowerCase();
-        if (desc.includes('setup')) {
+        // Only convert to specific charge codes if clearly identifiable
+        if (desc.includes('setup') || desc.includes('set up')) {
           updatedItem.finalSKU = 'SETUP';
-          console.log(`  ✅ Fixed OE-MISC-CHARGE: "${item.description}" → SETUP`);
+          console.log(`  ✅ Converted OE-MISC-CHARGE: "${item.description}" → SETUP`);
         } else if (desc.includes('run charge')) {
           updatedItem.finalSKU = 'RUN-CHARGE';
-          console.log(`  ✅ Fixed OE-MISC-CHARGE: "${item.description}" → RUN-CHARGE`);
-        } else if (desc.includes('s & h') || desc.includes('shipping')) {
-          // Keep as OE-MISC-CHARGE for shipping charges
+          console.log(`  ✅ Converted OE-MISC-CHARGE: "${item.description}" → RUN-CHARGE`);
+        } else if (desc.includes('ltm') || (desc.includes('less') && desc.includes('minimum'))) {
+          updatedItem.finalSKU = 'LTM';
+          console.log(`  ✅ Converted OE-MISC-CHARGE: "${item.description}" → LTM`);
+        } else {
+          // Keep as OE-MISC-CHARGE for shipping/unidentifiable charges
           updatedItem.finalSKU = 'OE-MISC-CHARGE';
+          console.log(`  ℹ️ Keeping OE-MISC-CHARGE as placeholder for: "${item.description}"`);
         }
-        // Otherwise keep OE-MISC-CHARGE
       }
       
       return updatedItem;
