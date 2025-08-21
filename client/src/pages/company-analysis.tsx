@@ -57,7 +57,7 @@ interface EnhancedAnalysisData {
 
 export default function CompanyAnalysisPage() {
   const [showAllMissing, setShowAllMissing] = useState(false);
-  const [showEnhancedResults, setShowEnhancedResults] = useState(false);
+  const [showEnhancedResults, setShowEnhancedResults] = useState(true);
   const queryClient = useQueryClient();
 
   const { data: analysisData, isLoading, refetch } = useQuery<CompanyCrossRefData>({
@@ -80,12 +80,21 @@ export default function CompanyAnalysisPage() {
     },
   });
 
-  const { data: enhancedData } = useQuery<EnhancedAnalysisData>({
+  // Auto-load enhanced analysis on page load
+  const { data: enhancedData, isLoading: isEnhancedLoading } = useQuery<EnhancedAnalysisData>({
     queryKey: ['enhanced-analysis'],
-    enabled: false,
+    queryFn: async () => {
+      const response = await fetch('/api/analysis/enhanced-analysis', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' }
+      });
+      if (!response.ok) throw new Error('Enhanced analysis failed');
+      return response.json();
+    },
+    refetchOnWindowFocus: false,
   });
 
-  if (isLoading) {
+  if (isLoading || isEnhancedLoading) {
     return (
       <div className="min-h-screen bg-gray-50 p-6">
         <div className="max-w-7xl mx-auto">
@@ -95,7 +104,9 @@ export default function CompanyAnalysisPage() {
           </div>
           <div className="text-center">
             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
-            <p className="mt-2 text-gray-600">Analyzing company databases...</p>
+            <p className="mt-2 text-gray-600">
+              {isEnhancedLoading ? 'Running AI-Enhanced Analysis...' : 'Analyzing company databases...'}
+            </p>
           </div>
         </div>
       </div>
@@ -207,6 +218,93 @@ export default function CompanyAnalysisPage() {
             </CardContent>
           </Card>
         </div>
+
+        {/* Enhanced Analysis Results */}
+        {showEnhancedResults && enhancedData && (
+          <Card className="mb-8 border-purple-200 bg-gradient-to-r from-purple-50 to-blue-50">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-purple-800">
+                <Sparkles className="h-5 w-5" />
+                AI-Enhanced Analysis Results
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
+                <div className="text-center">
+                  <div className="text-3xl font-bold text-green-600">{enhancedData.summary.genuinelyMissing}</div>
+                  <p className="text-sm text-gray-600">Genuinely Missing</p>
+                  <p className="text-xs text-gray-500">Real gaps in your database</p>
+                </div>
+                <div className="text-center">
+                  <div className="text-3xl font-bold text-blue-600">{enhancedData.summary.falsePositives}</div>
+                  <p className="text-sm text-gray-600">False Positives</p>
+                  <p className="text-xs text-gray-500">Companies that exist under different names</p>
+                </div>
+                <div className="text-center">
+                  <div className="text-3xl font-bold text-purple-600">{enhancedData.summary.accuracyImprovement}</div>
+                  <p className="text-sm text-gray-600">Accuracy Improvement</p>
+                  <p className="text-xs text-gray-500">Reduction in false missing companies</p>
+                </div>
+              </div>
+              
+              {enhancedData.summary.genuinelyMissing > 0 && (
+                <div className="mt-4 p-4 bg-green-50 border border-green-200 rounded-lg">
+                  <h4 className="font-medium text-green-800 mb-2">Genuinely Missing Companies</h4>
+                  <div className="space-y-1">
+                    {enhancedData.genuinelyMissingCompanies.slice(0, 5).map((company, index) => (
+                      <div key={index} className="text-sm text-green-700">• {company}</div>
+                    ))}
+                    {enhancedData.genuinelyMissingCompanies.length > 5 && (
+                      <div className="text-sm text-green-600 font-medium">
+                        ... and {enhancedData.genuinelyMissingCompanies.length - 5} more
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+              
+              {enhancedData.summary.falsePositives > 0 && (
+                <div className="mt-4 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                  <h4 className="font-medium text-blue-800 mb-2">False Positives Detected</h4>
+                  <p className="text-sm text-blue-700 mb-2">
+                    These companies exist in your database under different names:
+                  </p>
+                  <div className="space-y-1">
+                    {enhancedData.falsePositives.slice(0, 3).map((company, index) => (
+                      <div key={index} className="text-sm text-blue-700">• {company}</div>
+                    ))}
+                    {enhancedData.falsePositives.length > 3 && (
+                      <div className="text-sm text-blue-600 font-medium">
+                        ... and {enhancedData.falsePositives.length - 3} more variations detected
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Loading state for Enhanced Analysis */}
+        {isEnhancedLoading && (
+          <Card className="mb-8 border-purple-200 bg-gradient-to-r from-purple-50 to-blue-50">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-purple-800">
+                <Sparkles className="h-5 w-5" />
+                AI-Enhanced Analysis Running...
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="flex items-center justify-center py-8">
+                <div className="text-center">
+                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-purple-600 mx-auto mb-4"></div>
+                  <p className="text-purple-700 font-medium">Processing your companies with OpenAI...</p>
+                  <p className="text-sm text-purple-600 mt-1">Analyzing name variations and detecting false positives</p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        )}
 
         {/* Missing Companies Table */}
         <Card>
