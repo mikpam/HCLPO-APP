@@ -207,10 +207,13 @@ Return **only** a JSON array. Each element is an object with exactly these keys,
 * sku        (string; original as seen, or empty if none)
 * description (string)
 * itemColor   (string; as seen or empty)
-* quantity    (integer ≥ 1; coerce if needed, defaults below)
+* quantity    (integer; MUST MATCH INPUT EXACTLY - DO NOT CHANGE)
 * finalSKU    (string; uppercase; strictly formatted)
 
 No markdown, no comments, no trailing text.
+
+### CRITICAL RULE: PRESERVE QUANTITIES
+**NEVER change the quantity values from the input.** Each line item's quantity must remain exactly as provided in the input data. Only validate and correct the finalSKU, never the quantities.
 
 ---
 
@@ -240,6 +243,7 @@ Examples:
 - "Setup Charge" (qty: 4) → "SETUP" (qty: 4) ✅
 
 **CRITICAL**: Always preserve the original quantity - do not force charges to quantity=1!
+**CRITICAL**: Return items in the SAME ORDER as provided in the input array!
 
 ---
 
@@ -250,9 +254,7 @@ Examples:
    * sku: keep raw alphanumeric/dash token if present.
    * description: free text remainder.
    * itemColor: explicit color string if present, else "".
-   * quantity: first integer ≥1. If missing or ≤0:
-     - if a charge → set 1.
-     - else default 1.
+   * quantity: PRESERVE EXACTLY from input - DO NOT MODIFY. If missing in input only, default to 1.
 
 ---
 
