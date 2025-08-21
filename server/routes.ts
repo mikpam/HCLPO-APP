@@ -27,19 +27,18 @@ import { z } from "zod";
 // Previously used singleton validators caused state pollution between sequential emails
 
 // 🔥 REAL-TIME PROCESSING STATUS TRACKING (imported from shared module)
-import { updateProcessingStatus, getCurrentProcessingStatus, type ProcessingStatus } from "./utils/processing-status";
+import { updateProcessingStatus, getCurrentProcessingStatus, type ProcessingStatus, tryAcquireProcessingLock, releaseProcessingLock } from "./utils/processing-status";
 
 // Initialize object storage service for generating presigned URLs
 const objectStorageService = new ObjectStorageService();
 
 // Complete validation system workflow - processes emails with real-time status updates
 async function processEmailWithValidationSystem() {
-  console.log(`\n🔄 UNIFIED PROCESSING: Starting automatic email processing through validation system...`);
+  console.log(`\n🔄 AUTOMATED PROCESSING: Starting automatic email processing through validation system...`);
   
   try {
-    // Step 1: Fetch unprocessed emails
+    // Step 1: Fetch unprocessed emails (lock is already acquired by caller)
     updateProcessingStatus({
-      isProcessing: true,
       currentStep: "fetching_emails",
       currentEmail: "Checking for new emails...",
       emailNumber: 0,
@@ -60,12 +59,9 @@ async function processEmailWithValidationSystem() {
     }
 
     if (!messageToProcess) {
-      updateProcessingStatus({
-        isProcessing: false,
+      releaseProcessingLock({
         currentStep: "completed",
-        currentEmail: "No new emails to process - system idle",
-        emailNumber: 0,
-        totalEmails: 0
+        currentEmail: "No new emails to process - system idle"
       });
       
       return {
@@ -75,25 +71,25 @@ async function processEmailWithValidationSystem() {
       };
     }
 
-    // 🛡️ DEDUPLICATION CHECK: Prevent processing the same Gmail message multiple times
+    // 🛡️ ATOMIC DEDUPLICATION CHECK: Prevent processing the same Gmail message multiple times
     console.log(`\n🛡️ DEDUPLICATION CHECK: Verifying Gmail message ${messageToProcess.id} hasn't been processed...`);
     
+    // Check both purchase orders AND email queue to prevent race conditions
     const existingPO = await db
       .select({ id: purchaseOrdersTable.id, poNumber: purchaseOrdersTable.poNumber })
       .from(purchaseOrdersTable)
       .where(eq(purchaseOrdersTable.emailId, messageToProcess.id))
       .limit(1);
     
+    const existingQueue = await storage.getEmailQueueByGmailId(messageToProcess.id);
+    
     if (existingPO.length > 0) {
       console.log(`   ❌ DUPLICATE DETECTED: Gmail message ${messageToProcess.id} already processed as PO ${existingPO[0].poNumber}`);
       console.log(`   └─ Skipping duplicate processing to prevent duplicate PO creation`);
       
-      updateProcessingStatus({
-        isProcessing: false,
+      releaseProcessingLock({
         currentStep: "completed",
-        currentEmail: `Skipped duplicate: ${messageToProcess.subject}`,
-        emailNumber: 0,
-        totalEmails: 0
+        currentEmail: `Skipped duplicate: ${messageToProcess.subject}`
       });
       
       return {
@@ -108,11 +104,42 @@ async function processEmailWithValidationSystem() {
       };
     }
     
+    if (existingQueue) {
+      console.log(`   ❌ PROCESSING IN PROGRESS: Gmail message ${messageToProcess.id} is currently being processed`);
+      console.log(`   └─ Queue status: ${existingQueue.status} - skipping to prevent race condition`);
+      
+      releaseProcessingLock({
+        currentStep: "completed",
+        currentEmail: `Already processing: ${messageToProcess.subject}`
+      });
+      
+      return {
+        message: "Email already being processed - skipping to prevent duplicates",
+        processed: 0,
+        details: {
+          emailId: messageToProcess.id,
+          queueStatus: existingQueue.status,
+          reason: "processing_in_progress"
+        }
+      };
+    }
+    
     console.log(`   ✅ DEDUPLICATION PASSED: Gmail message ${messageToProcess.id} is new - proceeding with processing`);
+    
+    // 🔒 IMMEDIATE QUEUE RESERVATION: Create email queue record immediately to prevent race conditions
+    console.log(`   🔒 ATOMIC LOCK: Creating queue record to prevent duplicate processing...`);
+    const queueReservation = await storage.createEmailQueueItem({
+      gmailId: messageToProcess.id,
+      sender: messageToProcess.sender,
+      subject: messageToProcess.subject,
+      body: messageToProcess.body,
+      attachments: messageToProcess.attachments,
+      labels: messageToProcess.labels,
+      status: 'processing'
+    });
 
-    // Start processing this email
+    // Start processing this email (lock already acquired)
     updateProcessingStatus({
-      isProcessing: true,
       currentStep: "email_preprocessing",
       currentEmail: `${messageToProcess.subject} (${messageToProcess.sender})`,
       emailNumber: 1,
@@ -124,6 +151,12 @@ async function processEmailWithValidationSystem() {
     console.log(`   └─ Attachments: ${messageToProcess.attachments.length}`);
 
     const result = await processEmailThroughValidationSystem(messageToProcess, updateProcessingStatus);
+    
+    // Release processing lock after successful completion
+    releaseProcessingLock({
+      currentStep: "completed", 
+      currentEmail: `Successfully processed: ${messageToProcess.subject}`
+    });
     
     return {
       message: "Email processed successfully",
@@ -138,12 +171,9 @@ async function processEmailWithValidationSystem() {
 
   } catch (error) {
     console.error('Validation system processing failed:', error);
-    updateProcessingStatus({
-      isProcessing: false,
+    releaseProcessingLock({
       currentStep: "error",
-      currentEmail: `Error: ${error instanceof Error ? error.message : 'Unknown error'}`,
-      emailNumber: 0,
-      totalEmails: 0
+      currentEmail: `Error: ${error instanceof Error ? error.message : 'Unknown error'}`
     });
     throw error;
   }
@@ -152,7 +182,6 @@ async function processEmailWithValidationSystem() {
 // Helper function to process email through complete validation system
 async function processEmailThroughValidationSystem(messageToProcess: any, updateProcessingStatus: Function) {
   updateProcessingStatus({
-    isProcessing: true,
     currentStep: "forwarded_email_check",
     currentEmail: `Checking forwarded email: ${messageToProcess.subject}`,
     emailNumber: 1,
@@ -201,16 +230,7 @@ async function processEmailThroughValidationSystem(messageToProcess: any, update
     }
   }
 
-  // Create email queue item
-  const queueItem = await storage.createEmailQueueItem({
-    gmailId: messageToProcess.id,
-    sender: messageToProcess.sender,
-    subject: messageToProcess.subject,
-    body: messageToProcess.body,
-    attachments: messageToProcess.attachments,
-    labels: messageToProcess.labels,
-    status: 'processing'
-  });
+  // Email queue item already created during atomic lock - use existing reservation
 
   // Process email using two-step approach
   console.log(`🤖 AI PROCESSING: Starting two-step analysis...`);
@@ -2026,50 +2046,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // UNIFIED PROCESSING ENDPOINT - All processing goes through validation system
+  // MANUAL PROCESSING COMPLETELY DISABLED - AUTOMATED ONLY
   app.post("/api/processing/process-auto", async (req, res) => {
-    console.log('\n🔄 UNIFIED PROCESSING: Manual processing triggered via API endpoint');
-    
-    try {
-      // Check if already processing
-      if (getCurrentProcessingStatus().isProcessing) {
-        return res.json({
-          message: "Already processing an email",
-          isProcessing: true,
-          currentStep: getCurrentProcessingStatus().currentStep
-        });
-      }
-
-      // Start the processing workflow
-      updateProcessingStatus({
-        isProcessing: true,
-        currentStep: "starting_processing",
-        currentEmail: "Initializing email processing workflow...",
-        emailNumber: 0,
-        totalEmails: 0
-      });
-      
-      const result = await processEmailWithValidationSystem();
-      res.json(result);
-    } catch (error) {
-      console.error('Unified processing failed:', error);
-      res.status(500).json({ 
-        message: error instanceof Error ? error.message : 'Processing failed',
-        error: 'unified_processing_error'
-      });
-    } finally {
-      // Keep processing status visible for 10 seconds so frontend can see it
-      setTimeout(() => {
-        updateProcessingStatus({
-          isProcessing: false,
-          currentStep: "idle",
-          currentEmail: "",
-          currentPO: "",
-          emailNumber: 0,
-          totalEmails: 0
-        });
-      }, 10000); // 10 second delay
-    }
+    return res.status(403).json({
+      error: "Manual processing permanently disabled",
+      message: "System operates in fully automated mode only - no manual processing allowed",
+      automation_status: "AUTOMATED_ONLY",
+      note: "All email processing happens automatically via internal polling - no manual triggers"
+    });
   });
 
   // Files listing endpoint for File Management page
