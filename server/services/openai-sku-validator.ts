@@ -321,6 +321,30 @@ ${JSON.stringify(lineItems, null, 2)}`;
       
       const validatedItems = JSON.parse(cleanContent) as ValidatedLineItem[];
       
+      // CRITICAL: Ensure finalSKUs match the original line item order and quantities
+      // This prevents the issue where SETUP gets assigned to product quantities
+      for (let i = 0; i < validatedItems.length && i < lineItems.length; i++) {
+        const validated = validatedItems[i];
+        const original = lineItems[i];
+        
+        // If the validated item has a different quantity than original, something went wrong
+        if (validated.quantity !== original.quantity) {
+          console.warn(`   ⚠️ Quantity mismatch detected: Line ${i+1} original qty ${original.quantity} vs validated qty ${validated.quantity}`);
+          // Preserve original quantity
+          validated.quantity = original.quantity;
+        }
+        
+        // If this looks like a charge code assigned to high quantity, it's likely wrong
+        if (this.chargeCodebook.has(validated.finalSKU) && validated.quantity > 10) {
+          console.warn(`   ⚠️ Suspicious: Charge code ${validated.finalSKU} with qty ${validated.quantity} - likely misassigned`);
+          // Keep the original SKU if it exists
+          if (original.sku && !this.chargeCodebook.has(original.sku.toUpperCase())) {
+            validated.finalSKU = original.sku.toUpperCase();
+            console.log(`   🔧 Corrected: Using original SKU ${validated.finalSKU} instead of charge code`);
+          }
+        }
+      }
+      
       // Add validation metadata  
       for (const item of validatedItems) {
         const skuMatch = this.itemsCache.get(item.finalSKU);
@@ -564,7 +588,82 @@ ${JSON.stringify(lineItems, null, 2)}`;
       console.log(`   └─ Item ${i + 1}: ${item.finalSKU} - ${item.description} (Qty: ${item.quantity}) [${itemType}]`);
     }
     
+    // Verify SKU validation integrity
+    console.log(`   ✅ SKU validation complete: ${hybridValidated.length} items processed`);
+    for (let i = 0; i < hybridValidated.length; i++) {
+      const item = hybridValidated[i];
+      console.log(`      ${i + 1}. "${item.sku}" → "${item.finalSKU}"`);
+    }
+    
     return hybridValidated;
+  }
+
+  /**
+   * QUANTITY-BASED GUARDRAIL: Ensures charge codes have lower quantities than products
+   * This prevents the common issue where SETUP (qty 1) gets swapped with product SKUs (qty 100+)
+   */
+  private applyQuantityGuardrail(items: ValidatedLineItem[]): ValidatedLineItem[] {
+    if (items.length < 2) return items;
+    
+    // Identify charge codes and products
+    const chargeItems = items.filter(item => 
+      this.chargeCodebook.has(item.finalSKU?.toUpperCase() || '')
+    );
+    const productItems = items.filter(item => 
+      !this.chargeCodebook.has(item.finalSKU?.toUpperCase() || '')
+    );
+    
+    // If we have both charges and products, check for misalignment
+    if (chargeItems.length > 0 && productItems.length > 0) {
+      const maxChargeQty = Math.max(...chargeItems.map(c => c.quantity || 0));
+      const minProductQty = Math.min(...productItems.map(p => p.quantity || 0));
+      
+      // If a charge has higher quantity than a product, they're likely swapped
+      if (maxChargeQty > minProductQty && maxChargeQty > 10) {
+        console.log(`   ⚠️ QUANTITY GUARDRAIL: Detected potential SKU swap (charge qty ${maxChargeQty} > product qty ${minProductQty})`);
+        
+        // Find the misaligned pairs
+        for (let i = 0; i < items.length; i++) {
+          const item = items[i];
+          const isCharge = this.chargeCodebook.has(item.finalSKU?.toUpperCase() || '');
+          
+          // If this is a charge with high quantity
+          if (isCharge && (item.quantity || 0) > 10) {
+            // Find a product with low quantity (likely the swapped one)
+            for (let j = 0; j < items.length; j++) {
+              if (i === j) continue;
+              const otherItem = items[j];
+              const otherIsProduct = !this.chargeCodebook.has(otherItem.finalSKU?.toUpperCase() || '');
+              
+              // If we found a product with low quantity, they're likely swapped
+              if (otherIsProduct && (otherItem.quantity || 0) <= 10) {
+                console.log(`   🔄 SWAPPING: ${item.finalSKU} (qty ${item.quantity}) ↔ ${otherItem.finalSKU} (qty ${otherItem.quantity})`);
+                
+                // Swap the finalSKUs to correct the misalignment
+                const tempSKU = item.finalSKU;
+                const tempName = item.productName;
+                const tempValid = item.isValidSKU;
+                const tempNotes = item.validationNotes;
+                
+                item.finalSKU = otherItem.finalSKU;
+                item.productName = otherItem.productName;
+                item.isValidSKU = otherItem.isValidSKU;
+                item.validationNotes = 'Corrected via quantity guardrail';
+                
+                otherItem.finalSKU = tempSKU;
+                otherItem.productName = tempName;
+                otherItem.isValidSKU = tempValid;
+                otherItem.validationNotes = 'Corrected via quantity guardrail';
+                
+                break; // Only swap once per charge
+              }
+            }
+          }
+        }
+      }
+    }
+    
+    return items;
   }
 
   /**
