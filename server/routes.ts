@@ -1120,19 +1120,37 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Create a simple polling function that checks for new emails every 2 minutes
       const pollEmails = async () => {
         try {
-          const response = await fetch('http://localhost:5000/api/processing/process-auto', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' }
-          });
+          console.log('📧 Auto-polling: Checking for new emails...');
           
-          if (response.ok) {
-            const result = await response.json();
+          // Try to acquire processing lock for automated processing
+          const lockAcquired = tryAcquireProcessingLock({
+            currentStep: "auto_polling",
+            currentEmail: "Checking for new emails via auto-polling...",
+            emailNumber: 0,
+            totalEmails: 0
+          });
+
+          if (!lockAcquired) {
+            console.log('📧 Auto-polling: System busy processing - will try again in 2 minutes');
+            return; // Another process is running, skip this cycle
+          }
+          
+          try {
+            const result = await processEmailWithValidationSystem();
             if (result.processed && result.processed > 0) {
-              console.log(`📧 Auto-polling: Processed ${result.processed} email(s)`);
+              console.log(`📧 Auto-polling: Successfully processed ${result.processed} email(s)`);
+            } else {
+              console.log('📧 Auto-polling: No new emails to process');
             }
+          } catch (error) {
+            console.log('📧 Auto-polling error:', error.message);
+            releaseProcessingLock({
+              currentStep: "error",
+              currentEmail: `Auto-polling error: ${error.message}`
+            });
           }
         } catch (error) {
-          console.log('📧 Auto-polling: No new emails or service unavailable');
+          console.log('📧 Auto-polling: System error or no new emails');
         }
       };
       
