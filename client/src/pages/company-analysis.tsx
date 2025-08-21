@@ -241,7 +241,9 @@ export default function CompanyAnalysisPage() {
                   <p className="text-xs text-gray-500">Companies that exist under different names</p>
                 </div>
                 <div className="text-center">
-                  <div className="text-3xl font-bold text-purple-600">{enhancedData.summary.accuracyImprovement}</div>
+                  <div className="text-3xl font-bold text-purple-600">
+                    {enhancedData.summary.accuracyImprovement}
+                  </div>
                   <p className="text-sm text-gray-600">Accuracy Improvement</p>
                   <p className="text-xs text-gray-500">Reduction in false missing companies</p>
                 </div>

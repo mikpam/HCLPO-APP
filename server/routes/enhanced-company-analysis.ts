@@ -74,12 +74,18 @@ router.post("/enhanced-analysis", async (req, res) => {
 
     console.log(`✅ ENHANCED ANALYSIS COMPLETE: ${genuinelyMissing.length} genuinely missing, ${falsePositives.length} false positives`);
 
+    // Calculate accuracy improvement percentage with safe division
+    const totalAnalyzed = results.length;
+    const accuracyPercentage = totalAnalyzed > 0 
+      ? Math.round((falsePositives.length / totalAnalyzed) * 100)
+      : 0;
+
     res.json({
       summary: {
-        totalAnalyzed: results.length,
+        totalAnalyzed: totalAnalyzed,
         genuinelyMissing: genuinelyMissing.length,
         falsePositives: falsePositives.length,
-        accuracyImprovement: `${Math.round((falsePositives.length / results.length) * 100)}% of "missing" companies were actually false positives`
+        accuracyImprovement: `${accuracyPercentage}% of "missing" companies were actually false positives`
       },
       genuinelyMissingCompanies: genuinelyMissing,
       falsePositives: falsePositives,
