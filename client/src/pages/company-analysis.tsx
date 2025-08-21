@@ -1,6 +1,7 @@
 import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
+import { apiRequest } from "@/lib/queryClient";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { 
@@ -11,7 +12,7 @@ import {
   TableHeader, 
   TableRow 
 } from "@/components/ui/table";
-import { Building2, Search, Users, AlertTriangle, CheckCircle } from "lucide-react";
+import { Building2, Search, Users, AlertTriangle, CheckCircle, Sparkles, Zap, RefreshCw } from "lucide-react";
 
 interface CompanyCrossRefData {
   summary: {
@@ -32,12 +33,49 @@ interface CompanyCrossRefData {
   partialMatches: number;
 }
 
+interface EnhancedAnalysisData {
+  summary: {
+    totalAnalyzed: number;
+    genuinelyMissing: number;
+    falsePositives: number;
+    accuracyImprovement: string;
+  };
+  genuinelyMissingCompanies: string[];
+  falsePositives: string[];
+  detailedResults: Array<{
+    contactCompany: string;
+    potentialMatches: Array<{
+      customerName: string;
+      customerNumber: string;
+      confidence: number;
+      reasoning: string;
+    }>;
+    isGenuinelyMissing: boolean;
+    aiReasoning: string;
+  }>;
+}
+
 export default function CompanyAnalysisPage() {
   const [showAllMissing, setShowAllMissing] = useState(false);
+  const [showEnhancedResults, setShowEnhancedResults] = useState(false);
+  const queryClient = useQueryClient();
 
   const { data: analysisData, isLoading, refetch } = useQuery<CompanyCrossRefData>({
     queryKey: ['/api/analysis/company-crossref'],
     refetchOnWindowFocus: false,
+  });
+
+  const enhancedAnalysisMutation = useMutation({
+    mutationFn: () => apiRequest('/api/analysis/enhanced-analysis', { method: 'POST' }),
+    onSuccess: (data) => {
+      setShowEnhancedResults(true);
+      queryClient.setQueryData(['enhanced-analysis'], data);
+    },
+  });
+
+  const { data: enhancedData } = useQuery<EnhancedAnalysisData>({
+    queryKey: ['enhanced-analysis'],
+    enabled: false,
   });
 
   if (isLoading) {
@@ -88,10 +126,24 @@ export default function CompanyAnalysisPage() {
             <Building2 className="h-8 w-8 text-blue-600" />
             <h1 className="text-3xl font-bold text-gray-900">Company Cross-Reference Analysis</h1>
           </div>
-          <Button onClick={() => refetch()} variant="outline">
-            <Search className="h-4 w-4 mr-2" />
-            Refresh Analysis
-          </Button>
+          <div className="flex gap-3">
+            <Button 
+              onClick={() => enhancedAnalysisMutation.mutate()} 
+              disabled={enhancedAnalysisMutation.isPending}
+              className="bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700"
+            >
+              {enhancedAnalysisMutation.isPending ? (
+                <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+              ) : (
+                <Sparkles className="h-4 w-4 mr-2" />
+              )}
+              AI-Enhanced Analysis
+            </Button>
+            <Button onClick={() => refetch()} variant="outline">
+              <Search className="h-4 w-4 mr-2" />
+              Refresh Analysis
+            </Button>
+          </div>
         </div>
 
         {/* Summary Cards */}

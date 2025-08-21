@@ -965,6 +965,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Register item embedding routes
   registerItemEmbeddingRoutes(app);
   
+  // Enhanced Company Analysis route
+  const enhancedAnalysisRouter = (await import('./routes/enhanced-company-analysis')).default;
+  app.use("/api/analysis", enhancedAnalysisRouter);
+  
   // Initialize Gmail labels on startup
   try {
     console.log('Initializing Gmail labels...');
