@@ -1391,6 +1391,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       // Track if polling is in progress to prevent overlapping runs
       let isPollingInProgress = false;
+      let pollingCycleCount = 0;
+      
+      // Import stuck process recovery service
+      const { checkAndRecoverStuckProcesses, getDeadLetterStats } = await import('./services/stuck-process-recovery');
       
       // Create a simple polling function that checks for new emails every minute
       const pollEmails = async () => {
@@ -1401,8 +1405,27 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
         
         isPollingInProgress = true;
+        pollingCycleCount++;
         
         try {
+          // Run stuck process recovery every 5 cycles (5 minutes)
+          if (pollingCycleCount % 5 === 0) {
+            try {
+              const recoveryResult = await checkAndRecoverStuckProcesses();
+              if (recoveryResult.recovered > 0 || recoveryResult.deadLettered > 0) {
+                console.log(`🔧 STUCK PROCESS RECOVERY: Recovered ${recoveryResult.recovered} POs, dead-lettered ${recoveryResult.deadLettered}`);
+                
+                // Log dead letter stats if any were moved
+                if (recoveryResult.deadLettered > 0) {
+                  const deadLetterStats = await getDeadLetterStats();
+                  console.log(`   └─ Dead letter queue: ${deadLetterStats.total} total POs requiring manual review`);
+                }
+              }
+            } catch (error) {
+              console.error('❌ Stuck process recovery error:', error);
+            }
+          }
+          
           console.log('📧 Auto-polling: Checking for new emails...');
           
           // Try to acquire processing lock for automated processing
@@ -1657,6 +1680,73 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Customer finder test failed:", error);
       res.status(500).json({ error: "Test failed" });
+    }
+  });
+
+  // Dead Letter Queue Management Endpoints
+  app.get("/api/processing/dead-letter-stats", async (req, res) => {
+    try {
+      const { getDeadLetterStats } = await import('./services/stuck-process-recovery');
+      const stats = await getDeadLetterStats();
+      res.json(stats);
+    } catch (error) {
+      console.error('Failed to get dead letter stats:', error);
+      res.status(500).json({ 
+        error: 'Failed to get dead letter statistics',
+        message: error instanceof Error ? error.message : 'Unknown error'
+      });
+    }
+  });
+
+  app.post("/api/processing/retry-dead-letter/:poId", async (req, res) => {
+    try {
+      const { poId } = req.params;
+      const { retryDeadLetterPO } = await import('./services/stuck-process-recovery');
+      const result = await retryDeadLetterPO(poId);
+      
+      if (result.success) {
+        res.json(result);
+      } else {
+        res.status(400).json(result);
+      }
+    } catch (error) {
+      console.error('Failed to retry dead letter PO:', error);
+      res.status(500).json({ 
+        success: false,
+        message: 'Failed to retry purchase order'
+      });
+    }
+  });
+
+  app.post("/api/processing/check-stuck-processes", async (req, res) => {
+    try {
+      const { checkAndRecoverStuckProcesses } = await import('./services/stuck-process-recovery');
+      const result = await checkAndRecoverStuckProcesses();
+      res.json({
+        success: true,
+        ...result
+      });
+    } catch (error) {
+      console.error('Failed to check stuck processes:', error);
+      res.status(500).json({ 
+        success: false,
+        error: 'Failed to check stuck processes',
+        message: error instanceof Error ? error.message : 'Unknown error'
+      });
+    }
+  });
+
+  app.get("/api/processing/daily-report", async (req, res) => {
+    try {
+      const { generateDailyReport } = await import('./services/stuck-process-recovery');
+      const report = await generateDailyReport();
+      res.json(report);
+    } catch (error) {
+      console.error('Failed to generate daily report:', error);
+      res.status(500).json({ 
+        error: 'Failed to generate daily report',
+        message: error instanceof Error ? error.message : 'Unknown error'
+      });
     }
   });
 

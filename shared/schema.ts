@@ -30,6 +30,13 @@ export const purchaseOrders = pgTable("purchase_orders", {
   status: text("status").notNull().default("pending"),
   retryCount: integer("retry_count").notNull().default(0), // Track processing attempts
   lastRetryAt: timestamp("last_retry_at"), // When last retry occurred
+  // Timeout tracking fields for stuck process prevention
+  statusChangedAt: timestamp("status_changed_at").defaultNow(), // When status last changed
+  processingStartedAt: timestamp("processing_started_at"), // When processing started (for timeout detection)
+  // Dead letter queue fields
+  failureCount: integer("failure_count").notNull().default(0), // Total failure count across all attempts
+  lastError: text("last_error"), // Last error message for debugging
+  deadLetterReason: text("dead_letter_reason"), // Why moved to dead letter queue
   comments: text("comments"),
   pokey: text("pokey").unique(),
   emailId: text("email_id"),
