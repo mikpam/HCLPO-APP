@@ -944,6 +944,7 @@ async function processEmailThroughValidationSystem(messageToProcess: any, update
       }
     }
 
+    // 🔥 CREATE INITIAL PO RECORD
     purchaseOrder = await storage.createPurchaseOrder({
       poNumber,
       emailId: messageToProcess.id,
@@ -951,8 +952,7 @@ async function processEmailThroughValidationSystem(messageToProcess: any, update
       subject: messageToProcess.subject,
       route: processingResult.classification.recommended_route,
       confidence: processingResult.classification.analysis_flags?.confidence_score || 0,
-      status: extractionResult ? 'validating' : 
-              (processingResult.classification.recommended_route === 'TEXT_PO' ? 'ready_for_extraction' : 'pending_review'),
+      status: 'validating', // Always start with validating status
       originalJson: processingResult.classification,
       extractedData: {
         ...extractionResult,
@@ -972,6 +972,175 @@ async function processEmailThroughValidationSystem(messageToProcess: any, update
       extractionSourceFile: extractionSourceFile, // Store specific file used for successful extraction
       attachmentPaths: attachmentPaths.length > 0 ? attachmentPaths.map(att => att.storagePath) : [] // Store attachment paths as array for proper access
     });
+
+    // 🔥 STEP 7: AUTOMATIC CUSTOMER VALIDATION (from SYSTEM_LOGIC_FLOW.md)
+    let customerValidationResult: any = null;
+    if (extractionResult && purchaseOrder) {
+      console.log(`\n🔍 STEP 7: Running automatic customer validation for PO ${purchaseOrder.poNumber}...`);
+      
+      updateProcessingStatus({
+        currentStep: "customer_validation"
+      });
+
+      try {
+        const customer = extractionResult?.purchaseOrder?.customer || {};
+        
+        // Import and create validator instance
+        const { HybridCustomerValidator } = await import('./services/hybrid-customer-validator');
+        const hybridValidator = new HybridCustomerValidator();
+        
+        // Prepare input for hybrid validator
+        const validationInput = {
+          customerName: customer.company || customer.customerName,
+          customerEmail: customer.email || purchaseOrder.sender,
+          senderEmail: purchaseOrder.sender || undefined,
+          customerNumber: customer.customerNumber,
+          contactName: customer.contactName,
+          address: customer.address
+        };
+        
+        console.log(`   🔍 Customer validation input:`, validationInput);
+        
+        // Run 4-step hybrid validation (Exact DB → Vector → Rules → LLM)
+        customerValidationResult = await hybridValidator.validateCustomer(validationInput);
+        
+        console.log(`   ✅ Customer validation result:`, customerValidationResult);
+        
+        // Update database with customer validation results
+        if (customerValidationResult.matched) {
+          const updatedCustomerMeta = {
+            method: customerValidationResult.method,
+            status: "found",
+            resolved: true,
+            confidence: customerValidationResult.confidence,
+            customer_name: customerValidationResult.customerName,
+            customer_number: customerValidationResult.customerNumber
+          };
+          
+          await storage.updatePurchaseOrder(purchaseOrder.id, {
+            customerMeta: updatedCustomerMeta,
+            customerValidated: true
+          });
+          
+          console.log(`   ✅ Customer validation completed: ${customerValidationResult.customerName} (${customerValidationResult.customerNumber})`);
+        } else {
+          console.log(`   ❌ Customer validation failed: ${customerValidationResult.reasons?.join(', ') || 'Unknown reason'}`);
+          await storage.updatePurchaseOrder(purchaseOrder.id, {
+            customerValidated: false
+          });
+        }
+        
+      } catch (error) {
+        console.error(`   ❌ Customer validation error:`, error);
+        await storage.updatePurchaseOrder(purchaseOrder.id, {
+          customerValidated: false
+        });
+      }
+    }
+
+    // 🔥 STEP 8: AUTOMATIC CONTACT VALIDATION (from SYSTEM_LOGIC_FLOW.md)
+    let contactValidationResult: any = null;
+    if (extractionResult && purchaseOrder) {
+      console.log(`\n📞 STEP 8: Running automatic contact validation for PO ${purchaseOrder.poNumber}...`);
+      
+      updateProcessingStatus({
+        currentStep: "contact_validation"
+      });
+
+      try {
+        const customer = extractionResult?.purchaseOrder?.customer || {};
+        const contact = extractionResult?.purchaseOrder?.contact || {};
+        
+        // Import and create validator instance
+        const { OpenAIContactValidatorService } = await import('./services/openai-contact-validator');
+        const contactValidator = new OpenAIContactValidatorService();
+        
+        // Prepare input for contact validator
+        const contactInput = {
+          contactName: contact.name || customer.contactName || '',
+          contactEmail: contact.email || customer.email || purchaseOrder.sender,
+          senderEmail: purchaseOrder.sender,
+          customerName: customer.company || customer.customerName || '',
+          phoneNumber: contact.phone || customer.phone || undefined
+        };
+        
+        console.log(`   📞 Contact validation input:`, contactInput);
+        
+        // Run 4-step contact validation (Exact Email → Vector → Domain+Company → LLM)
+        contactValidationResult = await contactValidator.validateContact(contactInput);
+        
+        console.log(`   ✅ Contact validation result:`, contactValidationResult);
+        
+        // Update database with contact validation results
+        const contactValidated = contactValidationResult.match_method !== 'UNKNOWN' && 
+                                contactValidationResult.confidence > 0.5;
+        
+        const updatedContactMeta = {
+          method: contactValidationResult.match_method,
+          status: contactValidated ? "found" : "not_found",
+          resolved: contactValidated,
+          confidence: contactValidationResult.confidence,
+          contact_name: contactValidationResult.name,
+          contact_email: contactValidationResult.email
+        };
+        
+        await storage.updatePurchaseOrder(purchaseOrder.id, {
+          contactMeta: updatedContactMeta,
+          contactValidated: contactValidated,
+          contact: contactValidationResult.name || null
+        });
+        
+        if (contactValidated) {
+          console.log(`   ✅ Contact validation completed: ${contactValidationResult.name} <${contactValidationResult.email}>`);
+        } else {
+          console.log(`   ❌ Contact validation failed: ${contactValidationResult.evidence?.join(', ') || 'No valid contact found'}`);
+        }
+        
+      } catch (error) {
+        console.error(`   ❌ Contact validation error:`, error);
+        await storage.updatePurchaseOrder(purchaseOrder.id, {
+          contactValidated: false
+        });
+      }
+    }
+
+    // 🔥 STEP 11: AUTOMATIC STATUS DETERMINATION (from SYSTEM_LOGIC_FLOW.md)
+    if (purchaseOrder) {
+      console.log(`\n🎯 STEP 11: Determining final status for PO ${purchaseOrder.poNumber}...`);
+      
+      updateProcessingStatus({
+        currentStep: "status_determination"
+      });
+
+      let finalStatus = 'pending_review'; // Default fallback
+      
+      // Get current validation states
+      const updatedPO = await storage.getPurchaseOrder(purchaseOrder.id);
+      const hasCustomer = updatedPO?.customerValidated || false;
+      const hasContact = updatedPO?.contactValidated || false;
+      const hasLineItems = updatedPO?.lineItemsValidated || (validatedLineItems ? true : false);
+      
+      // Status logic from SYSTEM_LOGIC_FLOW.md Step 11
+      if (hasCustomer && hasContact && hasLineItems) {
+        finalStatus = 'ready_for_netsuite';
+        console.log(`   ✅ Status: ready_for_netsuite (Customer ✓ Contact ✓ Line Items ✓)`);
+      } else if (extractionResult && !hasCustomer && hasLineItems) {
+        finalStatus = 'new_customer';
+        console.log(`   🆕 Status: new_customer (Valid extraction but customer not in database)`);
+      } else if (!extractionResult || (!hasCustomer && !hasContact)) {
+        finalStatus = 'pending_review';
+        console.log(`   ⏳ Status: pending_review (Failed extraction or validation issues)`);
+      }
+      
+      // Update final status and mark validation completed
+      await storage.updatePurchaseOrder(purchaseOrder.id, {
+        status: finalStatus,
+        validationCompleted: true,
+        lineItemsValidated: validatedLineItems ? true : false // Set based on whether SKU validation ran
+      });
+      
+      console.log(`   🎯 Final status assigned: ${finalStatus}`);
+    }
   }
 
   // Mark as processed in Gmail with preprocessing result
@@ -1043,6 +1212,7 @@ async function logProcessingError(
       relatedPoId: poId || null,
       relatedPoNumber: poNumber || null,
       resolved: false,
+      additionalData: additionalData ? JSON.stringify(additionalData) : null, // Fix JSON serialization
       metadata: {
         emailId,
         timestamp: new Date().toISOString(),
@@ -1214,341 +1384,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Force validation endpoint for debugging unvalidated POs with retry limits
-  app.post("/api/force-validation/:poId", async (req, res) => {
-    try {
-      const { poId } = req.params;
-      
-      console.log(`🔧 FORCE VALIDATION: Starting validation for PO ID ${poId}`);
-      
-      // Get the purchase order by UUID
-      const purchaseOrder = await storage.getPurchaseOrder(poId);
-      if (!purchaseOrder) {
-        return res.status(404).json({ error: `PO with ID ${poId} not found` });
-      }
-      
-      console.log(`   └─ Found PO: ${purchaseOrder.id} (Current retry count: ${purchaseOrder.retryCount || 0})`);
-      
-      // 🛡️ RETRY LIMIT: Check if maximum retries exceeded (3 attempts)
-      const currentRetryCount = purchaseOrder.retryCount || 0;
-      if (currentRetryCount >= 3) {
-        console.log(`   ❌ RETRY LIMIT EXCEEDED: PO has already been retried ${currentRetryCount} times (max: 3)`);
-        return res.status(400).json({ 
-          error: `Retry limit exceeded: PO has been retried ${currentRetryCount} times (maximum: 3)`,
-          poId: purchaseOrder.id,
-          poNumber: purchaseOrder.poNumber,
-          retryCount: currentRetryCount,
-          suggestion: "Manual review required - check for systematic issues with this PO"
-        });
-      }
-      
-      console.log(`   🔄 RETRY ATTEMPT ${currentRetryCount + 1}/3: Proceeding with validation...`);
-      
-      // Reset validation flags and increment retry count
-      await storage.updatePurchaseOrder(purchaseOrder.id, {
-        customerValidated: false,
-        contactValidated: false,
-        lineItemsValidated: false,
-        validationCompleted: false,
-        retryCount: currentRetryCount + 1,
-        lastRetryAt: new Date()
-      });
-      
-      const results: {
-        poNumber: string;
-        poId: string;
-        customer: any;
-        contact: any;
-        lineItems: any;
-        errors: string[];
-      } = {
-        poNumber: purchaseOrder.poNumber,
-        poId: purchaseOrder.id,
-        customer: null,
-        contact: null,
-        lineItems: null,
-        errors: []
-      };
-      
-      // Force customer validation using hybrid validator
-      try {
-        console.log(`   🔍 Running hybrid customer validation...`);
-        
-        const extractedData = purchaseOrder.extractedData as any;
-        const customer = extractedData?.purchaseOrder?.customer || {};
-        
-        // Import and create validator instance
-        const { HybridCustomerValidator } = await import('./services/hybrid-customer-validator');
-        const hybridValidator = new HybridCustomerValidator();
-        
-        // Prepare input for hybrid validator
-        const validationInput = {
-          customerName: customer.company || customer.customerName,
-          customerEmail: customer.email || purchaseOrder.sender,
-          senderEmail: purchaseOrder.sender || undefined,
-          customerNumber: customer.customerNumber,
-          contactName: customer.contactName,
-          address: customer.address
-        };
-        
-        console.log(`   └─ Input:`, validationInput);
-        
-        // Run hybrid validation
-        const customerResult = await hybridValidator.validateCustomer(validationInput);
-        
-        console.log(`   └─ Result:`, customerResult);
-        
-        results.customer = customerResult as any;
-        
-        // Update database with customer validation results
-        if (customerResult.matched) {
-          const customerMeta = {
-            method: customerResult.method,
-            status: "found",
-            resolved: true,
-            confidence: customerResult.confidence,
-            customer_name: customerResult.customerName,
-            customer_number: customerResult.customerNumber
-          };
-          
-          await storage.updatePurchaseOrder(purchaseOrder.id, {
-            customerMeta: customerMeta,
-            customerValidated: true
-          });
-          
-          console.log(`   ✅ Customer validation completed: ${customerResult.customerName} (${customerResult.customerNumber})`);
-        } else {
-          console.log(`   ❌ Customer validation failed: ${customerResult.reasons.join(', ')}`);
-        }
-        
-      } catch (error) {
-        console.error(`   ❌ Customer validation error:`, error);
-        results.errors.push(`Customer validation error: ${(error as Error).message}`);
-      }
-      
-      // Force contact validation
-      try {
-        console.log(`   📞 Running contact validation...`);
-        
-        const contactValidator = await validatorHealthService.recordValidatorCall(
-          'contactValidator',
-          async () => new OpenAIContactValidatorService()
-        );
-        
-        const contactResult = await contactValidator.validateContact(purchaseOrder.sender);
-        
-        results.contact = contactResult;
-        
-        if (contactResult.isValidated) {
-          await storage.updatePurchaseOrder(purchaseOrder.id, {
-            contactMeta: {
-              name: contactResult.contact.name,
-              email: contactResult.contact.email,
-              phone: contactResult.contact.phone,
-              role: contactResult.contact.role,
-              evidence: contactResult.evidence,
-              confidence: contactResult.confidence,
-              match_method: contactResult.matchMethod,
-              matched_contact_id: contactResult.matchedContactId || ""
-            },
-            contactValidated: true
-          });
-          
-          console.log(`   ✅ Contact validation completed: ${contactResult.contact.name} <${contactResult.contact.email}>`);
-        } else {
-          console.log(`   ❌ Contact validation failed`);
-        }
-        
-      } catch (error) {
-        console.error(`   ❌ Contact validation error:`, error);
-        results.errors.push(`Contact validation error: ${(error as Error).message}`);
-      }
-      
-      // Force line items validation
-      try {
-        console.log(`   📦 Running line items validation...`);
-        
-        const extractedData = purchaseOrder.extractedData as any;
-        const lineItems = extractedData?.lineItems || [];
-        
-        if (lineItems.length > 0) {
-          const skuValidator = await validatorHealthService.recordValidatorCall(
-            'skuValidator',
-            async () => new OpenAISKUValidatorService()
-          );
-          
-          const validatedLineItems = await skuValidator.validateLineItems(lineItems);
-          
-          results.lineItems = validatedLineItems;
-          
-          // Update line items with finalSKU
-          if (validatedLineItems && validatedLineItems.length > 0) {
-            lineItems.forEach((originalItem: any, index: number) => {
-              const validatedItem = validatedLineItems[index];
-              if (validatedItem) {
-                originalItem.finalSKU = validatedItem.finalSKU || '';
-              }
-            });
-            
-            await storage.updatePurchaseOrder(purchaseOrder.id, {
-              lineItems: lineItems,
-              lineItemsValidated: true
-            });
-            
-            console.log(`   ✅ Line items validation completed: ${validatedLineItems.length} items processed`);
-          }
-        } else {
-          console.log(`   ⚠️ No line items found to validate`);
-        }
-        
-      } catch (error) {
-        console.error(`   ❌ Line items validation error:`, error);
-        results.errors.push(`Line items validation error: ${(error as Error).message}`);
-      }
-      
-      // Mark validation as completed
-      await storage.updatePurchaseOrder(purchaseOrder.id, {
-        validationCompleted: true
-      });
-      
-      console.log(`✅ FORCE VALIDATION COMPLETED: PO ${purchaseOrder.poNumber}`);
-      
-      res.json({
-        success: true,
-        message: `Force validation completed for PO ${purchaseOrder.poNumber}`,
-        retryAttempt: currentRetryCount + 1,
-        maxRetries: 3,
-        results
-      });
-      
-    } catch (error) {
-      console.error(`❌ Force validation failed:`, error);
-      res.status(500).json({ 
-        error: `Force validation failed: ${(error as Error).message}`,
-        success: false 
-      });
-    }
-  });
+  // 🚫 MANUAL VALIDATION ENDPOINTS REMOVED 
+  // All validation now happens automatically during email processing
+  // Following SYSTEM_LOGIC_FLOW.md - Steps 7-8 integrated into auto pipeline
 
-  // Batch validation endpoint for fixing all unvalidated POs
-  app.post("/api/batch-validation", async (req, res) => {
-    try {
-      console.log(`🔧 BATCH VALIDATION: Starting validation for all unvalidated POs`);
-      
-      // Check if already processing - RESPECT SEQUENTIAL ARCHITECTURE
-      if (getCurrentProcessingStatus().isProcessing) {
-        return res.json({
-          message: "Cannot start batch validation - system is already processing emails",
-          isProcessing: true,
-          currentStep: getCurrentProcessingStatus().currentStep
-        });
-      }
-
-      // Set processing lock to prevent concurrent email processing
-      updateProcessingStatus({
-        isProcessing: true,
-        currentStep: "batch_validation",
-        currentEmail: "Running batch validation of unvalidated POs...",
-        emailNumber: 0,
-        totalEmails: 0
-      });
-      
-      // Get all unvalidated POs
-      const unvalidatedPOs = await db
-        .select({ poNumber: purchaseOrdersTable.poNumber, id: purchaseOrdersTable.id })
-        .from(purchaseOrdersTable)
-        .where(eq(purchaseOrdersTable.validationCompleted, false))
-        .orderBy(purchaseOrdersTable.poNumber);
-      
-      if (unvalidatedPOs.length === 0) {
-        return res.json({ 
-          success: true, 
-          message: "No unvalidated POs found",
-          totalProcessed: 0,
-          results: []
-        });
-      }
-      
-      console.log(`   └─ Found ${unvalidatedPOs.length} unvalidated POs`);
-      
-      const batchResults = {
-        totalProcessed: unvalidatedPOs.length,
-        successful: 0,
-        failed: 0,
-        results: [] as any[]
-      };
-      
-      // Process each PO
-      for (const po of unvalidatedPOs) {
-        try {
-          console.log(`   🔍 Processing PO ${po.poNumber}...`);
-          
-          // Force validation using the same logic as single PO endpoint
-          const response = await fetch(`http://localhost:5000/api/force-validation/${po.id}`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' }
-          });
-          
-          if (response.ok) {
-            const result = await response.json();
-            batchResults.successful++;
-            batchResults.results.push({
-              poNumber: po.poNumber,
-              success: true,
-              customer: result.results?.customer?.matched || false,
-              customerName: result.results?.customer?.customerName || 'Unknown',
-              customerNumber: result.results?.customer?.customerNumber || null
-            });
-            console.log(`   ✅ PO ${po.poNumber}: Success`);
-          } else {
-            batchResults.failed++;
-            batchResults.results.push({
-              poNumber: po.poNumber,
-              success: false,
-              error: `HTTP ${response.status}`
-            });
-            console.log(`   ❌ PO ${po.poNumber}: Failed (${response.status})`);
-          }
-        } catch (error) {
-          batchResults.failed++;
-          batchResults.results.push({
-            poNumber: po.poNumber,
-            success: false,
-            error: (error as Error).message
-          });
-          console.error(`   ❌ PO ${po.poNumber}: ${(error as Error).message}`);
-        }
-        
-        // Small delay to prevent overwhelming the system
-        await new Promise(resolve => setTimeout(resolve, 100));
-      }
-      
-      console.log(`✅ BATCH VALIDATION COMPLETED: ${batchResults.successful} successful, ${batchResults.failed} failed`);
-      
-      res.json({
-        success: true,
-        message: `Batch validation completed: ${batchResults.successful} successful, ${batchResults.failed} failed`,
-        ...batchResults
-      });
-      
-    } catch (error) {
-      console.error(`❌ Batch validation failed:`, error);
-      res.status(500).json({ 
-        error: `Batch validation failed: ${(error as Error).message}`,
-        success: false 
-      });
-    } finally {
-      // Always release the processing lock to restore sequential processing
-      updateProcessingStatus({
-        isProcessing: false,
-        currentStep: "idle",
-        currentEmail: "",
-        currentPO: "",
-        emailNumber: 0,
-        totalEmails: 0
-      });
-    }
-  });
 
   // Object Storage Routes (must be before static file serving)
   app.get("/objects/:objectPath(*)", async (req, res) => {

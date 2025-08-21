@@ -4,6 +4,12 @@
 This full-stack web application automates purchase order processing from email sources, integrating with external services to manage the workflow from ingestion to sales order creation. The system provides a dashboard for monitoring and management, aiming to streamline operations and enhance efficiency in handling purchase orders. The business vision is to provide a robust, automated solution for managing the entire purchase order lifecycle, significantly reducing manual effort and improving data accuracy. This system has high market potential for businesses dealing with large volumes of email-based purchase orders, offering a competitive advantage through operational efficiency and enhanced data management. The project ambition is to become a leading solution in automated PO processing, continuously integrating advanced AI and robust ERP capabilities.
 
 ## Recent Changes (August 21, 2025)
+- **🔥 CONSOLIDATION TO AUTO-PROCESSING ONLY**: Integrated complete validation pipeline into automatic email processing
+  - **Steps 7-8 Integration**: Customer and Contact validation now run automatically during email processing
+  - **Manual Trigger Removal**: Removed `/api/force-validation` and `/api/batch-validation` endpoints
+  - **Single Path Architecture**: Email → Classification → Extraction → SKU → Customer → Contact → Status → Complete PO
+  - **SYSTEM_LOGIC_FLOW.md Compliance**: Full 12-step workflow now runs automatically without manual intervention
+  - **JSON Logging Fix**: Resolved error logging serialization issues for complete audit trails
 - **Company Analysis Removal**: Completely removed all company analysis functionality, including:
   - `/api/analysis/company-crossref` and `/api/analysis/missing-companies/download` endpoints
   - Enhanced company analysis module and related imports
@@ -41,8 +47,9 @@ Vector Database Preference: PGvector integration with existing PostgreSQL databa
 - **Vector Database**: PGvector for semantic search on contacts and customers, enabling hybrid validation.
 
 ### Email Processing Pipeline
-- **Architecture**: Two-step sequential processing, unified into a single `/api/processing/process-auto` endpoint. Enforces sequential "one email at a time" processing.
-- **Sequential Processing Lock**: System uses `isProcessing` flag to prevent concurrent operations. All processing endpoints (email processing, batch validation) check and set this lock to maintain sequential architecture.
+- **Architecture**: Complete 12-step automated pipeline following SYSTEM_LOGIC_FLOW.md. Single `/api/processing/process-auto` endpoint with no manual triggers.
+- **Sequential Processing Lock**: System uses `isProcessing` flag to prevent concurrent operations. Only auto-processing endpoint active.
+- **Full Automation**: Steps 7-8 (Customer & Contact Validation) integrated directly into email processing flow.
 - **Classification**: OpenAI GPT-4o for intent classification and advanced 5-route classification (TEXT_PO, TEXT_SAMPLE, ATTACHMENT_PO, ATTACHMENT_SAMPLE, REVIEW), with priority logic for attachments.
 - **AI Document Filtering**: Pre-screens attachments to filter non-PO documents using filename-based filtering and AI document classification with negative keyword detection.
 - **Multi-Format Support**: Enhanced processing for Gemini-compatible formats (PDFs, images, Word docs, CSVs, Excel, text files).
