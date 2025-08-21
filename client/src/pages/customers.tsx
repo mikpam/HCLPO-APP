@@ -198,6 +198,32 @@ export default function CustomersPage() {
     return () => clearTimeout(timer);
   }, [searchTerm, debouncedSearchTerm]);
 
+  // Fetch customer stats
+  const { data: stats, isLoading: statsLoading } = useQuery<{
+    total: number;
+    active: number;
+    inactive: number;
+    filtered: number;
+  }>({
+    queryKey: ["/api/customers/stats", debouncedSearchTerm, statusFilter],
+    queryFn: async () => {
+      const params = new URLSearchParams({
+        status: statusFilter,
+      });
+      
+      if (debouncedSearchTerm) {
+        params.append('search', debouncedSearchTerm);
+      }
+      
+      const response = await fetch(`/api/customers/stats?${params}`);
+      if (!response.ok) {
+        throw new Error("Failed to fetch customer stats");
+      }
+      return response.json();
+    },
+  });
+
+  // Fetch customers for display
   const { data: customers = [], isLoading, error } = useQuery<CustomerApiResponse[]>({
     queryKey: ["/api/customers", currentPage, debouncedSearchTerm, statusFilter],
     queryFn: async () => {
@@ -270,7 +296,7 @@ export default function CustomersPage() {
               <div>
                 <p className="text-sm font-medium text-gray-600">Total Customers</p>
                 <p className="text-2xl font-bold">
-                  {isLoading ? "..." : customers.length.toLocaleString()}
+                  {statsLoading ? "..." : (stats?.total || 0).toLocaleString()}
                 </p>
               </div>
               <Users className="h-8 w-8 text-blue-600" />
@@ -284,7 +310,7 @@ export default function CustomersPage() {
               <div>
                 <p className="text-sm font-medium text-gray-600">Active Customers</p>
                 <p className="text-2xl font-bold">
-                  {isLoading ? "..." : customers.filter(c => c.is_active).length.toLocaleString()}
+                  {statsLoading ? "..." : (stats?.active || 0).toLocaleString()}
                 </p>
               </div>
               <Building2 className="h-8 w-8 text-green-600" />
@@ -296,9 +322,9 @@ export default function CustomersPage() {
           <CardContent className="p-4">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm font-medium text-gray-600">Filtered Results</p>
+                <p className="text-sm font-medium text-gray-600">Search Results</p>
                 <p className="text-2xl font-bold">
-                  {isLoading ? "..." : customers.length.toLocaleString()}
+                  {statsLoading ? "..." : (stats?.filtered || 0).toLocaleString()}
                 </p>
               </div>
               <Filter className="h-8 w-8 text-orange-600" />
@@ -344,7 +370,10 @@ export default function CustomersPage() {
           <CardTitle className="flex items-center justify-between">
             <span>Customer Directory</span>
             <span className="text-sm font-normal text-gray-500">
-              Showing {customers.length} customers (page {currentPage})
+              {debouncedSearchTerm || statusFilter !== "all" 
+                ? `Showing ${customers.length} of ${stats?.filtered || 0} filtered results`
+                : `Showing ${customers.length} of ${stats?.total || 0} customers (page ${currentPage})`
+              }
             </span>
           </CardTitle>
         </CardHeader>

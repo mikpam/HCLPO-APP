@@ -6,6 +6,79 @@ import { eq, or, ilike, sql, and } from "drizzle-orm";
 import { z } from "zod";
 
 export function registerCustomerRoutes(app: Express): void {
+  // Get customer statistics/counts
+  app.get("/api/customers/stats", async (req, res) => {
+    try {
+      const search = req.query.search as string;
+      const status = req.query.status as string; // "all", "active", "inactive"
+
+      // Get global totals (always shows overall database stats)
+      const totalResult = await db
+        .select({
+          count: sql<number>`count(*)::int`
+        })
+        .from(customers);
+      
+      const total = totalResult[0]?.count || 0;
+
+      const activeResult = await db
+        .select({
+          count: sql<number>`count(*)::int`
+        })
+        .from(customers)
+        .where(eq(customers.isActive, true));
+      
+      const active = activeResult[0]?.count || 0;
+
+      // Get filtered count (based on current search/filter)
+      let filteredQuery = db
+        .select({
+          count: sql<number>`count(*)::int`
+        })
+        .from(customers);
+
+      // Build where conditions for filtered count
+      let whereCondition: any = undefined;
+
+      // Add search filtering if search parameter provided
+      if (search && search.trim()) {
+        const searchTerm = `%${search.trim()}%`;
+        const searchCondition = or(
+          ilike(customers.companyName, searchTerm),
+          ilike(customers.email, searchTerm),
+          sql`${customers.alternateNames}::text ILIKE ${searchTerm}`
+        );
+        whereCondition = whereCondition ? and(whereCondition, searchCondition) : searchCondition;
+      }
+
+      // Add status filtering
+      if (status && status !== "all") {
+        const statusCondition = status === "active" 
+          ? eq(customers.isActive, true)
+          : eq(customers.isActive, false);
+        whereCondition = whereCondition ? and(whereCondition, statusCondition) : statusCondition;
+      }
+
+      // Apply where condition if it exists
+      if (whereCondition) {
+        filteredQuery = filteredQuery.where(whereCondition);
+      }
+
+      const filteredResult = await filteredQuery;
+      const filtered = filteredResult[0]?.count || 0;
+
+      res.json({
+        total,        // Always shows global total
+        active,       // Always shows global active count
+        inactive: total - active,  // Always shows global inactive count
+        filtered      // Shows count for current search/filter
+      });
+    } catch (error) {
+      console.error("Error fetching customer stats:", error);
+      res.status(500).json({ error: "Failed to fetch customer stats" });
+    }
+  });
+
   // Get all customers (with optional pagination)
   app.get("/api/customers", async (req, res) => {
     try {
