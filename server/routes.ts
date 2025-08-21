@@ -1343,6 +1343,24 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Company cross-reference analysis endpoint
+  // Enhanced Company Analysis route
+  app.post("/api/analysis/enhanced-analysis", async (req, res) => {
+    try {
+      console.log('\n🤖 ENHANCED COMPANY ANALYSIS: Starting OpenAI-powered analysis...');
+      
+      const { enhancedCompanyAnalysis } = await import('./routes/enhanced-company-analysis');
+      const result = await enhancedCompanyAnalysis();
+      
+      res.json(result);
+    } catch (error) {
+      console.error('❌ Enhanced analysis failed:', error);
+      res.status(500).json({ 
+        error: 'Failed to perform enhanced analysis',
+        details: error instanceof Error ? error.message : 'Unknown error'
+      });
+    }
+  });
+
   app.get("/api/analysis/company-crossref", async (req, res) => {
     try {
       console.log("🔍 COMPANY CROSS-REFERENCE: Starting analysis...");

@@ -66,7 +66,7 @@ export default function CompanyAnalysisPage() {
   });
 
   const enhancedAnalysisMutation = useMutation({
-    mutationFn: () => apiRequest('/api/analysis/enhanced-analysis', { method: 'POST' }),
+    mutationFn: () => apiRequest('/api/analysis/enhanced-analysis', 'POST'),
     onSuccess: (data) => {
       setShowEnhancedResults(true);
       queryClient.setQueryData(['enhanced-analysis'], data);
