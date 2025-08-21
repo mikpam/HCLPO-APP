@@ -275,7 +275,7 @@ export class GeminiService {
 
   async filterDocumentType(documentBuffer: Buffer, filename: string): Promise<{ document_type: "purchase order" | "not a purchase order" }> {
     try {
-      console.log(`🔍 AI DOCUMENT FILTER: Analyzing ${filename} to determine if it's a purchase order`);
+      console.log(`🔍 GEMINI 2.5 FLASH FILTER: Analyzing ${filename} to determine if it's a purchase order`);
 
       // Convert document buffer to base64 and get MIME type
       const base64Data = documentBuffer.toString('base64');
@@ -335,7 +335,7 @@ Output *only* the following JSON object, with no other text, comments, or explan
       ];
 
       const response = await ai.models.generateContent({
-        model: "gemini-2.5-pro",
+        model: "gemini-2.5-flash",
         contents: contents,
       });
 
