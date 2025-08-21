@@ -150,7 +150,7 @@ async function processEmailWithValidationSystem() {
     console.log(`   └─ From: ${messageToProcess.sender}`);
     console.log(`   └─ Attachments: ${messageToProcess.attachments.length}`);
 
-    const result = await processEmailThroughValidationSystem(messageToProcess, updateProcessingStatus);
+    const result = await processEmailThroughValidationSystem(messageToProcess, updateProcessingStatus, queueReservation);
     
     // Release processing lock after successful completion
     releaseProcessingLock({
@@ -180,7 +180,7 @@ async function processEmailWithValidationSystem() {
 }
 
 // Helper function to process email through complete validation system
-async function processEmailThroughValidationSystem(messageToProcess: any, updateProcessingStatus: Function) {
+async function processEmailThroughValidationSystem(messageToProcess: any, updateProcessingStatus: Function, queueItem: any) {
   updateProcessingStatus({
     currentStep: "forwarded_email_check",
     currentEmail: `Checking forwarded email: ${messageToProcess.subject}`,
@@ -1154,9 +1154,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
       };
       
-      // Start polling every 2 minutes (120000ms)
-      setInterval(pollEmails, 120000);
-      console.log('✅ Lightweight email polling started (every 2 minutes)');
+      // Automatic polling disabled
+      // setInterval(pollEmails, 120000);
+      console.log('📧 Automatic polling disabled - manual processing only');
       
     } catch (error) {
       console.error('❌ Failed to start email polling:', error);
