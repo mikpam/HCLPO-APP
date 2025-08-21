@@ -32,7 +32,7 @@ export class ValidatorHealthService {
   private static instance: ValidatorHealthService;
   private healthData: Map<string, ValidatorHealthStatus> = new Map();
   private readonly maxConsecutiveFailures = 3;
-  private readonly healthCheckInterval = 30000; // 30 seconds
+  private readonly healthCheckInterval = 600000; // 10 minutes
   private healthCheckTimer?: NodeJS.Timeout;
   private healthChecksPaused = false; // NEW: Support for pausing during email processing
 

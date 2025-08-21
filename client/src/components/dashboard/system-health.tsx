@@ -5,12 +5,12 @@ import { Button } from "@/components/ui/button";
 export default function SystemHealth() {
   const { data: systemHealth, isLoading: healthLoading } = useQuery<SystemHealthItem[]>({
     queryKey: ["/api/system/health"],
-    refetchInterval: 30000 // Refresh every 30 seconds
+    refetchInterval: 600000 // Refresh every 10 minutes
   });
 
   const { data: queueStatus, isLoading: queueLoading } = useQuery<ProcessingQueueStatus>({
     queryKey: ["/api/processing/queue-status"],
-    refetchInterval: 30000
+    refetchInterval: 600000 // Refresh every 10 minutes
   });
 
   const getStatusColor = (status: string) => {
