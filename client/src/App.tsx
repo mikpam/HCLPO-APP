@@ -16,7 +16,6 @@ import FileManagementPage from "@/pages/file-management";
 import CustomersPage from "@/pages/customers";
 import ContactsPage from "@/pages/contacts";
 import ItemsPage from "@/pages/items";
-import CompanyAnalysisPage from "@/pages/company-analysis";
 import Sidebar from "@/components/layout/sidebar";
 import { SidebarProvider, useLayoutSidebar } from "@/contexts/sidebar-context";
 
@@ -41,7 +40,6 @@ function Router() {
           <Route path="/customers" component={CustomersPage} />
           <Route path="/contacts" component={ContactsPage} />
           <Route path="/items" component={ItemsPage} />
-          <Route path="/company-analysis" component={CompanyAnalysisPage} />
           <Route component={NotFound} />
         </Switch>
       </main>
