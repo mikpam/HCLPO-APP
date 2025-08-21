@@ -128,15 +128,39 @@ async function processEmailWithValidationSystem() {
     
     // 🔒 IMMEDIATE QUEUE RESERVATION: Create email queue record immediately to prevent race conditions
     console.log(`   🔒 ATOMIC LOCK: Creating queue record to prevent duplicate processing...`);
-    const queueReservation = await storage.createEmailQueueItem({
-      gmailId: messageToProcess.id,
-      sender: messageToProcess.sender,
-      subject: messageToProcess.subject,
-      body: messageToProcess.body,
-      attachments: messageToProcess.attachments,
-      labels: messageToProcess.labels,
-      status: 'processing'
-    });
+    
+    let queueReservation;
+    try {
+      queueReservation = await storage.createEmailQueueItem({
+        gmailId: messageToProcess.id,
+        sender: messageToProcess.sender,
+        subject: messageToProcess.subject,
+        body: messageToProcess.body,
+        attachments: messageToProcess.attachments,
+        labels: messageToProcess.labels,
+        status: 'processing'
+      });
+      
+      // If we successfully created the queue item, we have the lock
+      console.log(`   ✅ Queue lock acquired for Gmail message ${messageToProcess.id}`);
+    } catch (queueError) {
+      // If we can't create the queue item, it likely already exists (race condition)
+      console.log(`   ⚠️ RACE CONDITION DETECTED: Another process is already handling Gmail message ${messageToProcess.id}`);
+      
+      releaseProcessingLock({
+        currentStep: "completed",
+        currentEmail: `Race condition detected - email being processed elsewhere`
+      });
+      
+      return {
+        message: "Email already being processed by another instance",
+        processed: 0,
+        details: {
+          emailId: messageToProcess.id,
+          reason: "race_condition_detected"
+        }
+      };
+    }
 
     // Start processing this email (lock already acquired)
     updateProcessingStatus({
@@ -1286,8 +1310,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       console.log('📧 Starting lightweight email polling...');
       
-      // Create a simple polling function that checks for new emails every 2 minutes
+      // Track if polling is in progress to prevent overlapping runs
+      let isPollingInProgress = false;
+      
+      // Create a simple polling function that checks for new emails every minute
       const pollEmails = async () => {
+        // Skip if previous polling is still running
+        if (isPollingInProgress) {
+          console.log('📧 Auto-polling: Previous polling still in progress - skipping this cycle');
+          return;
+        }
+        
+        isPollingInProgress = true;
+        
         try {
           console.log('📧 Auto-polling: Checking for new emails...');
           
@@ -1301,6 +1336,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
           if (!lockAcquired) {
             console.log('📧 Auto-polling: System busy processing - will try again in 1 minute');
+            isPollingInProgress = false;
             return; // Another process is running, skip this cycle
           }
           
@@ -1317,9 +1353,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
               currentStep: "error",
               currentEmail: `Auto-polling error: ${(error as Error).message}`
             });
+          } finally {
+            isPollingInProgress = false;
           }
         } catch (error) {
           console.log('📧 Auto-polling: System error or no new emails');
+          isPollingInProgress = false;
         }
       };
       
