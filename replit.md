@@ -3,6 +3,13 @@
 ## Overview
 This full-stack web application automates purchase order processing from email sources, integrating with external services to manage the workflow from ingestion to sales order creation. The system provides a dashboard for monitoring and management, aiming to streamline operations and enhance efficiency in handling purchase orders. The business vision is to provide a robust, automated solution for managing the entire purchase order lifecycle, significantly reducing manual effort and improving data accuracy. This system has high market potential for businesses dealing with large volumes of email-based purchase orders, offering a competitive advantage through operational efficiency and enhanced data management. The project ambition is to become a leading solution in automated PO processing, continuously integrating advanced AI and robust ERP capabilities.
 
+## Recent Changes (August 21, 2025)
+- **Company Analysis Removal**: Completely removed all company analysis functionality, including:
+  - `/api/analysis/company-crossref` and `/api/analysis/missing-companies/download` endpoints
+  - Enhanced company analysis module and related imports
+  - Frontend company analysis page and navigation
+  - System now runs cleanly without company analysis tools
+
 ## User Preferences
 Preferred communication style: Simple, everyday language.
 UI Design Priority: Mobile-responsive design is now required across all pages. Users need the system to work well on both desktop and mobile devices.
