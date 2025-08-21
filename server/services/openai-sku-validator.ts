@@ -323,35 +323,55 @@ ${JSON.stringify(lineItems, null, 2)}`;
       
       const validatedItems = JSON.parse(cleanContent) as ValidatedLineItem[];
       
-      // CRITICAL: Re-match validated items to original items by SKU to prevent order-based confusion
-      // The OpenAI may return items in different order, causing finalSKU misalignment
+      // CRITICAL: Match validated items to original items by INDEX POSITION to prevent finalSKU misalignment  
+      // The AI is instructed to return items in the same order, so index-based matching is more reliable
       const correctedItems: ValidatedLineItem[] = [];
       
-      for (const original of lineItems) {
-        // Find the validated item that corresponds to this original item
-        const matchedValidated = validatedItems.find(v => 
-          v.sku === original.sku || 
-          (v.sku && original.sku && v.sku.toUpperCase() === original.sku.toUpperCase())
-        );
+      for (let i = 0; i < lineItems.length; i++) {
+        const original = lineItems[i];
+        const validated = validatedItems[i]; // Match by position, not SKU
         
-        if (matchedValidated) {
-          // Ensure quantities match exactly 
-          matchedValidated.quantity = original.quantity;
+        if (validated) {
+          // Preserve original data that should never change
+          validated.sku = original.sku || '';
+          validated.description = original.description;
+          validated.itemColor = original.itemColor || '';
+          validated.quantity = original.quantity; // CRITICAL: Force exact quantity match
+          validated.unitPrice = original.unitPrice;
+          validated.totalPrice = original.totalPrice;
+          validated.imprintColor = original.imprintColor;
           
-          // If this is a charge code with high quantity, it's wrong
-          if (this.chargeCodebook.has(matchedValidated.finalSKU) && matchedValidated.quantity > 10) {
-            console.warn(`   ⚠️ DATA INTEGRITY: Charge code ${matchedValidated.finalSKU} assigned qty ${matchedValidated.quantity} - correcting`);
-            // Use the original SKU for high quantities
+          // Data integrity check: Charge codes should typically have low quantities
+          if (this.chargeCodebook.has(validated.finalSKU) && validated.quantity > 10) {
+            console.warn(`   ⚠️ DATA INTEGRITY: Charge code ${validated.finalSKU} assigned qty ${validated.quantity} - likely swapped`);
+            
+            // Look for a product SKU that makes sense for this quantity
             if (original.sku && !this.chargeCodebook.has(original.sku.toUpperCase())) {
-              matchedValidated.finalSKU = original.sku.toUpperCase();
-              console.log(`   🔧 CORRECTED: ${original.sku} (qty ${original.quantity}) keeps its original SKU`);
+              console.log(`   🔧 CORRECTED: High qty item should use original SKU ${original.sku} instead of charge code`);
+              validated.finalSKU = original.sku.toUpperCase();
             }
           }
           
-          correctedItems.push(matchedValidated);
+          // Product SKUs with quantity 1 might be swapped charge codes
+          if (!this.chargeCodebook.has(validated.finalSKU) && validated.quantity === 1 && validated.finalSKU !== 'PROOF') {
+            // Check if this might be a setup/charge item based on description
+            const desc = original.description.toLowerCase();
+            if (desc.includes('setup') || desc.includes('artwork') || desc.includes('proof')) {
+              console.log(`   🔧 LOW QTY CHECK: Item with qty=1 and setup-like description might need charge code`);
+              if (desc.includes('setup') && !desc.includes('proof')) {
+                validated.finalSKU = 'SETUP';
+                console.log(`   🔧 CORRECTED: Setup item assigned SETUP charge code`);
+              } else if (desc.includes('proof')) {
+                validated.finalSKU = 'PROOF';
+                console.log(`   🔧 CORRECTED: Proof item assigned PROOF charge code`);
+              }
+            }
+          }
+          
+          correctedItems.push(validated);
         } else {
-          // If no match found, create a fallback item preserving original data
-          console.warn(`   ⚠️ No validated match found for SKU: ${original.sku}, creating fallback`);
+          // If AI returned fewer items than input, create fallback
+          console.warn(`   ⚠️ AI returned fewer items than input, creating fallback for position ${i}`);
           correctedItems.push({
             sku: original.sku || '',
             description: original.description,
@@ -362,7 +382,7 @@ ${JSON.stringify(lineItems, null, 2)}`;
             imprintColor: original.imprintColor,
             finalSKU: original.sku?.toUpperCase() || 'OE-MISC-ITEM',
             isValidSKU: false,
-            validationNotes: 'No AI match found, using original SKU'
+            validationNotes: 'AI validation incomplete, using original SKU'
           });
         }
       }
