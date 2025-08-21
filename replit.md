@@ -4,6 +4,16 @@
 This full-stack web application automates purchase order processing from email sources, integrating with external services to manage the workflow from ingestion to sales order creation. The system provides a dashboard for monitoring and management, aiming to streamline operations and enhance efficiency in handling purchase orders. The business vision is to provide a robust, automated solution for managing the entire purchase order lifecycle, significantly reducing manual effort and improving data accuracy. This system has high market potential for businesses dealing with large volumes of email-based purchase orders, offering a competitive advantage through operational efficiency and enhanced data management. The project ambition is to become a leading solution in automated PO processing, continuously integrating advanced AI and robust ERP capabilities.
 
 ## Recent Changes (August 21, 2025)
+- **🔥 ARTWORK FILE FILTERING ENHANCED**: Strengthened filtering to prevent artwork files from being processed as POs
+  - **Filename-Based Detection**: Enhanced patterns catch generic files like "image.png", "artwork.pdf", "logo.jpg"
+  - **AI Document Filter Stricter**: Now rejects artwork/logo/design files even with business text content
+  - **Two-Layer Protection**: Filename filtering + AI analysis prevents artwork files reaching Gemini extraction
+  - **Data Integrity**: Eliminates processing of logo/artwork files that create empty POs with no line items
+- **🔥 SKU QUANTITY PRESERVATION**: Fixed root cause of SKU/finalSKU quantity misalignment
+  - **OpenAI Prompt Enhanced**: Explicit instructions to preserve exact quantities and maintain order
+  - **SKU-Based Matching**: Re-match validated items to originals by SKU rather than array position
+  - **Data Integrity Checks**: Automatic correction if charge codes get assigned to high quantities
+  - **Eliminated Swapping**: No more SETUP charges assigned to product quantities or vice versa
 - **🔥 STUCK PROCESS PREVENTION & RECOVERY**: Comprehensive system to prevent and recover stuck POs
   - **Extraction Status Fix**: POs now transition from "extracting" → "pending_validation" immediately after Gemini extraction completes
   - **Timeout Detection**: Automatic detection of stuck POs in transitional states (extracting, pending_validation, validating, processing, importing)

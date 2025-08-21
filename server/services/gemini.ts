@@ -294,11 +294,13 @@ export class GeminiService {
 - References a vendor/supplier and buyer/customer
 - Contains any order number or reference number
 
-**ONLY REJECT as "not a purchase order" if document is CLEARLY and EXCLUSIVELY:**
-- PURE artwork/logo file with NO text or order information
-- PURE invoice asking for payment on already delivered items
+**REJECT as "not a purchase order" if document is:**
+- Artwork/logo/design file (even with business text) - check for design elements, graphics, logos
+- Image files that are primarily visual/graphical without structured order data
+- PURE invoice asking for payment on already delivered items  
 - PURE shipping label or tracking info for already shipped packages
 - PURE marketing material or catalog with no specific order
+- Files with "artwork", "logo", "design", "proof" in filename or prominent content
 
 **SCORING (BE LENIENT - Need only 2 of these):**
 1. Any reference number (PO#, order#, reference#, etc.)
