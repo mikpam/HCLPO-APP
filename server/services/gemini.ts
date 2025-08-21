@@ -376,6 +376,159 @@ Output *only* the following JSON object, with no other text, comments, or explan
     }
   }
 
+  // 🛡️ REPROCESSING METHOD: Enhanced line item extraction with focused prompts
+  async reprocessDocumentForLineItems(documentBuffer: Buffer, filename: string, retryCount: number): Promise<any> {
+    try {
+      console.log(`🔄 REPROCESSING ATTEMPT ${retryCount}: Enhanced line item extraction for ${filename}`);
+      
+      const base64Data = documentBuffer.toString('base64');
+      const mimeType = this.getMimeTypeFromFilename(filename);
+      
+      // Enhanced prompt specifically focused on line item extraction
+      const enhancedPrompt = `🚨 CRITICAL: This document was identified as a PURCHASE ORDER but NO LINE ITEMS were extracted in the previous attempt.
+
+ENHANCED LINE ITEM EXTRACTION FOCUS:
+Please carefully examine this document again and extract ALL line items with EXTREME attention to detail.
+
+Look for:
+- Product codes, SKUs, item numbers (might be alphanumeric combinations)
+- Product descriptions (even if abbreviated or unclear)
+- Quantities (numbers followed by "each", "ea", "pcs", etc.)
+- Unit prices, total prices
+- Color specifications
+- Any item-related charges (setup, artwork, rush, additional colors)
+
+Common line item patterns to look for:
+- Tables with rows of items
+- Lists with bullets or numbers
+- Item codes followed by descriptions
+- Quantity and price columns
+- Setup charges, artwork fees, rush charges as separate line items
+
+REQUIRED JSON SCHEMA - Return ONLY this structure:
+{
+  "purchaseOrder": {
+    "purchaseOrderNumber": "",
+    "orderDate": "",
+    "inHandsDate": "", 
+    "requiredShipDate": "",
+    "customer": {
+      "customerNumber": "",
+      "company": "",
+      "firstName": "",
+      "lastName": "",
+      "email": "",
+      "address1": "",
+      "address2": "",
+      "city": "",
+      "state": "",
+      "country": "",
+      "zipCode": "",
+      "phone": ""
+    },
+    "ppaiNumber": "",
+    "asiNumber": "",
+    "salesPersonName": "",
+    "salesPersonEmail": "",
+    "contact": {
+      "name": "",
+      "jobTitle": "", 
+      "email": "",
+      "phone": ""
+    },
+    "vendor": {
+      "name": "",
+      "address1": "",
+      "address2": "",
+      "city": "",
+      "state": "",
+      "country": "",
+      "zipCode": "",
+      "phone": "",
+      "email": ""
+    },
+    "shipTo": {
+      "name": "",
+      "company": "",
+      "address1": "",
+      "address2": "",
+      "city": "",
+      "state": "",
+      "country": "",
+      "zipCode": ""
+    },
+    "shippingMethod": "",
+    "shippingCarrier": ""
+  },
+  "lineItems": [
+    {
+      "sku": "",
+      "itemColor": "",
+      "imprintColor": "",
+      "description": "",
+      "quantity": 0,
+      "unitPrice": 0.00,
+      "totalPrice": 0.00,
+      "finalSKU": ""
+    }
+  ],
+  "subtotals": {
+    "merchandiseSubtotal": 0.00,
+    "additionalChargesSubtotal": 0.00,
+    "grandTotal": 0.00
+  },
+  "specialInstructions": "",
+  "additionalNotes": ["Reprocessed for line item extraction - attempt ${retryCount}"]
+}
+
+CRITICAL: Focus intensely on finding and extracting ALL line items from this purchase order document.`;
+
+      const response = await this.ai.models.generateContent({
+        model: "gemini-2.5-pro",
+        config: {
+          systemInstruction: "You are an expert purchase order line item extraction specialist. Your primary goal is to find and extract ALL line items from purchase order documents. Focus intensely on identifying products, SKUs, quantities, and prices. Return only valid JSON without markdown formatting.",
+          responseMimeType: "application/json"
+        },
+        contents: [
+          {
+            role: "user",
+            parts: [
+              { text: enhancedPrompt },
+              {
+                inlineData: {
+                  data: base64Data,
+                  mimeType: mimeType
+                }
+              }
+            ]
+          }
+        ],
+      });
+
+      const rawJson = response.text;
+      if (rawJson) {
+        const result = JSON.parse(rawJson);
+        const processedResult = this.replaceNullsWithEmptyStrings(result);
+        
+        // Log the reprocessing result
+        const itemCount = processedResult.lineItems ? processedResult.lineItems.length : 0;
+        console.log(`🔄 REPROCESSING RESULT: Found ${itemCount} line items on attempt ${retryCount}`);
+        
+        return processedResult;
+      } else {
+        throw new Error("Empty response from Gemini during reprocessing");
+      }
+      
+    } catch (error) {
+      console.error(`❌ REPROCESSING FAILED (attempt ${retryCount}):`, error);
+      // Return original extraction result with error note
+      return {
+        lineItems: [],
+        additionalNotes: [`Reprocessing failed on attempt ${retryCount}: ${error instanceof Error ? error.message : 'Unknown error'}`]
+      };
+    }
+  }
+
   async extractPODataFromText(subject: string, body: string, fromAddress: string): Promise<any> {
     try {
       console.log(`Processing email text with Gemini for TEXT_PO extraction`);
@@ -549,7 +702,7 @@ ColorCode Map:
     }
   }
 
-  async extractPODataFromPDF(documentBuffer: Buffer, filename: string): Promise<any> {
+  async extractPODataFromPDF(documentBuffer: Buffer, filename: string, retryCount: number = 0): Promise<any> {
     try {
       console.log(`Processing document with Gemini: ${filename} (${documentBuffer.length} bytes)`);
 
@@ -683,7 +836,23 @@ Processing Rules:
       if (rawJson) {
         const result = JSON.parse(rawJson);
         // Replace any null values with empty strings as per user requirements
-        return this.replaceNullsWithEmptyStrings(result);
+        const processedResult = this.replaceNullsWithEmptyStrings(result);
+        
+        // 🛡️ GUARDRAIL: Check if line items are empty and reprocess (max 2 attempts)
+        if ((!processedResult.lineItems || processedResult.lineItems.length === 0) && retryCount < 2) {
+          console.log(`⚠️  GUARDRAIL TRIGGERED: No line items extracted from ${filename} - attempting reprocessing (attempt ${retryCount + 1}/2)...`);
+          return await this.reprocessDocumentForLineItems(documentBuffer, filename, retryCount + 1);
+        }
+        
+        // If still no line items after retries, log and return
+        if (!processedResult.lineItems || processedResult.lineItems.length === 0) {
+          console.log(`❌ FINAL RESULT: No line items found after ${retryCount + 1} attempts for ${filename}`);
+          // Add note to indicate extraction failed
+          if (!processedResult.additionalNotes) processedResult.additionalNotes = [];
+          processedResult.additionalNotes.push(`Line item extraction failed after ${retryCount + 1} attempts`);
+        }
+        
+        return processedResult;
       } else {
         throw new Error("Empty response from Gemini");
       }
