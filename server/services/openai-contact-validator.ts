@@ -253,6 +253,67 @@ ${JSON.stringify(relevantContacts, null, 2)}`;
     }
   }
 
+  private async vectorSearchContact(input: ContactInput): Promise<ValidatedContact | null> {
+    try {
+      // Create query text from available data
+      const queryText = [
+        input.extractedData?.purchaseOrder?.contact?.name,
+        input.extractedData?.purchaseOrder?.contact?.email,
+        input.extractedData?.purchaseOrder?.customer?.company,
+        input.senderName,
+        input.senderEmail
+      ].filter(Boolean).join(' ');
+      
+      if (!queryText) return null;
+      
+      console.log(`   📝 Vector search query: "${queryText}"`);
+      
+      // Generate embedding
+      const embeddingResponse = await this.openai.embeddings.create({
+        model: "text-embedding-3-small",
+        input: queryText
+      });
+      
+      const queryEmbedding = embeddingResponse.data[0].embedding;
+      
+      // Search for similar contacts
+      const vectorMatches = await db.execute(sql`
+        WITH params AS (
+          SELECT CAST(${JSON.stringify(queryEmbedding)}::text AS vector(1536)) AS q
+        )
+        SELECT
+          c.id, c.name, c.email, c.phone, c.role,
+          1 - (c.contact_embedding <=> p.q) AS cosine_sim
+        FROM contacts c, params p
+        WHERE c.contact_embedding IS NOT NULL
+          AND c.inactive = false
+          AND (1 - (c.contact_embedding <=> p.q)) > 0.85
+        ORDER BY c.contact_embedding <=> p.q
+        LIMIT 1
+      `);
+      
+      if (vectorMatches.rows.length > 0) {
+        const match = vectorMatches.rows[0];
+        console.log(`   ✅ VECTOR MATCH: Found contact with similarity ${match.cosine_sim}`);
+        return {
+          name: match.name as string || '',
+          email: match.email as string || '',
+          phone: match.phone as string || '',
+          role: match.role as string || 'Unknown',
+          matched_contact_id: match.id as string,
+          match_method: 'VECTOR_SEARCH' as any,
+          confidence: parseFloat(match.cosine_sim as string),
+          evidence: [`Vector similarity: ${(parseFloat(match.cosine_sim as string) * 100).toFixed(1)}%`]
+        };
+      }
+      
+      return null;
+    } catch (error) {
+      console.error('Vector search failed:', error);
+      return null;
+    }
+  }
+
   private fallbackContactResolution(input: ContactInput): ValidatedContact {
     // Simple fallback logic when OpenAI fails
     if (input.senderEmail) {
@@ -331,8 +392,15 @@ ${JSON.stringify(relevantContacts, null, 2)}`;
         }
       }
       
-      // STEP 3: If no exact match, then use AI validation
-      console.log(`   🤖 No exact DB match, proceeding to AI validation...`);
+      // STEP 3: Try vector search before AI
+      console.log(`   🔮 No exact DB match, trying vector search...`);
+      const vectorMatch = await this.vectorSearchContact(input);
+      if (vectorMatch) {
+        return vectorMatch;
+      }
+      
+      // STEP 4: If no vector match, then use AI validation
+      console.log(`   🤖 No vector match, proceeding to AI validation...`);
       const validatedContact = await this.validateWithOpenAI(input);
       
       console.log(`✅ Contact validated: ${validatedContact.name} <${validatedContact.email}>`);

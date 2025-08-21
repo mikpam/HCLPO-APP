@@ -61,6 +61,57 @@ export class OpenAISKUValidatorService {
     this.chargeCodebook.set('OE-MISC-ITEM', 'Unknown products');
   }
 
+  private async vectorSearchItem(item: LineItem): Promise<ValidatedLineItem | null> {
+    try {
+      const queryText = [item.sku, item.description].filter(Boolean).join(' ');
+      if (!queryText) return null;
+      
+      // Generate embedding
+      const embeddingResponse = await this.openai.embeddings.create({
+        model: "text-embedding-3-small",
+        input: queryText
+      });
+      
+      const queryEmbedding = embeddingResponse.data[0].embedding;
+      
+      // Search for similar items
+      const vectorMatches = await db.execute(sql`
+        WITH params AS (
+          SELECT CAST(${JSON.stringify(queryEmbedding)}::text AS vector(1536)) AS q
+        )
+        SELECT
+          i.final_sku, i.display_name, i.description,
+          1 - (i.item_embedding <=> p.q) AS cosine_sim
+        FROM items i, params p
+        WHERE i.item_embedding IS NOT NULL
+          AND i.is_active = true
+          AND (1 - (i.item_embedding <=> p.q)) > 0.85
+        ORDER BY i.item_embedding <=> p.q
+        LIMIT 1
+      `);
+      
+      if (vectorMatches.rows.length > 0) {
+        const match = vectorMatches.rows[0];
+        console.log(`   ✅ VECTOR MATCH: ${item.sku} → ${match.final_sku} (similarity: ${match.cosine_sim})`);
+        return {
+          sku: item.sku || '',
+          description: item.description || match.description as string || '',
+          itemColor: item.itemColor || '',
+          quantity: item.quantity || 1,
+          finalSKU: match.final_sku as string,
+          productName: match.display_name as string,
+          isValidSKU: true,
+          validationNotes: `Vector match (${(parseFloat(match.cosine_sim as string) * 100).toFixed(1)}% similarity)`
+        };
+      }
+      
+      return null;
+    } catch (error) {
+      console.error('Vector search failed for item:', error);
+      return null;
+    }
+  }
+
   private async loadItemsCache(): Promise<void> {
     const now = Date.now();
     if (now - this.lastCacheUpdate < this.CACHE_TTL && this.itemsCache.size() > 0) {
@@ -353,25 +404,41 @@ ${JSON.stringify(lineItems, null, 2)}`;
       }
     }
     
-    // Use AI for remaining items
+    // Try vector search for remaining items
     if (needsAIValidation.length > 0) {
-      console.log(`   🤖 ${needsAIValidation.length} items need AI validation...`);
-      try {
-        const aiValidated = await this.validateWithOpenAI(needsAIValidation);
-        hybridValidated.push(...aiValidated);
-      } catch (error) {
-        console.error('OpenAI SKU validation failed:', error);
-        // Fallback for AI failure
-        for (const item of needsAIValidation) {
-          hybridValidated.push({
-            sku: item.sku || '',
-            description: item.description || '',
-            itemColor: item.itemColor || '',
-            quantity: item.quantity || 1,
-            finalSKU: item.finalSKU || item.sku || 'UNKNOWN',
-            isValidSKU: false,
-            validationNotes: 'AI validation failed'
-          });
+      console.log(`   🔮 ${needsAIValidation.length} items need validation...`);
+      
+      // Try vector search first
+      const stillNeedsAI: LineItem[] = [];
+      for (const item of needsAIValidation) {
+        const vectorMatch = await this.vectorSearchItem(item);
+        if (vectorMatch) {
+          hybridValidated.push(vectorMatch);
+        } else {
+          stillNeedsAI.push(item);
+        }
+      }
+      
+      // Use AI for remaining items
+      if (stillNeedsAI.length > 0) {
+        console.log(`   🤖 ${stillNeedsAI.length} items need AI validation...`);
+        try {
+          const aiValidated = await this.validateWithOpenAI(stillNeedsAI);
+          hybridValidated.push(...aiValidated);
+        } catch (error) {
+          console.error('OpenAI SKU validation failed:', error);
+          // Fallback for AI failure
+          for (const item of stillNeedsAI) {
+            hybridValidated.push({
+              sku: item.sku || '',
+              description: item.description || '',
+              itemColor: item.itemColor || '',
+              quantity: item.quantity || 1,
+              finalSKU: item.finalSKU || item.sku || 'UNKNOWN',
+              isValidSKU: false,
+              validationNotes: 'AI validation failed'
+            });
+          }
         }
       }
     }
