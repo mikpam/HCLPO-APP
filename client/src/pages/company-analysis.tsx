@@ -164,6 +164,20 @@ export default function CompanyAnalysisPage() {
                 <Button 
                   variant="outline" 
                   size="sm"
+                  onClick={() => {
+                    const link = document.createElement('a');
+                    link.href = '/api/analysis/missing-companies/download';
+                    link.download = `missing-companies-${new Date().toISOString().split('T')[0]}.csv`;
+                    document.body.appendChild(link);
+                    link.click();
+                    document.body.removeChild(link);
+                  }}
+                >
+                  Download CSV
+                </Button>
+                <Button 
+                  variant="outline" 
+                  size="sm"
                   onClick={() => setShowAllMissing(!showAllMissing)}
                 >
                   {showAllMissing ? 'Show Top 20' : 'Show All'}

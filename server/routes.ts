@@ -1457,6 +1457,108 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Download missing companies as CSV
+  app.get("/api/analysis/missing-companies/download", async (req, res) => {
+    try {
+      console.log(`🔍 COMPANY CROSS-REFERENCE: Starting CSV download analysis...`);
+      
+      // Get all companies from contacts database (excluding HCL internal)
+      const contactCompanies = await db
+        .select({ 
+          company: sql<string>`TRIM(${contacts.company})`,
+          contactCount: sql<number>`count(*)`
+        })
+        .from(contacts)
+        .where(
+          and(
+            isNotNull(contacts.company),
+            sql`TRIM(${contacts.company}) != ''`,
+            sql`TRIM(${contacts.company}) NOT ILIKE '%high caliber%'`, // Exclude HCL internal
+            sql`TRIM(${contacts.company}) NOT ILIKE '%hcl%'` // Exclude HCL variations
+          )
+        )
+        .groupBy(sql`TRIM(${contacts.company})`)
+        .orderBy(sql<number>`count(*) DESC`);
+
+      // Get all companies from customers database for comparison
+      const customerCompanies = await db
+        .select({ 
+          companyName: customers.companyName,
+          customerNumber: customers.customerNumber,
+          isActive: customers.isActive
+        })
+        .from(customers)
+        .where(
+          and(
+            isNotNull(customers.companyName),
+            sql`TRIM(${customers.companyName}) != ''`
+          )
+        );
+
+      // Create lookup set for faster searching
+      const customerCompanySet = new Set(
+        customerCompanies.map(c => c.companyName.toLowerCase().trim())
+      );
+
+      // Find companies from contacts that are NOT in customers database
+      const missingCompanies = [];
+
+      for (const contactCompany of contactCompanies) {
+        const companyName = contactCompany.company.toLowerCase().trim();
+        
+        // Check for exact match first
+        if (!customerCompanySet.has(companyName)) {
+          // Check for partial matches (fuzzy matching)
+          let foundMatch = false;
+          for (const customerCompany of customerCompanies) {
+            const customerName = customerCompany.companyName.toLowerCase().trim();
+            
+            // Check if either contains the other (partial matching)
+            if (companyName.includes(customerName) || customerName.includes(companyName)) {
+              foundMatch = true;
+              break;
+            }
+          }
+          
+          if (!foundMatch) {
+            missingCompanies.push({
+              company: contactCompany.company,
+              contactCount: contactCompany.contactCount
+            });
+          }
+        }
+      }
+
+      // Sort missing companies by contact count (highest first)
+      missingCompanies.sort((a, b) => b.contactCount - a.contactCount);
+
+      // Generate CSV content
+      const csvHeader = 'Company Name,Contact Count\n';
+      const csvRows = missingCompanies
+        .map(company => `"${company.company.replace(/"/g, '""')}",${company.contactCount}`)
+        .join('\n');
+      const csvContent = csvHeader + csvRows;
+
+      // Set headers for file download
+      const timestamp = new Date().toISOString().split('T')[0];
+      const filename = `missing-companies-${timestamp}.csv`;
+      
+      res.setHeader('Content-Type', 'text/csv');
+      res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+      res.setHeader('Content-Length', Buffer.byteLength(csvContent));
+      
+      console.log(`📄 Generated CSV with ${missingCompanies.length} missing companies`);
+      res.send(csvContent);
+
+    } catch (error) {
+      console.error("Error generating missing companies CSV:", error);
+      res.status(500).json({ 
+        error: "Failed to generate missing companies CSV",
+        details: error instanceof Error ? error.message : 'Unknown error'
+      });
+    }
+  });
+
   // System health
   app.get("/api/system/health", async (req, res) => {
     try {
