@@ -4,12 +4,14 @@
 This full-stack web application automates purchase order processing from email sources, integrating with external services to manage the workflow from ingestion to sales order creation. The system provides a dashboard for monitoring and management, aiming to streamline operations and enhance efficiency in handling purchase orders. The business vision is to provide a robust, automated solution for managing the entire purchase order lifecycle, significantly reducing manual effort and improving data accuracy. This system has high market potential for businesses dealing with large volumes of email-based purchase orders, offering a competitive advantage through operational efficiency and enhanced data management. The project ambition is to become a leading solution in automated PO processing, continuously integrating advanced AI and robust ERP capabilities.
 
 ## Recent Changes (August 21, 2025)
-- **🔥 SKU QUANTITY SWAPPING ISSUE RESOLVED**: Completely fixed root cause of SKU/finalSKU quantity misalignment through new validation logic
-  - **1:1 Index Mapping**: New prompt enforces strict `output[i].quantity = input[i].quantity` with no reordering, merging, or splitting
-  - **Business Rule Auto-Correction**: Automatic detection and correction of charge codes assigned to high quantities (>10) and vice versa
-  - **Quantity Lock Constraints**: Eliminated AI-driven fresh segmentation that caused quantity drift between original and validated items
-  - **Testing Verified**: Successfully tested on problematic PO aa97ddc5-9822-45c7-a8cc-e4acdef6ac77 showing complete resolution
-  - **Embedding-Powered Validation**: Maintains hybrid DB → Vector → AI approach with strict quantity preservation
+- **🔥 QUANTITY-LOCK VALIDATION FULLY IMPLEMENTED**: Complete rewrite of SKU validator with bulletproof quantity preservation
+  - **Programmatic Quantity Lock**: Quantities locked at code level - never touched by AI models
+  - **Strict Index Mapping**: New architecture preserves exact input[i] → output[i] mapping with no reordering
+  - **SKU Resolution Only**: AI only resolves finalSKUs, never touches quantities or array order
+  - **Built-in Integrity Checks**: Automatic detection of quantity drift with error throwing on violations
+  - **Swap Detection Signatures**: Pre/post validation signatures ensure no unexpected changes occur
+  - **Testing Verified**: Successfully tested on problematic PO aa97ddc5-9822-45c7-a8cc-e4acdef6ac77 - quantities perfectly preserved
+  - **Hybrid Validation Enhanced**: Maintains DB → Vector → AI approach while guaranteeing quantity integrity
 - **🔥 ARTWORK FILE FILTERING ENHANCED**: Strengthened filtering to prevent artwork files from being processed as POs
   - **Filename-Based Detection**: Enhanced patterns catch generic files like "image.png", "artwork.pdf", "logo.jpg"
   - **AI Document Filter Stricter**: Now rejects artwork/logo/design files even with business text content

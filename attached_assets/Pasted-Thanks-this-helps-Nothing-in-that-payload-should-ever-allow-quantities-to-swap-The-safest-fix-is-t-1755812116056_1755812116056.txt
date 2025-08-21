@@ -1,0 +1,129 @@
+Thanks—this helps. Nothing in that payload should ever allow quantities to swap. The safest fix is to **stop reading any model‑returned quantity** and rebuild the final array strictly from the incoming `lineItems` order + quantities.
+
+Here’s a tight, drop‑in guard you can put between Gemini and NetSuite:
+
+```ts
+type InLine = {
+  sku?: string;
+  description?: string;
+  itemColor?: string;
+  quantity: number;           // authoritative
+  finalSKU?: string;          // Gemini/LLM guess (ignore for qty)
+};
+
+type OutLine = {
+  sku: string;
+  description: string;
+  itemColor: string;
+  quantity: number;           // preserved exactly
+  finalSKU: string;           // validated/normalized
+};
+
+// 1) Normalize input minimally, but LOCK index & quantity
+function normalizeIncoming(lines: InLine[]): InLine[] {
+  return lines.map((r) => ({
+    sku: (r.sku ?? "").trim(),
+    description: (r.description ?? "").trim(),
+    itemColor: (r.itemColor ?? "").trim(),
+    quantity: Number.isFinite(r.quantity) ? r.quantity : 1,
+    finalSKU: (r.finalSKU ?? "").trim(),
+  }));
+}
+
+// 2) Ask your validator (prompt/tooling) to return ONLY finalSKUs[] in order
+//    If you can't change it yet, still ignore model.quantity below.
+async function resolveFinalSkusEmbedding(lines: InLine[]): Promise<string[]> {
+  // Build the minimal projection the model needs (no quantity field!)
+  const projection = lines.map((r, i) => ({
+    i,
+    sku: r.sku,
+    description: r.description,
+    itemColor: r.itemColor,
+  }));
+
+  // Call your validator (embedding-powered) -> must return ["L151-06","SETUP", ...]
+  const finalSkus: string[] = await callEmbeddingValidator(projection);
+
+  if (finalSkus.length !== lines.length) {
+    throw new Error(`Length mismatch from validator: got ${finalSkus.length}, expected ${lines.length}`);
+  }
+  return finalSkus.map(s => (s ?? "").toUpperCase().trim());
+}
+
+// 3) Reconstruct strictly by index; QUANTITIES COME FROM INPUT ONLY
+async function validateLineItems(lines: InLine[]): Promise<OutLine[]> {
+  const src = normalizeIncoming(lines);
+  const finalSkus = await resolveFinalSkusEmbedding(src);
+
+  const out = src.map((r, i) => ({
+    sku: r.sku,
+    description: r.description,
+    itemColor: r.itemColor,
+    quantity: src[i].quantity,      // <- authoritative, never from model
+    finalSKU: finalSkus[i],
+  }));
+
+  // Guards
+  if (out.length !== src.length) throw new Error("Row count changed");
+  for (let i = 0; i < out.length; i++) {
+    if (out[i].quantity !== src[i].quantity) {
+      throw new Error(`Quantity drift at index ${i}`);
+    }
+  }
+  return out;
+}
+```
+
+### Minimal prompt update (if you can)
+
+When you call the model, send only `sku/description/itemColor` and instruct:
+
+> Return **only** a JSON array of strings, where each element is the `finalSKU` for the line at the same index as the input array. Do not include any other fields. Do not reorder, merge, or split.
+
+This makes swaps impossible because the model never handles `quantity` or structure.
+
+### Apply to your sample
+
+Input (authoritative):
+
+* Line 0: qty **250**, SKU `L151`, desc `3/4" Original Fast Track…`, color `Black`
+* Line 1: qty **1**, SKU `SET UP`, desc `…Setup Cost`
+
+Expected validator result:
+
+```json
+[
+  {
+    "sku": "L151",
+    "description": "3/4\" Original Fast Track Lanyard Size: 3/4\" W X 36\" L",
+    "itemColor": "Black",
+    "quantity": 250,
+    "finalSKU": "L151-06"        // or L151-BK depending on your color code map
+  },
+  {
+    "sku": "SET UP",
+    "description": "One Side - Step & Repeat - Hampton Lumber with Tree Stump Setup Cost",
+    "itemColor": "",
+    "quantity": 1,
+    "finalSKU": "SETUP"          // normalize “SET UP” → charge code
+  }
+]
+```
+
+### Common swap sources (outside the model)
+
+* **Sorting** anywhere (e.g., by SKU or price) before reconstruction.
+* **Reducing to a map keyed by SKU** (duplicate SKUs collapse, quantities “move”).
+* **CSV/Excel merges** (multiline descriptions coalesced) before your `lineItems` array is created.
+* **Using model output objects wholesale** (letting its `quantity` leak back in).
+
+### Quick “swap detector” to keep on
+
+```ts
+const sigBefore = lineItems.map((r,i)=>`${i}:${r.sku}|${r.quantity}`).join("||");
+const out = await validateLineItems(lineItems);
+const sigAfter  = out.map((r,i)=>`${i}:${r.sku}|${r.quantity}`).join("||");
+if (sigBefore !== sigAfter) console.warn("Swap detected", { sigBefore, sigAfter });
+```
+
+If you want, I can also give you the tiny SQL snippet for your PGvector `searchItemsByEmbedding(query,k)` and a compact tool schema so your validator step is fully deterministic.

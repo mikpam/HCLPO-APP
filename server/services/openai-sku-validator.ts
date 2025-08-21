@@ -431,211 +431,256 @@ ${JSON.stringify(lineItems, null, 2)}`;
     }
 
     console.log(`🔍 Processing ${lineItems.length} line items:`);
-    for (let i = 0; i < lineItems.length; i++) {
-      const item = lineItems[i];
-      console.log(`🔍 Processing line item ${i + 1}:`);
+    
+    // 🔐 QUANTITY LOCK: Normalize input but preserve quantities and order
+    const normalizedInput = lineItems.map((item, index) => {
+      console.log(`🔍 Processing line item ${index + 1}:`);
       console.log(`SKU: ${item.sku || 'N/A'} | Description: ${item.description || 'N/A'} | Quantity: ${item.quantity} | Color: ${item.itemColor || 'N/A'}`);
       
-      if (item.sku) {
-        // Apply simple preprocessing similar to existing logic
-        let processedSKU = item.sku.toUpperCase();
-        
-        // Handle common transformations
-        if (processedSKU === 'SET UP') {
-          processedSKU = 'SETUP';
-        }
-        if (processedSKU === 'PROOF') {
-          processedSKU = 'PROOF'; // Keep as PROOF for charge code recognition
-        }
-        
-        console.log(`   ✅ Processed: "${item.sku}" → "${processedSKU}"`);
-        item.sku = processedSKU;
-        
-        // CHARGE CODE HANDLING: Check if this is a charge code (not a product)
-        if (this.chargeCodebook.has(processedSKU)) {
-          // For charge codes, keep them as the finalSKU
-          item.finalSKU = processedSKU;
-          console.log(`   💰 Charge Code: "${processedSKU}" identified as ${this.chargeCodebook.get(processedSKU)}`);
-          if (processedSKU === 'OE-MISC-CHARGE') {
-            // OE-MISC-CHARGE needs special analysis
-            const chargeType = this.analyzeChargeDescription(item.description);
-            if (chargeType) {
-              item.finalSKU = chargeType;
-              console.log(`   🔍 OE-MISC-CHARGE resolved: "${item.description}" → ${chargeType}`);
-            } else {
-              console.log(`   🔍 OE-MISC-CHARGE: Will analyze description "${item.description}" for actual SKU`);
-            }
-          }
-        }
+      let processedSKU = (item.sku || "").trim().toUpperCase();
+      
+      // Handle common transformations
+      if (processedSKU === 'SET UP') {
+        processedSKU = 'SETUP';
+      }
+      if (processedSKU === 'PROOF') {
+        processedSKU = 'PROOF';
       }
       
-      // FALLBACK: If finalSKU is empty/null, use the processed SKU as fallback
-      if (!item.finalSKU && item.sku) {
-        item.finalSKU = item.sku;
-        console.log(`   🔧 Fallback: Using SKU "${item.sku}" as finalSKU (Gemini returned empty finalSKU)`);
+      if (processedSKU) {
+        console.log(`   ✅ Processed: "${item.sku}" → "${processedSKU}"`);
       }
-    }
+      
+      return {
+        sku: processedSKU,
+        description: (item.description || "").trim(),
+        itemColor: (item.itemColor || "").trim(),
+        quantity: Number.isFinite(item.quantity) ? item.quantity : 1, // Lock quantity from input
+        unitPrice: item.unitPrice,
+        totalPrice: item.totalPrice,
+        imprintColor: item.imprintColor,
+        finalSKU: (item.finalSKU || "").trim().toUpperCase()
+      };
+    });
+
+    // 🔐 SWAP DETECTOR: Create signature before processing
+    const sigBefore = normalizedInput.map((r, i) => `${i}:${r.sku}|${r.quantity}`).join("||");
     
     // Load cache for DB lookup
     await this.loadItemsCache();
     
-    // HYBRID APPROACH: Check DB first, then AI
-    const hybridValidated: ValidatedLineItem[] = [];
-    const needsAIValidation: LineItem[] = [];
+    // HYBRID APPROACH: Check DB first, then resolve finalSKUs only
+    const finalSKUs: string[] = [];
+    const needsAIValidation: number[] = [];
     
-    for (const item of lineItems) {
-      // First check if we can determine charge type from description
+    for (let i = 0; i < normalizedInput.length; i++) {
+      const item = normalizedInput[i];
+      
+      // CHARGE CODE DETECTION: Handle known charge codes first
+      if (this.chargeCodebook.has(item.sku)) {
+        finalSKUs[i] = item.sku;
+        console.log(`   💰 Charge Code: "${item.sku}" identified as ${this.chargeCodebook.get(item.sku)}`);
+        continue;
+      }
+      
+      // OE-MISC-CHARGE analysis
       if (item.sku === 'OE-MISC-CHARGE' || item.finalSKU === 'OE-MISC-CHARGE') {
         const chargeType = this.analyzeChargeDescription(item.description);
         if (chargeType) {
-          // chargeType might be OE-MISC-CHARGE itself for shipping/unidentifiable charges
+          finalSKUs[i] = chargeType;
           console.log(`   💡 OE-MISC-CHARGE analyzed: "${item.description}" → ${chargeType}`);
-          hybridValidated.push({
-            sku: item.sku || '',
-            description: item.description || '',
-            itemColor: item.itemColor || '',
-            quantity: item.quantity || 1,
-            unitPrice: item.unitPrice,
-            totalPrice: item.totalPrice,
-            imprintColor: item.imprintColor,
-            finalSKU: chargeType,
-            productName: chargeType === 'OE-MISC-CHARGE' ? 'Unidentified Charge' : this.chargeCodebook.get(chargeType),
-            isValidSKU: true,
-            validationNotes: chargeType === 'OE-MISC-CHARGE' ? 
-              'Valid placeholder for unidentifiable charge' : 
-              `Resolved from OE-MISC-CHARGE: ${item.description}`
-          });
-          continue;
         } else {
-          // No specific charge pattern found, keep as OE-MISC-CHARGE (valid finalSKU)
+          finalSKUs[i] = 'OE-MISC-CHARGE';
           console.log(`   💡 OE-MISC-CHARGE kept as placeholder for: "${item.description}"`);
-          hybridValidated.push({
-            sku: item.sku || '',
-            description: item.description || '',
-            itemColor: item.itemColor || '',
-            quantity: item.quantity || 1,
-            unitPrice: item.unitPrice,
-            totalPrice: item.totalPrice,
-            imprintColor: item.imprintColor,
-            finalSKU: 'OE-MISC-CHARGE',
-            productName: 'Unidentified Charge',
-            isValidSKU: true,
-            validationNotes: 'Valid placeholder for unidentifiable charge'
-          });
+        }
+        continue;
+      }
+      
+      // Check if SKU directly exists in items cache
+      const exactMatch = this.itemsCache.get(item.sku.toUpperCase());
+      if (exactMatch) {
+        finalSKUs[i] = exactMatch.finalSku;
+        console.log(`   ✅ EXACT MATCH: ${item.sku} → ${exactMatch.finalSku}`);
+        continue;
+      }
+      
+      // Try vector search if available
+      try {
+        const searchQuery = `${item.sku} ${item.description} ${item.itemColor}`.trim();
+        const vectorMatches = await this.searchItemsByEmbedding(searchQuery, 1);
+        
+        if (vectorMatches.length > 0 && vectorMatches[0].similarity >= 0.75) {
+          const match = vectorMatches[0];
+          finalSKUs[i] = match.finalSku;
+          console.log(`   ✅ VECTOR MATCH: ${item.sku} → ${match.finalSku} (similarity: ${match.similarity})`);
           continue;
         }
+      } catch (error) {
+        // Vector search failed, will fall back to AI
+        console.log(`   ⚠️ Vector search failed for ${item.sku}, will use AI`);
       }
       
-      if (item.sku) {
-        // Check exact match in DB
-        const dbItem = this.itemsCache.get(item.sku.toUpperCase());
-        if (dbItem) {
-          console.log(`   ✅ DB MATCH: ${item.sku} → ${dbItem.finalSku}`);
-          hybridValidated.push({
-            sku: item.sku,
-            description: item.description || dbItem.description || '',
-            itemColor: item.itemColor || '',
-            quantity: item.quantity || 1,
-            unitPrice: item.unitPrice,
-            totalPrice: item.totalPrice,
-            imprintColor: item.imprintColor,
-            finalSKU: dbItem.finalSku,
-            productName: dbItem.displayName,
-            isValidSKU: true,
-            validationNotes: 'Exact DB match'
-          });
-        } else if (this.chargeCodebook.has(item.sku.toUpperCase())) {
-          // Known charge code - keep as is but check description for better match
-          const betterMatch = this.analyzeChargeDescription(item.description);
-          const finalCode = betterMatch || item.sku.toUpperCase();
-          hybridValidated.push({
-            sku: item.sku,
-            description: item.description || '',
-            itemColor: item.itemColor || '',
-            quantity: item.quantity || 1,
-            unitPrice: item.unitPrice,
-            totalPrice: item.totalPrice,
-            imprintColor: item.imprintColor,
-            finalSKU: item.finalSKU || finalCode,
-            isValidSKU: true,
-            validationNotes: this.chargeCodebook.get(finalCode)
-          });
-        } else {
-          // Needs AI validation
-          needsAIValidation.push(item);
-        }
-      } else {
-        needsAIValidation.push(item);
-      }
+      // Add to AI validation queue (store index for proper reconstruction)
+      needsAIValidation.push(i);
     }
     
-    // Try vector search for remaining items
+    // AI Validation for remaining items (only finalSKUs, no quantities)
     if (needsAIValidation.length > 0) {
-      console.log(`   🔮 ${needsAIValidation.length} items need validation...`);
+      console.log(`   🤖 ${needsAIValidation.length} items need AI validation...`);
       
-      // Try vector search first
-      const stillNeedsAI: LineItem[] = [];
-      for (const item of needsAIValidation) {
-        const vectorMatch = await this.vectorSearchItem(item);
-        if (vectorMatch) {
-          // Check if OE-MISC-CHARGE needs further analysis
-          if (vectorMatch.finalSKU === 'OE-MISC-CHARGE') {
-            const chargeType = this.analyzeChargeDescription(item.description);
-            if (chargeType) {
-              vectorMatch.finalSKU = chargeType;
-              vectorMatch.productName = this.chargeCodebook.get(chargeType);
-              vectorMatch.validationNotes = `Resolved from OE-MISC-CHARGE via vector search`;
-            }
-          }
-          hybridValidated.push(vectorMatch);
-        } else {
-          stillNeedsAI.push(item);
+      // Create projection for AI (no quantities!)
+      const projection = needsAIValidation.map(index => ({
+        i: index,
+        sku: normalizedInput[index].sku,
+        description: normalizedInput[index].description,
+        itemColor: normalizedInput[index].itemColor
+      }));
+      
+      try {
+        const aiFinalSKUs = await this.resolveFinalSKUsWithAI(projection);
+        
+        // Assign AI results back to correct indices
+        for (let j = 0; j < needsAIValidation.length; j++) {
+          const originalIndex = needsAIValidation[j];
+          finalSKUs[originalIndex] = aiFinalSKUs[j] || 'OE-MISC-ITEM';
         }
-      }
-      
-      // Use AI for remaining items
-      if (stillNeedsAI.length > 0) {
-        console.log(`   🤖 ${stillNeedsAI.length} items need AI validation...`);
-        try {
-          const aiValidated = await this.validateWithOpenAI(stillNeedsAI);
-          hybridValidated.push(...aiValidated);
-        } catch (error) {
-          console.error('OpenAI SKU validation failed:', error);
-          // Fallback for AI failure
-          for (const item of stillNeedsAI) {
-            hybridValidated.push({
-              sku: item.sku || '',
-              description: item.description || '',
-              itemColor: item.itemColor || '',
-              quantity: item.quantity || 1,
-              unitPrice: item.unitPrice,
-              totalPrice: item.totalPrice,
-              imprintColor: item.imprintColor,
-              finalSKU: item.finalSKU || item.sku || 'UNKNOWN',
-              isValidSKU: false,
-              validationNotes: 'AI validation failed'
-            });
-          }
+      } catch (error) {
+        console.error('AI validation failed:', error);
+        // Fallback for remaining items
+        for (const index of needsAIValidation) {
+          finalSKUs[index] = normalizedInput[index].sku || 'OE-MISC-ITEM';
         }
       }
     }
     
-    console.log(`✅ Total validated: ${hybridValidated.length} line items`);
-    console.log(`   ✅ Line items validated: ${hybridValidated.length} items processed`);
-    for (let i = 0; i < hybridValidated.length; i++) {
-      const item = hybridValidated[i];
+    console.log(`✅ Total validated: ${normalizedInput.length} line items`);
+    
+    // 🔐 RECONSTRUCT: Build final output strictly by index, quantities from input only
+    const result: ValidatedLineItem[] = normalizedInput.map((src, i) => ({
+      sku: src.sku,
+      description: src.description,
+      itemColor: src.itemColor,
+      quantity: src.quantity, // AUTHORITATIVE: never from model
+      unitPrice: src.unitPrice,
+      totalPrice: src.totalPrice,
+      imprintColor: src.imprintColor,
+      finalSKU: finalSKUs[i] || src.sku || 'OE-MISC-ITEM'
+    }));
+    
+    // 🔐 SWAP DETECTOR: Verify no quantity swapping occurred
+    const sigAfter = result.map((r, i) => `${i}:${r.sku}|${r.quantity}`).join("||");
+    if (sigBefore !== sigAfter) {
+      console.warn("⚠️ SWAP DETECTED", { sigBefore, sigAfter });
+    }
+    
+    // Guards: Ensure array integrity
+    if (result.length !== normalizedInput.length) {
+      throw new Error(`Row count changed: input ${normalizedInput.length}, output ${result.length}`);
+    }
+    
+    for (let i = 0; i < result.length; i++) {
+      if (result[i].quantity !== normalizedInput[i].quantity) {
+        throw new Error(`Quantity drift at index ${i}: input ${normalizedInput[i].quantity}, output ${result[i].quantity}`);
+      }
+    }
+    
+    // Add validation metadata
+    for (const item of result) {
+      const skuMatch = this.itemsCache.get(item.finalSKU);
+      if (skuMatch) {
+        // Found in items database
+        item.productName = skuMatch.displayName || skuMatch.description || 'Product';
+        item.isValidSKU = true;
+        item.validationNotes = 'Valid product SKU';
+      } else if (this.chargeCodebook.has(item.finalSKU)) {
+        // Found in charge codes
+        item.isValidSKU = true;
+        item.validationNotes = this.chargeCodebook.get(item.finalSKU) || 'Valid charge code';
+        item.productName = this.chargeCodebook.get(item.finalSKU);
+      } else {
+        // Not found anywhere
+        item.isValidSKU = false;
+        item.validationNotes = 'Unknown SKU - using fallback';
+        item.productName = 'Unknown item';
+      }
+    }
+
+    // Log validation results for debugging
+    console.log(`   ✅ Line items validated: ${result.length} items processed`);
+    for (let i = 0; i < result.length; i++) {
+      const item = result[i];
       const itemType = this.chargeCodebook.has(item.finalSKU?.toUpperCase() || '') ? 'Charge' : 'Product';
       console.log(`   └─ Item ${i + 1}: ${item.finalSKU} - ${item.description} (Qty: ${item.quantity}) [${itemType}]`);
     }
     
-    // Verify SKU validation integrity
-    console.log(`   ✅ SKU validation complete: ${hybridValidated.length} items processed`);
-    for (let i = 0; i < hybridValidated.length; i++) {
-      const item = hybridValidated[i];
+    console.log(`   ✅ SKU validation complete: ${result.length} items processed`);
+    for (let i = 0; i < result.length; i++) {
+      const item = result[i];
       console.log(`      ${i + 1}. "${item.sku}" → "${item.finalSKU}"`);
     }
+
+    return result;
+  }
+
+  // Helper method: AI validation that returns only finalSKUs array
+  private async resolveFinalSKUsWithAI(projection: Array<{i: number, sku: string, description: string, itemColor: string}>): Promise<string[]> {
+    // Create color codes context
+    const colorCodesContext = Array.from(this.colorCodes.entries()).map(([code, name]) =>
+      `${code}: ${name}`
+    ).join(', ');
+
+    // Create charge codes context  
+    const chargeCodesContext = Array.from(this.chargeCodebook.entries()).map(([code, desc]) =>
+      `${code}: ${desc}`
+    ).join(', ');
+
+    const prompt = `You are a SKU resolver for High Caliber Line (HCL).
+
+Return **only** a JSON array of strings, where each element is the finalSKU for the line at the same index as the input array.
+
+### Rules:
+1. Do not include any other fields except finalSKU strings
+2. Do not reorder, merge, or split the input
+3. Return exactly ${projection.length} strings in the same order
+4. Each string should be a valid SKU format (uppercase, properly formatted)
+
+### Available Resources:
+* ColorCodes: ${colorCodesContext}
+* ChargeCodes: ${chargeCodesContext}
+* Fallbacks: OE-MISC-ITEM (unknown product), OE-MISC-CHARGE (unknown charge)
+
+### Input to resolve:
+${JSON.stringify(projection.map(p => ({ sku: p.sku, description: p.description, itemColor: p.itemColor })), null, 2)}
+
+Return only the JSON array of finalSKU strings.`;
+
+    const response = await this.openai.chat.completions.create({
+      model: 'gpt-4o',
+      messages: [{ role: 'user', content: prompt }],
+      temperature: 0,
+      max_tokens: 1000,
+    });
+
+    const content = response.choices[0]?.message?.content?.trim();
+    if (!content) {
+      throw new Error('No response from OpenAI');
+    }
+
+    // Parse JSON response - remove markdown code blocks if present
+    let cleanContent = content.trim();
+    if (cleanContent.startsWith('```json')) {
+      cleanContent = cleanContent.replace(/^```json\s*/, '').replace(/\s*```$/, '');
+    } else if (cleanContent.startsWith('```')) {
+      cleanContent = cleanContent.replace(/^```\s*/, '').replace(/\s*```$/, '');
+    }
     
-    return hybridValidated;
+    const finalSKUs = JSON.parse(cleanContent) as string[];
+    
+    if (!Array.isArray(finalSKUs) || finalSKUs.length !== projection.length) {
+      throw new Error(`AI returned invalid array: expected ${projection.length} items, got ${finalSKUs?.length || 0}`);
+    }
+
+    return finalSKUs.map(sku => (sku || 'OE-MISC-ITEM').toUpperCase().trim());
   }
 
   /**
