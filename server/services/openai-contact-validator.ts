@@ -282,7 +282,7 @@ ${JSON.stringify(relevantContacts, null, 2)}`;
           SELECT CAST(${JSON.stringify(queryEmbedding)}::text AS vector(1536)) AS q
         )
         SELECT
-          c.id, c.name, c.email, c.phone, c.role,
+          c.id, c.name, c.email, c.phone,
           1 - (c.contact_embedding <=> p.q) AS cosine_sim
         FROM contacts c, params p
         WHERE c.contact_embedding IS NOT NULL
@@ -299,7 +299,7 @@ ${JSON.stringify(relevantContacts, null, 2)}`;
           name: match.name as string || '',
           email: match.email as string || '',
           phone: match.phone as string || '',
-          role: match.role as string || 'Unknown',
+          role: 'Unknown',
           matched_contact_id: match.id as string,
           match_method: 'VECTOR_SEARCH' as any,
           confidence: parseFloat(match.cosine_sim as string),
