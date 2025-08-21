@@ -36,13 +36,11 @@ router.post("/enhanced-analysis", async (req, res) => {
 
     // Use parsed company name if available, otherwise fall back to original company field
     // This dramatically reduces false positives by using clean company names
-    const contactCompanies = [
-      ...new Set(
-        contactCompaniesResult
-          .map(row => (row.companyName && row.companyName.trim()) || row.company?.trim())
-          .filter(company => company && company.length > 0)
-      )
-    ];
+    const contactCompanies = Array.from(new Set(
+      contactCompaniesResult
+        .map(row => (row.companyName && row.companyName.trim()) || row.company?.trim())
+        .filter(company => company && company.length > 0)
+    ));
     
     // Log the improvement from using parsed fields
     const parsedCount = contactCompaniesResult.filter(row => row.companyName).length;
@@ -74,7 +72,7 @@ router.post("/enhanced-analysis", async (req, res) => {
       const batch = contactCompanies.slice(i, i + batchSize);
       console.log(`🤖 Processing batch ${Math.floor(i/batchSize) + 1}/${Math.ceil(Math.min(contactCompanies.length, 100)/batchSize)} (${batch.length} companies)`);
 
-      const batchResults = await analyzeCompanyBatch(batch, customerCompaniesResult);
+      const batchResults = await analyzeCompanyBatch(batch.filter(c => c !== undefined) as string[], customerCompaniesResult);
       results.push(...batchResults);
 
       // Categorize results

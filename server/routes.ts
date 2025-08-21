@@ -439,7 +439,7 @@ async function processEmailThroughValidationSystem(messageToProcess: any, update
                     extractedData: extractionResult, // Store the complete Gemini extraction
                     lineItems: extractionResult?.lineItems || [],
                     contact: extractionResult?.purchaseOrder?.contact?.name || null,
-                    customerName: extractionResult?.purchaseOrder?.customer?.company || null,
+                    customerMeta: extractionResult?.purchaseOrder?.customer || null,
                     emlFilePath: emlFilePath,
                     extractionSourceFile: extractionSourceFile,
                     attachmentPaths: attachmentPaths.length > 0 ? attachmentPaths.map(att => att.storagePath) : []
@@ -523,7 +523,7 @@ async function processEmailThroughValidationSystem(messageToProcess: any, update
                 extractedData: extractionResult,
                 lineItems: extractionResult?.lineItems || [],
                 contact: extractionResult?.purchaseOrder?.contact?.name || null,
-                customerName: extractionResult?.purchaseOrder?.customer?.company || null,
+                customerMeta: extractionResult?.purchaseOrder?.customer || null,
                 emlFilePath: emlFilePath,
                 extractionSourceFile: null, // No specific file, extracted from email body
                 attachmentPaths: attachmentPaths.length > 0 ? attachmentPaths.map(att => att.storagePath) : []
@@ -601,7 +601,7 @@ async function processEmailThroughValidationSystem(messageToProcess: any, update
             extractedData: extractionResult, // Store the complete Gemini extraction
             lineItems: extractionResult?.lineItems || [],
             contact: extractionResult?.purchaseOrder?.contact?.name || null,
-            customerName: extractionResult?.purchaseOrder?.customer?.company || null,
+            customerMeta: extractionResult?.purchaseOrder?.customer || null,
             emlFilePath: emlFilePath,
             extractionSourceFile: extractionSourceFile,
             attachmentPaths: attachmentPaths.length > 0 ? attachmentPaths.map(att => att.storagePath) : []
@@ -1143,10 +1143,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
               console.log('📧 Auto-polling: No new emails to process');
             }
           } catch (error) {
-            console.log('📧 Auto-polling error:', error.message);
+            console.log('📧 Auto-polling error:', (error as Error).message);
             releaseProcessingLock({
               currentStep: "error",
-              currentEmail: `Auto-polling error: ${error.message}`
+              currentEmail: `Auto-polling error: ${(error as Error).message}`
             });
           }
         } catch (error) {
@@ -1172,7 +1172,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       console.log('🔧 RESET STUCK EMAILS: Finding emails stuck in processing status...');
       
       // Find all emails stuck in processing status
-      const stuckEmails = await storage.getEmailQueueItems({ status: 'processing' });
+      const stuckEmails = await storage.getEmailQueue({ status: 'processing' });
       
       if (stuckEmails.length === 0) {
         return res.json({
@@ -1197,7 +1197,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           resetCount++;
           console.log(`   ✅ Reset email: ${email.subject}`);
         } catch (error) {
-          console.log(`   ❌ Failed to reset email ${email.id}:`, error.message);
+          console.log(`   ❌ Failed to reset email ${email.id}:`, (error as Error).message);
         }
       }
       
@@ -1255,7 +1255,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
         lastRetryAt: new Date()
       });
       
-      const results = {
+      const results: {
+        poNumber: string;
+        poId: string;
+        customer: any;
+        contact: any;
+        lineItems: any;
+        errors: string[];
+      } = {
         poNumber: purchaseOrder.poNumber,
         poId: purchaseOrder.id,
         customer: null,
@@ -1583,10 +1590,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       console.log('\n🤖 ENHANCED COMPANY ANALYSIS: Starting OpenAI-powered analysis...');
       
-      const { enhancedCompanyAnalysis } = await import('./routes/enhanced-company-analysis');
-      const result = await enhancedCompanyAnalysis();
-      
-      res.json(result);
+      const enhancedAnalysisModule = await import('./routes/enhanced-company-analysis');
+      // This endpoint doesn't exist in the enhanced-company-analysis module
+      res.status(501).json({ error: 'Enhanced analysis endpoint not implemented' });
     } catch (error) {
       console.error('❌ Enhanced analysis failed:', error);
       res.status(500).json({ 
@@ -2067,7 +2073,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         extractedData: extractedData,
         lineItems: extractedData.lineItems || [],
         contact: extractedData.purchaseOrder?.contact?.name || targetPO.contact,
-        customerName: extractedData.purchaseOrder?.customer?.company || targetPO.customerName,
+        customerMeta: extractedData.purchaseOrder?.customer || targetPO.customerMeta,
         updatedAt: new Date()
       });
       
@@ -2084,7 +2090,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           extractedData: 'Updated',
           lineItems: extractedData.lineItems?.length || 0,
           contact: extractedData.purchaseOrder?.contact?.name || null,
-          customerName: extractedData.purchaseOrder?.customer?.company || null
+          customerMeta: extractedData.purchaseOrder?.customer || null
         }
       });
       
@@ -2092,7 +2098,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       console.error('❌ Error fixing extraction data:', error);
       res.status(500).json({ 
         error: 'Failed to fix extraction data',
-        details: error.message 
+        details: (error as Error).message 
       });
     }
   });
@@ -2323,19 +2329,19 @@ Content: Original email with attachments
       }
 
       // Extract customer and line items from PO
-      const extractedData = purchaseOrder.extraction_data as any;
+      const extractedData = purchaseOrder.extractedData as any;
       
       const salesOrderData = {
         customer: extractedData?.customer || "UNKNOWN",
         lineItems: extractedData?.lineItems || [],
         shipMethod: extractedData?.shipMethod,
         shipDate: extractedData?.shipDate,
-        memo: `PO #${purchaseOrder.po_number}`,
-        externalId: purchaseOrder.po_number
+        memo: `PO #${purchaseOrder.poNumber}`,
+        externalId: purchaseOrder.poNumber
       };
 
       // Generate presigned URLs for attachments
-      const attachmentPaths = purchaseOrder.attachment_paths || [];
+      const attachmentPaths = purchaseOrder.attachmentPaths || [];
       const attachmentUrls: string[] = [];
       
       if (attachmentPaths.length > 0) {
@@ -2358,9 +2364,9 @@ Content: Original email with attachments
       }
 
       // Add extraction source file if present
-      if (purchaseOrder.extraction_source_file && !purchaseOrder.extraction_source_file.startsWith('/local-fallback/')) {
+      if (purchaseOrder.extractionSourceFile && !purchaseOrder.extractionSourceFile.startsWith('/local-fallback/')) {
         try {
-          const sourceUrl = await objectStorageService.generatePresignedUrl(purchaseOrder.extraction_source_file, 86400);
+          const sourceUrl = await objectStorageService.generatePresignedUrl(purchaseOrder.extractionSourceFile, 86400);
           attachmentUrls.push(sourceUrl);
           console.log(`   ✅ Added extraction source file URL`);
         } catch (error) {
