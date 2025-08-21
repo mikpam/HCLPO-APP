@@ -864,8 +864,7 @@ async function processEmailThroughValidationSystem(messageToProcess: any, update
       subject: messageToProcess.subject,
       route: processingResult.classification.recommended_route,
       confidence: processingResult.classification.analysis_flags?.confidence_score || 0,
-      status: extractionResult ? 
-              (customerMeta ? 'ready_for_netsuite' : 'new_customer') : 
+      status: extractionResult ? 'validating' : 
               (processingResult.classification.recommended_route === 'TEXT_PO' ? 'ready_for_extraction' : 'pending_review'),
       originalJson: processingResult.classification,
       extractedData: {
@@ -1307,7 +1306,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           console.log(`   🔍 Processing PO ${po.poNumber}...`);
           
           // Force validation using the same logic as single PO endpoint
-          const response = await fetch(`http://localhost:5000/api/force-validation/${po.poNumber}`, {
+          const response = await fetch(`http://localhost:5000/api/force-validation/${po.id}`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' }
           });
