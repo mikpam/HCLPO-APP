@@ -109,7 +109,9 @@ export const contacts = pgTable("contacts", {
   jobTitle: text("job_title"),
   phone: text("phone"),
   email: text("email"),
-  company: text("company"), // Company name (e.g., "C9272 Halo Branded Solutions")
+  company: text("company"), // Company name (e.g., "C9272 Halo Branded Solutions") - Legacy field
+  customerNumber: text("customer_number"), // Extracted customer number (e.g., "C9272")
+  companyName: text("company_name"), // Clean company name (e.g., "Halo Branded Solutions")
   officePhone: text("office_phone"), // Office phone number
   fax: text("fax"), // Fax number
   altEmail: text("alt_email"), // Alternative email address

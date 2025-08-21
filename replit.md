@@ -1,34 +1,13 @@
 # Purchase Order Processing System
 
 ## Overview
-This full-stack web application automates purchase order processing from email sources, integrating with external services to manage the workflow from ingestion to sales order creation. The system provides a dashboard for monitoring and management, aiming to streamline operations and enhance efficiency in handling purchase orders.
+This full-stack web application automates purchase order processing from email sources, integrating with external services to manage the workflow from ingestion to sales order creation. The system provides a dashboard for monitoring and management, aiming to streamline operations and enhance efficiency in handling purchase orders. The business vision is to provide a robust, automated solution for managing the entire purchase order lifecycle, significantly reducing manual effort and improving data accuracy. This system has high market potential for businesses dealing with large volumes of email-based purchase orders, offering a competitive advantage through operational efficiency and enhanced data management. The project ambition is to become a leading solution in automated PO processing, continuously integrating advanced AI and robust ERP capabilities.
 
 ## User Preferences
 Preferred communication style: Simple, everyday language.
 UI Design Priority: Mobile-responsive design is now required across all pages. Users need the system to work well on both desktop and mobile devices.
 System Behavior: Automated email processing now active with full hybrid validation using 100% complete embedding infrastructure.
 Vector Database Preference: PGvector integration with existing PostgreSQL database preferred over external vector databases like Pinecone for future semantic customer/item matching enhancements.
-Development Priority: **ENHANCED CONTACT VALIDATION SYSTEM OPERATIONAL (August 20, 2025)** - Production-ready hybrid validation system successfully tested with real email data. All 48,815 active contacts embedded with 100% completion. Semantic search achieving 97-100% accuracy for real business contacts from processed purchase orders. System automatically validates contacts through 4-step process and handles all Gmail email processing with enhanced validation capabilities.
-
-## Current System Status
-**NetSuite OAuth Integration Fixed (August 20, 2025)**: **AUTHENTICATION WORKING** - Successfully fixed OAuth 1.0 TBA authentication. System now properly includes URL query parameters in signature calculation and handles test responses. RESTlet communication verified with 200 OK responses. Ready for full integration once RESTlet script is updated to handle sales order creation.
-**Deployment Schema Fix Complete (August 20, 2025)**: **READY FOR DEPLOYMENT** - Fixed critical production database schema mismatch. Schema now correctly maps to all production columns: `attachment_path` (singular), `attachment_paths` (plural array), and `extraction_source_file`. Local testing confirms fix is working. Production deployment required to apply changes.
-**Infrastructure Migration Complete**: Successfully migrated from Replit database to user's Neon PostgreSQL database (August 20, 2025)
-**Memory Optimization Complete (August 20, 2025)**: **PRODUCTION READY** - Achieved 69% memory reduction through LRU cache implementation. Heap usage optimized from 700+MB to 150-275MB with automatic cleanup. Real-time memory health monitoring integrated into analytics dashboard.
-**Database Performance**: 49,387 total contacts, **5,209 items** (corrected CSV import with proper column mapping), **15,949 customers** (fresh NetSuite import with data quality cleanup August 21, 2025) - complete data restoration and import successful
-**Vector Embeddings**: **100% COMPLETE ACROSS ALL ENTITIES** - Contact embeddings (49,387 at 120-123/second), Customer embeddings (11,603 at 111/second), **Item embeddings (5,209 at 118.0/second)** - Ultra-optimized mega-batch processing achieved across complete corrected inventory
-**Complete NetSuite Import**: **CORRECTED AND FINALIZED** - Successfully imported **5,209 items** with proper FinalSku column mapping, **5,139 active items**, 70 inactive items. Includes all core products (Jag Bags, LC Performance Polos) with correct metadata structure
-**Email Processing**: Full automatic Gmail processing active with lightweight polling (every 2 minutes) and complete hybrid validation system
-**Validation Testing**: Successfully validated real contacts from 4AllPromos (Angela M.), Nadel (15+ contacts), and Promotions N Motion (Deatra Harper)
-**Security**: 133 HCL internal contacts properly filtered from validation process  
-**System Health**: All validators healthy, automatic health monitoring active, complete semantic search operational across contacts, customers, and items, real-time memory monitoring dashboard active
-**Security Fix (August 20, 2025)**: Implemented robust document filtering to prevent non-PO documents (shipping labels, invoices, proof files, artwork) from incorrect processing through extraction pipeline. Enhanced both filename-based filtering and AI document classification with negative keyword detection.
-**Architectural Consolidation Complete (August 20, 2025)**: **PRODUCTION READY** - Successfully unified all email processing routes into single `/api/processing/process-auto` endpoint. All dashboard components, analytics, monitoring, and status tracking now use unified validation system. Enforces sequential "one email at a time" processing architecture. Verified with successful processing of real Purchase Order 1799470 from 4AllPromos during consolidation. Memory optimization maintained throughout consolidation.
-**UUID-Based Architecture Optimization (August 20, 2025)**: **PRODUCTION READY** - Replaced brittle PO number lookups with reliable UUID-based purchase order references throughout validation system. Fixed critical timing bug where validators were doing unnecessary database lookups during validation steps. System now uses existing purchase order references instead of searching by PO number, improving reliability and performance. All API endpoints updated to use UUID parameters where appropriate.
-**File Preservation System Complete (August 20, 2025)**: **PRODUCTION READY** - Comprehensive email and attachment preservation system fully operational. EML file paths (95.9% coverage) and attachment file paths now properly stored in database records for complete audit trail and compliance. Fixed critical "updatedPO is not defined" bug affecting customer integration. All file preservation workflows tested and verified with real purchase order data.
-**Processing Status Dashboard Enhanced (August 20, 2025)**: **PRODUCTION READY** - Fixed Processing Status component to show real-time email processing workflow instead of always showing "idle". System now properly displays email processing steps (fetching → preprocessing → classification → extraction → validation → integration → completion) with 10-second visibility window. Validator health checks run silently in background without cluttering the UI. Dashboard provides accurate real-time visibility into system activity.
-**EML File Viewing & Customer Display Fixed (August 20, 2025)**: **PRODUCTION READY** - Resolved file management system issues: (1) EML viewing now shows comprehensive purchase order data extraction instead of attempting to access problematic object storage files, providing users with all essential email information including PO details, line items, and processing status. (2) Fixed customer name display in Purchase Orders table by filtering placeholder values ("NO_CUSTOMER_FOUND", "NO_CUSTOMER_NUMBER"), ensuring real extracted company names from PDFs (like "ARCON.") display correctly when HCL database lookup fails. Frontend now properly falls back to Gemini-extracted customer data for complete visibility.
-**Major Customer Database Refresh Complete (August 21, 2025)**: **PRODUCTION READY** - Successfully completed comprehensive customer database refresh with fresh NetSuite data. Imported 21,813 customers from latest NetSuite export and performed data quality cleanup removing 5,863 invalid records with "old" suffixes or non-conforming patterns. Final clean database contains 15,949 customers (37% increase from previous 11,603), all conforming to valid C+number pattern with 100% pattern conformity. Customer search functionality verified working with fresh data. System now operates with most current HCL customer information directly from NetSuite.
 
 ## System Architecture
 
@@ -55,22 +34,20 @@ Development Priority: **ENHANCED CONTACT VALIDATION SYSTEM OPERATIONAL (August 2
 - **Vector Database**: PGvector for semantic search on contacts and customers, enabling hybrid validation.
 
 ### Email Processing Pipeline
-- **Architecture**: Two-step sequential processing.
+- **Architecture**: Two-step sequential processing, unified into a single `/api/processing/process-auto` endpoint. Enforces sequential "one email at a time" processing.
 - **Classification**: OpenAI GPT-4o for intent classification and advanced 5-route classification (TEXT_PO, TEXT_SAMPLE, ATTACHMENT_PO, ATTACHMENT_SAMPLE, REVIEW), with priority logic for attachments.
-- **AI Document Filtering**: Pre-screens attachments to filter non-PO documents.
+- **AI Document Filtering**: Pre-screens attachments to filter non-PO documents using filename-based filtering and AI document classification with negative keyword detection.
 - **Multi-Format Support**: Enhanced processing for Gemini-compatible formats (PDFs, images, Word docs, CSVs, Excel, text files).
 - **Dual Gemini Extraction Routes**: ATTACHMENT_PO for multi-format document processing; TEXT_PO for email body text processing.
 - **Processing Flow**: Gmail ingestion → Pre-processing → Detailed analysis → AI document filtering → Gemini extraction → PO extraction → NetSuite import.
 - **Data Storage**: Preprocessing, classification, and extracted data stored in Neon PostgreSQL.
-- **Email/Attachment Preservation**: Automatic .eml file and attachment storage to object storage.
+- **Email/Attachment Preservation**: Automatic .eml file and attachment storage to object storage, with file paths stored in database records for audit trails.
 - **Customer Lookup**: High-performance customer database with NetSuite integration, advanced matching, and disambiguation, including a 5-step hybrid validation system (Exact DB → Vector → Rules → LLM).
-- **Contact Validation**: **PRODUCTION-READY HYBRID SYSTEM** - Advanced contact resolution system following deterministic gate → semantic search → scoring flow with 4-step validation (Exact DB → Vector → Rules → LLM). Successfully tested with real purchase order contacts achieving 97-100% accuracy.
+- **Contact Validation**: Production-ready hybrid system using a 4-step validation (Exact DB → Vector → Rules → LLM), achieving 97-100% accuracy. Uses UUID-based purchase order references for reliability.
 - **SKU Validation**: Comprehensive SKU validation system integrating with a product items database, handling charge codes and fallbacks.
-- **Item Embedding System**: **COMPLETE** - All 5,373 items embedded (100%) using OpenAI 1536-dimensional vectors and PGvector. Semantic search demonstrates excellent relevancy with 0.47-0.73 similarity scores.
-- **Contact Embedding System**: **100% COMPLETE** - All 49,387 active contacts successfully embedded with ultra-optimized batch processing achieving 120-123 contacts per second using 2,000-contact mega-batches. Production semantic search capabilities validated with real business contacts from 4AllPromos, Nadel, and Promotions N Motion. Ultra-optimization completed August 20, 2025.
-- **Customer Embedding System**: **100% COMPLETE** - All 11,603 customers successfully embedded with ultra-optimized batch processing achieving 111.0 customers per second using 2,000-customer mega-batches. Complete semantic search capabilities for customer matching and validation. Ultra-optimization completed August 20, 2025.
-- **Hybrid Contact Search**: **PRODUCTION VALIDATED** - Multi-step validation: exact email match → domain+company matching → semantic search with PGvector → scoring with thresholds (≥0.85 accept, 0.75-0.85 review, <0.75 manual). Successfully tested with real email addresses from processed purchase orders.
-- **Validator Architecture**: Per-email validator instances with immediate database updates after each step and health monitoring. Automatic Gmail email processing running with enhanced validation capabilities.
+- **Embedding Systems**: All contacts, customers, and items are 100% embedded using OpenAI 1536-dimensional vectors and PGvector for semantic search.
+- **Hybrid Contact Search**: Multi-step validation: exact email match → domain+company matching → semantic search with PGvector → scoring with thresholds.
+- **Validator Architecture**: Per-email validator instances with immediate database updates after each step and health monitoring.
 
 ### Admin Portal
 - **Functionality**: Comprehensive PO management interface, customer management, and item management with CRUD functionality.
@@ -97,10 +74,3 @@ Development Priority: **ENHANCED CONTACT VALIDATION SYSTEM OPERATIONAL (August 2
 
 ### ERP Integration
 - **NetSuite REST API**: For sales order creation using TBA NLAuth authentication with 2FA support.
-- **Environment Variables Required**:
-  - `NETSUITE_ACCOUNT_ID`
-  - `NETSUITE_EMAIL`
-  - `NETSUITE_PASSWORD`
-  - `NETSUITE_ROLE_ID`
-  - `NETSUITE_APPLICATION_ID`
-  - `NETSUITE_RESTLET_URL`

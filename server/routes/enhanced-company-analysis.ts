@@ -24,16 +24,34 @@ router.post("/enhanced-analysis", async (req, res) => {
   try {
     console.log("🔍 ENHANCED COMPANY ANALYSIS: Starting OpenAI-powered analysis...");
     
-    // Get all unique contact companies
+    // Get all unique contact companies - prioritize parsed company names for accuracy
     const contactCompaniesResult = await db
       .select({
-        company: sql<string>`DISTINCT TRIM(${contacts.company})`.as('company')
+        company: contacts.company,
+        companyName: contacts.companyName,
+        customerNumber: contacts.customerNumber
       })
       .from(contacts)
       .where(sql`${contacts.company} IS NOT NULL AND TRIM(${contacts.company}) != ''`);
 
-    const contactCompanies = contactCompaniesResult.map((r: any) => r.company);
+    // Use parsed company name if available, otherwise fall back to original company field
+    // This dramatically reduces false positives by using clean company names
+    const contactCompanies = [
+      ...new Set(
+        contactCompaniesResult
+          .map(row => (row.companyName && row.companyName.trim()) || row.company?.trim())
+          .filter(company => company && company.length > 0)
+      )
+    ];
+    
+    // Log the improvement from using parsed fields
+    const parsedCount = contactCompaniesResult.filter(row => row.companyName).length;
+    const totalCount = contactCompaniesResult.length;
+    const parsePercentage = totalCount > 0 ? Math.round((parsedCount / totalCount) * 100) : 0;
+    
     console.log(`📊 Found ${contactCompanies.length} unique contact companies`);
+    console.log(`🎯 PARSING STATUS: ${parsedCount}/${totalCount} contacts (${parsePercentage}%) have parsed company names`);
+    console.log(`✨ ACCURACY IMPROVEMENT: Using clean company names instead of mixed customer+company strings`);
 
     // Get all customer companies
     const customerCompaniesResult = await db
