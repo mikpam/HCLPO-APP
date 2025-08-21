@@ -383,12 +383,18 @@ ${JSON.stringify(lineItems, null, 2)}`;
         
         // CHARGE CODE HANDLING: Check if this is a charge code (not a product)
         if (this.chargeCodebook.has(processedSKU)) {
-          // For all charge codes (including OE-MISC-CHARGE), let AI analyze
-          // AI will handle OE-MISC-CHARGE specially to find actual SKUs
+          // For charge codes, keep them as the finalSKU
           item.finalSKU = processedSKU;
           console.log(`   💰 Charge Code: "${processedSKU}" identified as ${this.chargeCodebook.get(processedSKU)}`);
           if (processedSKU === 'OE-MISC-CHARGE') {
-            console.log(`   🔍 OE-MISC-CHARGE: AI will analyze description "${item.description}" for actual SKU`);
+            // OE-MISC-CHARGE needs special analysis
+            const chargeType = this.analyzeChargeDescription(item.description);
+            if (chargeType) {
+              item.finalSKU = chargeType;
+              console.log(`   🔍 OE-MISC-CHARGE resolved: "${item.description}" → ${chargeType}`);
+            } else {
+              console.log(`   🔍 OE-MISC-CHARGE: Will analyze description "${item.description}" for actual SKU`);
+            }
           }
         }
       }
