@@ -75,6 +75,41 @@ async function processEmailWithValidationSystem() {
       };
     }
 
+    // 🛡️ DEDUPLICATION CHECK: Prevent processing the same Gmail message multiple times
+    console.log(`\n🛡️ DEDUPLICATION CHECK: Verifying Gmail message ${messageToProcess.id} hasn't been processed...`);
+    
+    const existingPO = await db
+      .select({ id: purchaseOrdersTable.id, poNumber: purchaseOrdersTable.poNumber })
+      .from(purchaseOrdersTable)
+      .where(eq(purchaseOrdersTable.emailId, messageToProcess.id))
+      .limit(1);
+    
+    if (existingPO.length > 0) {
+      console.log(`   ❌ DUPLICATE DETECTED: Gmail message ${messageToProcess.id} already processed as PO ${existingPO[0].poNumber}`);
+      console.log(`   └─ Skipping duplicate processing to prevent duplicate PO creation`);
+      
+      updateProcessingStatus({
+        isProcessing: false,
+        currentStep: "completed",
+        currentEmail: `Skipped duplicate: ${messageToProcess.subject}`,
+        emailNumber: 0,
+        totalEmails: 0
+      });
+      
+      return {
+        message: "Email already processed - skipping duplicate",
+        processed: 0,
+        details: {
+          emailId: messageToProcess.id,
+          existingPONumber: existingPO[0].poNumber,
+          existingPOId: existingPO[0].id,
+          reason: "duplicate_email_id"
+        }
+      };
+    }
+    
+    console.log(`   ✅ DEDUPLICATION PASSED: Gmail message ${messageToProcess.id} is new - proceeding with processing`);
+
     // Start processing this email
     updateProcessingStatus({
       isProcessing: true,
