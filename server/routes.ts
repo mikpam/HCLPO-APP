@@ -59,13 +59,48 @@ async function processEmailWithValidationSystem() {
     }
 
     if (!messageToProcess) {
+      // No new emails, check for pending POs that need customer validation
+      console.log(`📋 No new emails found, checking for pending POs...`);
+      
+      const pendingPOs = await db
+        .select()
+        .from(purchaseOrdersTable)
+        .where(eq(purchaseOrdersTable.status, 'pending'))
+        .limit(1);
+      
+      if (pendingPOs.length > 0) {
+        const pendingPO = pendingPOs[0];
+        console.log(`🔄 Found pending PO ${pendingPO.poNumber}, starting customer validation...`);
+        
+        updateProcessingStatus({
+          currentStep: "customer_validation",
+          currentEmail: `Processing pending PO: ${pendingPO.poNumber}`,
+          emailNumber: 1,
+          totalEmails: 1
+        });
+        
+        // Process the pending PO through customer validation
+        const result = await processPendingPO(pendingPO);
+        
+        releaseProcessingLock({
+          currentStep: "completed",
+          currentEmail: `Processed pending PO: ${pendingPO.poNumber}`
+        });
+        
+        return {
+          message: `Processed pending PO: ${pendingPO.poNumber}`,
+          processed: 1,
+          details: result
+        };
+      }
+      
       releaseProcessingLock({
         currentStep: "completed",
-        currentEmail: "No new emails to process - system idle"
+        currentEmail: "No new emails or pending POs to process"
       });
       
       return {
-        message: "No new emails found to process",
+        message: "No new emails or pending POs found to process",
         processed: 0,
         details: null
       };
@@ -1286,6 +1321,127 @@ async function processEmailThroughValidationSystem(messageToProcess: any, update
       attachments: attachmentPaths
     }
   };
+}
+
+// Process pending PO through customer validation
+async function processPendingPO(pendingPO: any) {
+  try {
+    console.log(`🔄 PROCESSING PENDING PO: ${pendingPO.poNumber} (${pendingPO.id})`);
+    
+    // Update status to show we're processing
+    await db
+      .update(purchaseOrdersTable)
+      .set({
+        status: 'validating',
+        processingStartedAt: new Date(),
+        statusChangedAt: new Date()
+      })
+      .where(eq(purchaseOrdersTable.id, pendingPO.id));
+
+    // Extract data from the existing PO
+    const extractedData = pendingPO.extractedData;
+    if (!extractedData) {
+      console.log(`   ❌ No extracted data found for PO ${pendingPO.poNumber}`);
+      await db
+        .update(purchaseOrdersTable)
+        .set({
+          status: 'extraction_failed',
+          lastError: 'No extracted data found',
+          statusChangedAt: new Date()
+        })
+        .where(eq(purchaseOrdersTable.id, pendingPO.id));
+      return { success: false, reason: 'No extracted data' };
+    }
+
+    // Run customer validation
+    console.log(`\n🏢 STEP 7: Running automatic customer validation for pending PO ${pendingPO.poNumber}...`);
+    
+    const { HybridCustomerValidator } = await import('./services/hybrid-customer-validator');
+    const customerValidator = new HybridCustomerValidator();
+    
+    const customer = extractedData?.purchaseOrder?.customer || extractedData?.customer || {};
+    const customerInput = {
+      customerName: customer.company || customer.customerName || 'Unknown Customer',
+      customerEmail: customer.email || pendingPO.sender || '',
+      senderEmail: pendingPO.sender || '',
+      senderDomain: (pendingPO.sender || '').split('@')[1] || '',
+      contactName: customer.contactName || customer.firstName && customer.lastName ? `${customer.firstName} ${customer.lastName}` : '',
+      phoneDigits: customer.phone?.replace(/\D/g, '') || '',
+      address: {
+        city: customer.city || '',
+        state: customer.state || ''
+      }
+    };
+
+    console.log(`   🏢 Customer validation input:`, customerInput);
+    
+    const customerValidationResult = await customerValidator.validateCustomer(customerInput);
+    console.log(`   ✅ Customer validation result:`, customerValidationResult);
+
+    // Update PO with customer validation results
+    let finalStatus = 'pending_review';
+    const customerMeta: any = {};
+
+    if (customerValidationResult.matched) {
+      customerMeta.customer_number = customerValidationResult.customerNumber;
+      customerMeta.customer_name = customerValidationResult.customerName;
+      customerMeta.method = customerValidationResult.method;
+      customerMeta.confidence = customerValidationResult.confidence;
+      finalStatus = 'customer_found';
+      console.log(`   ✅ Customer found: ${customerValidationResult.customerName} (${customerValidationResult.customerNumber})`);
+    } else {
+      customerMeta.customer_number = 'NO_CUSTOMER_NUMBER';
+      customerMeta.customer_name = 'NO_CUSTOMER_FOUND';
+      customerMeta.method = 'none';
+      customerMeta.confidence = 0;
+      finalStatus = 'new_customer';
+      console.log(`   ❌ Customer not found - flagged as new customer`);
+    }
+
+    // Update the PO with final results
+    await db
+      .update(purchaseOrdersTable)
+      .set({
+        status: finalStatus,
+        customerMeta: customerMeta,
+        customerValidated: customerValidationResult.matched,
+        validationCompleted: true,
+        statusChangedAt: new Date(),
+        processingStartedAt: null
+      })
+      .where(eq(purchaseOrdersTable.id, pendingPO.id));
+
+    console.log(`   🎯 Pending PO processed - Final status: ${finalStatus}`);
+    
+    return {
+      success: true,
+      poNumber: pendingPO.poNumber,
+      finalStatus,
+      customerFound: customerValidationResult.matched,
+      customerName: customerValidationResult.customerName,
+      customerNumber: customerValidationResult.customerNumber
+    };
+
+  } catch (error) {
+    console.error(`❌ Error processing pending PO ${pendingPO.poNumber}:`, error);
+    
+    // Update PO with error status
+    await db
+      .update(purchaseOrdersTable)
+      .set({
+        status: 'validation_failed',
+        lastError: error instanceof Error ? error.message : 'Unknown error',
+        statusChangedAt: new Date(),
+        processingStartedAt: null
+      })
+      .where(eq(purchaseOrdersTable.id, pendingPO.id));
+
+    return {
+      success: false,
+      poNumber: pendingPO.poNumber,
+      error: error instanceof Error ? error.message : 'Unknown error'
+    };
+  }
 }
 
 // Enhanced error logging helper for comprehensive tracking
