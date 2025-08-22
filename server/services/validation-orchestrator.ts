@@ -2,6 +2,7 @@ import { HybridCustomerValidator } from './hybrid-customer-validator';
 import { OpenAIContactValidatorService } from './openai-contact-validator';
 import { OpenAISKUValidatorService } from './openai-sku-validator';
 import { ValidatorHealthService } from './validator-health';
+import { generateNSPayload } from './ns-payload-generator';
 import type { StandardValidationResult, ValidationInput, ValidationResult, POStatus } from '../types/validation';
 
 /**

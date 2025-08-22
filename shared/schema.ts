@@ -46,6 +46,8 @@ export const purchaseOrders = pgTable("purchase_orders", {
   confidence: real("confidence"),
   emailIntent: text("email_intent"), // Email intent: rush_order, purchase_order, sample_request, follow_up, none
   shipToAddress: jsonb("ship_to_address"), // Shipping address from extracted data
+  // NetSuite payload - formatted data ready for NetSuite API
+  nsPayload: jsonb("ns_payload"), // Complete NetSuite-ready payload with validated data
   // Validation tracking fields
   customerValidated: boolean("customer_validated").default(false),
   contactValidated: boolean("contact_validated").default(false),

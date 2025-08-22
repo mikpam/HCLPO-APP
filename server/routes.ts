@@ -17,6 +17,7 @@ import { netsuiteService } from "./services/netsuite";
 import { OpenAISKUValidatorService } from "./services/openai-sku-validator";
 import { OpenAIContactValidatorService } from "./services/openai-contact-validator";
 import { ValidationOrchestrator } from "./services/validation-orchestrator";
+import { generateNSPayload } from "./services/ns-payload-generator";
 import { db } from "./db";
 import { purchaseOrders as purchaseOrdersTable, errorLogs, customers, contacts } from "@shared/schema";
 import { eq, desc, and, or, lt, sql, isNotNull } from "drizzle-orm";
@@ -1158,11 +1159,29 @@ async function processEmailThroughValidationSystem(messageToProcess: any, update
         console.log(`   ⏳ Status: pending_review (Failed extraction or validation issues)`);
       }
       
+      // Generate NS payload if validation is complete and ready for NetSuite
+      let nsPayload = null;
+      if (finalStatus === 'ready_for_netsuite') {
+        console.log(`   📦 Generating NetSuite payload for PO ${purchaseOrder.poNumber}...`);
+        try {
+          // Get the complete PO with all validation data
+          const completePO = await storage.getPurchaseOrder(purchaseOrder.id);
+          if (completePO) {
+            nsPayload = await generateNSPayload(completePO);
+            console.log(`   ✅ NS payload generated successfully`);
+          }
+        } catch (error) {
+          console.error(`   ❌ Failed to generate NS payload:`, error);
+          // Continue without NS payload - don't block the process
+        }
+      }
+      
       // Update final status and mark validation completed
       await storage.updatePurchaseOrder(purchaseOrder.id, {
         status: finalStatus,
         validationCompleted: true,
-        lineItemsValidated: lineItemsValidated // Set based on whether SKU validation ran
+        lineItemsValidated: lineItemsValidated, // Set based on whether SKU validation ran
+        nsPayload: nsPayload // Store the NS payload
       });
       
       console.log(`   🎯 Final status assigned: ${finalStatus}`);
