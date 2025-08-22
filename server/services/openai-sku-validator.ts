@@ -70,6 +70,173 @@ export class OpenAISKUValidatorService {
     this.chargeCodebook.set('OE-MISC-ITEM', 'Unknown products');
   }
 
+  private async findColorVariantFromDB(baseSKU: string, colorName: string): Promise<string | null> {
+    if (!colorName) return null;
+    
+    const colorLower = colorName.toLowerCase().trim();
+    
+    // Map common color names to color codes
+    const colorMappings: { [key: string]: string } = {
+      'white': '00',
+      'black': '06',
+      'blue': '01',
+      'royal blue': '01',
+      'royal': '01',
+      'red': '02',
+      'green': '03',
+      'orange': '04',
+      'purple': '05',
+      'yellow': '08',
+      'navy': '10',
+      'navy blue': '10',
+      'clear': 'CL',
+      'gray': '07',
+      'grey': '07',
+      'pink': '09',
+      'brown': '11',
+      'lime': '12',
+      'lime green': '12',
+      'teal': '13',
+      'silver': '14',
+      'gold': '15',
+      'maroon': '16',
+      'forest green': '17',
+      'kelly green': '18',
+      'light blue': '19',
+      'aqua': '20'
+    };
+    
+    // Try to find a matching color code
+    let colorCode: string | null = null;
+    for (const [colorKey, code] of Object.entries(colorMappings)) {
+      if (colorLower.includes(colorKey)) {
+        colorCode = code;
+        break;
+      }
+    }
+    
+    if (colorCode) {
+      // Check if this variant exists in the database
+      const variantSKU = `${baseSKU}-${colorCode}`;
+      try {
+        const dbResult = await db.select().from(items)
+          .where(sql`UPPER(final_sku) = ${variantSKU.toUpperCase()} AND is_active = true`)
+          .limit(1);
+        
+        if (dbResult.length > 0) {
+          console.log(`   🎨 Color variant found in DB: ${colorName} → ${colorCode} → ${variantSKU}`);
+          // Add to cache for future use
+          this.itemsCache.set(variantSKU, dbResult[0]);
+          return variantSKU;
+        }
+      } catch (error) {
+        console.log(`   ⚠️ DB lookup failed for variant ${variantSKU}`);
+      }
+    }
+    
+    // Try fuzzy search for color in description/display name
+    try {
+      const dbResult = await db.select().from(items)
+        .where(sql`
+          UPPER(final_sku) LIKE ${baseSKU.toUpperCase() + '-%'} 
+          AND is_active = true
+          AND (LOWER(display_name) LIKE ${'%' + colorLower + '%'} 
+               OR LOWER(description) LIKE ${'%' + colorLower + '%'})
+        `)
+        .limit(1);
+      
+      if (dbResult.length > 0) {
+        const variantSKU = dbResult[0].finalSku;
+        console.log(`   🎨 Color variant found (fuzzy match): ${colorName} → ${variantSKU}`);
+        // Add to cache for future use
+        this.itemsCache.set(variantSKU, dbResult[0]);
+        return variantSKU;
+      }
+    } catch (error) {
+      console.log(`   ⚠️ DB fuzzy search failed for ${baseSKU} with color ${colorName}`);
+    }
+    
+    console.log(`   ⚠️ No variant found for ${baseSKU} in color ${colorName}`);
+    return null;
+  }
+
+  private findColorVariant(baseSKU: string, colorName: string): string | null {
+    if (!colorName) return null;
+    
+    const colorLower = colorName.toLowerCase().trim();
+    
+    // Map common color names to color codes
+    const colorMappings: { [key: string]: string } = {
+      'white': '00',
+      'black': '06',
+      'blue': '01',
+      'royal blue': '01',
+      'royal': '01',
+      'red': '02',
+      'green': '03',
+      'orange': '04',
+      'purple': '05',
+      'yellow': '08',
+      'navy': '10',
+      'navy blue': '10',
+      'clear': 'CL',
+      'gray': '07',
+      'grey': '07',
+      'pink': '09',
+      'brown': '11',
+      'lime': '12',
+      'lime green': '12',
+      'teal': '13',
+      'silver': '14',
+      'gold': '15',
+      'maroon': '16',
+      'forest green': '17',
+      'kelly green': '18',
+      'light blue': '19',
+      'aqua': '20'
+    };
+    
+    // Try to find a matching color code
+    let colorCode: string | null = null;
+    for (const [colorKey, code] of Object.entries(colorMappings)) {
+      if (colorLower.includes(colorKey)) {
+        colorCode = code;
+        break;
+      }
+    }
+    
+    if (!colorCode) {
+      console.log(`   ⚠️ No color mapping found for: ${colorName}`);
+      return null;
+    }
+    
+    // Check if this variant exists in the cache
+    const variantSKU = `${baseSKU}-${colorCode}`;
+    const variantMatch = this.itemsCache.get(variantSKU);
+    
+    if (variantMatch) {
+      console.log(`   🎨 Color variant found: ${colorName} → ${colorCode} → ${variantSKU}`);
+      return variantSKU;
+    }
+    
+    // Try alternate formats (like T811-FD for special variants)
+    // Since LRUCache doesn't have entries(), we'll check common variant formats
+    const commonVariants = ['FD', 'SP', 'LT', 'DK', 'MT'];
+    for (const variant of commonVariants) {
+      const variantSKU = `${baseSKU}-${variant}`;
+      const variantMatch = this.itemsCache.get(variantSKU);
+      if (variantMatch && 
+          (variantMatch.displayName?.toLowerCase().includes(colorLower) || 
+           variantMatch.description?.toLowerCase().includes(colorLower))) {
+        console.log(`   🎨 Color variant found (special variant): ${colorName} → ${variantSKU}`);
+        return variantSKU;
+      }
+    }
+    
+    console.log(`   ⚠️ No variant found for ${baseSKU} in color ${colorName}`);
+    return null;
+  }
+
   private analyzeChargeDescription(description: string, quantity?: number): string | null {
     const descLower = description.toLowerCase();
     
@@ -133,26 +300,62 @@ export class OpenAISKUValidatorService {
         FROM items i, params p
         WHERE i.item_embedding IS NOT NULL
           AND i.is_active = true
-          AND (1 - (i.item_embedding <=> p.q)) > 0.85
+          AND (1 - (i.item_embedding <=> p.q)) > 0.75
         ORDER BY i.item_embedding <=> p.q
-        LIMIT 1
+        LIMIT 3
       `);
       
       if (vectorMatches.rows.length > 0) {
-        const match = vectorMatches.rows[0];
-        console.log(`   ✅ VECTOR MATCH: ${item.sku} → ${match.final_sku} (similarity: ${match.cosine_sim})`);
+        // Find the best match, preferring exact base SKU matches
+        let bestMatch = vectorMatches.rows[0];
+        
+        // If we have multiple matches, prefer one that matches the base SKU
+        if (item.sku && vectorMatches.rows.length > 1) {
+          const baseSKU = item.sku.toUpperCase().split('-')[0];
+          for (const row of vectorMatches.rows) {
+            const matchBaseSKU = (row.final_sku as string).split('-')[0];
+            if (matchBaseSKU === baseSKU) {
+              bestMatch = row;
+              break;
+            }
+          }
+        }
+        
+        // Check if we need to apply color variant to the matched SKU
+        if (item.itemColor && bestMatch) {
+          const baseSKU = (bestMatch.final_sku as string).split('-')[0];
+          const colorVariantSKU = this.findColorVariant(baseSKU, item.itemColor);
+          if (colorVariantSKU) {
+            console.log(`   ✅ VECTOR MATCH + COLOR: ${item.sku} → ${baseSKU} + ${item.itemColor} → ${colorVariantSKU}`);
+            return {
+              sku: item.sku || '',
+              description: item.description || bestMatch.description as string || '',
+              itemColor: item.itemColor || '',
+              quantity: item.quantity || 1,
+              unitPrice: item.unitPrice,
+              totalPrice: item.totalPrice,
+              imprintColor: item.imprintColor,
+              finalSKU: colorVariantSKU,
+              productName: bestMatch.display_name as string,
+              isValidSKU: true,
+              validationNotes: `Vector match with color variant (${(parseFloat(bestMatch.cosine_sim as string) * 100).toFixed(1)}% similarity)`
+            };
+          }
+        }
+        
+        console.log(`   ✅ VECTOR MATCH: ${item.sku} → ${bestMatch.final_sku} (similarity: ${bestMatch.cosine_sim})`);
         return {
           sku: item.sku || '',
-          description: item.description || match.description as string || '',
+          description: item.description || bestMatch.description as string || '',
           itemColor: item.itemColor || '',
           quantity: item.quantity || 1,
           unitPrice: item.unitPrice,
           totalPrice: item.totalPrice,
           imprintColor: item.imprintColor,
-          finalSKU: match.final_sku as string,
-          productName: match.display_name as string,
+          finalSKU: bestMatch.final_sku as string,
+          productName: bestMatch.display_name as string,
           isValidSKU: true,
-          validationNotes: `Vector match (${(parseFloat(match.cosine_sim as string) * 100).toFixed(1)}% similarity)`
+          validationNotes: `Vector match (${(parseFloat(bestMatch.cosine_sim as string) * 100).toFixed(1)}% similarity)`
         };
       }
       
@@ -508,10 +711,77 @@ ${JSON.stringify(lineItems, null, 2)}`;
       }
       
       // Check if SKU directly exists in items cache
-      const exactMatch = this.itemsCache.get(item.sku.toUpperCase());
+      let exactMatch = this.itemsCache.get(item.sku.toUpperCase());
+      
+      // If not in cache, do a direct database lookup
+      if (!exactMatch && item.sku) {
+        try {
+          const dbResult = await db.select().from(items)
+            .where(sql`UPPER(final_sku) = ${item.sku.toUpperCase()} AND is_active = true`)
+            .limit(1);
+          
+          if (dbResult.length > 0) {
+            exactMatch = dbResult[0];
+            // Add to cache for future use
+            this.itemsCache.set(item.sku.toUpperCase(), exactMatch);
+            console.log(`   📦 DB LOOKUP: Found ${item.sku} in database`);
+          }
+        } catch (error) {
+          console.log(`   ⚠️ DB lookup failed for ${item.sku}`);
+        }
+      }
+      
       if (exactMatch) {
+        // Check if we need to apply color variant
+        if (item.itemColor) {
+          const colorVariantSKU = await this.findColorVariantFromDB(item.sku, item.itemColor);
+          if (colorVariantSKU) {
+            finalSKUs[i] = colorVariantSKU;
+            console.log(`   ✅ EXACT MATCH WITH COLOR: ${item.sku} + ${item.itemColor} → ${colorVariantSKU}`);
+            continue;
+          }
+        }
         finalSKUs[i] = exactMatch.finalSku;
         console.log(`   ✅ EXACT MATCH: ${item.sku} → ${exactMatch.finalSku}`);
+        continue;
+      }
+      
+      // Check if it's a base SKU that exists (without color code)
+      // For example: T811 exists, even if T811-01 doesn't
+      const baseSKU = item.sku.toUpperCase().split('-')[0];
+      let baseMatch = this.itemsCache.get(baseSKU);
+      
+      // If not in cache, do a direct database lookup for base SKU
+      if (!baseMatch && baseSKU) {
+        try {
+          const dbResult = await db.select().from(items)
+            .where(sql`UPPER(final_sku) = ${baseSKU} AND is_active = true`)
+            .limit(1);
+          
+          if (dbResult.length > 0) {
+            baseMatch = dbResult[0];
+            // Add to cache for future use
+            this.itemsCache.set(baseSKU, baseMatch);
+            console.log(`   📦 DB LOOKUP: Found base SKU ${baseSKU} in database`);
+          }
+        } catch (error) {
+          console.log(`   ⚠️ DB lookup failed for base SKU ${baseSKU}`);
+        }
+      }
+      
+      if (baseMatch) {
+        // Found base SKU, try to find color variant
+        if (item.itemColor) {
+          const colorVariantSKU = await this.findColorVariantFromDB(baseSKU, item.itemColor);
+          if (colorVariantSKU) {
+            finalSKUs[i] = colorVariantSKU;
+            console.log(`   ✅ BASE SKU + COLOR: ${baseSKU} + ${item.itemColor} → ${colorVariantSKU}`);
+            continue;
+          }
+        }
+        // Use base SKU if no color variant found
+        finalSKUs[i] = baseMatch.finalSku;
+        console.log(`   ✅ BASE SKU MATCH: ${item.sku} → ${baseMatch.finalSku}`);
         continue;
       }
       

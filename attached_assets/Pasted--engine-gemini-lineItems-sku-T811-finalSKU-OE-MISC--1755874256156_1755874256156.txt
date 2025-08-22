@@ -1,0 +1,139 @@
+{
+  "engine": "gemini",
+  "lineItems": [
+    {
+      "sku": "T811",
+      "finalSKU": "OE-MISC-ITEM",
+      "quantity": 150,
+      "itemColor": "ROYAL BLUE",
+      "unitPrice": 2.04,
+      "totalPrice": 306,
+      "description": "5\" SPYRO FOOTBALL",
+      "imprintColor": "WHITE"
+    },
+    {
+      "sku": "SETUP",
+      "finalSKU": "SETUP",
+      "quantity": 1,
+      "itemColor": "",
+      "unitPrice": 48,
+      "totalPrice": 48,
+      "description": "SET UP CHARGE",
+      "imprintColor": ""
+    },
+    {
+      "sku": "PROOF",
+      "finalSKU": "PROOF",
+      "quantity": 1,
+      "itemColor": "",
+      "unitPrice": 10,
+      "totalPrice": 10,
+      "description": "EMAIL / PAPER PROOF REQUESTED",
+      "imprintColor": ""
+    }
+  ],
+  "subtotals": {
+    "grandTotal": 364,
+    "merchandiseSubtotal": 306,
+    "additionalChargesSubtotal": 58
+  },
+  "purchaseOrder": {
+    "shipTo": {
+      "city": "WEBB CITY",
+      "name": "",
+      "state": "Missouri",
+      "company": "EMBASSY",
+      "country": "United States",
+      "zipCode": "64870",
+      "address1": "11 S TOM ST.",
+      "address2": ""
+    },
+    "vendor": {
+      "city": "IRWINDALE",
+      "name": "HIGH CALIBER LINE",
+      "email": "",
+      "phone": "",
+      "state": "California",
+      "country": "United States",
+      "zipCode": "91702",
+      "address1": "6250 N IRWINDALE AVE",
+      "address2": ""
+    },
+    "contact": {
+      "name": "JEANIE",
+      "email": "",
+      "phone": "",
+      "jobTitle": ""
+    },
+    "customer": {
+      "city": "WEBB CITY",
+      "email": "office@embassygear.com",
+      "phone": "417-673-3055",
+      "state": "Missouri",
+      "company": "embassy",
+      "country": "United States",
+      "zipCode": "64870",
+      "address1": "11 S. TOM ST.",
+      "address2": "",
+      "lastName": "",
+      "firstName": "",
+      "customerNumber": ""
+    },
+    "asiNumber": "187525",
+    "orderDate": "2025-08-22",
+    "ppaiNumber": "336030",
+    "inHandsDate": "",
+    "shippingMethod": "GROUND",
+    "salesPersonName": "",
+    "shippingCarrier": "UPS",
+    "requiredShipDate": "",
+    "salesPersonEmail": "",
+    "purchaseOrderNumber": "67062"
+  },
+  "additionalNotes": [
+    "**PROMO CODE EQP4U-LP**",
+    "**ART ATTACHED**"
+  ],
+  "validatedLineItems": [
+    {
+      "sku": "T811",
+      "finalSKU": "OE-MISC-ITEM",
+      "quantity": 150,
+      "itemColor": "ROYAL BLUE",
+      "unitPrice": 2.04,
+      "isValidSKU": true,
+      "totalPrice": 306,
+      "description": "5\" SPYRO FOOTBALL",
+      "productName": "Unknown products",
+      "imprintColor": "WHITE",
+      "validationNotes": "Unknown products"
+    },
+    {
+      "sku": "SETUP",
+      "finalSKU": "SETUP",
+      "quantity": 1,
+      "itemColor": "",
+      "unitPrice": 48,
+      "isValidSKU": true,
+      "totalPrice": 48,
+      "description": "SET UP CHARGE",
+      "productName": "Setup charges",
+      "imprintColor": "",
+      "validationNotes": "Setup charges"
+    },
+    {
+      "sku": "PROOF",
+      "finalSKU": "PROOF",
+      "quantity": 1,
+      "itemColor": "",
+      "unitPrice": 10,
+      "isValidSKU": true,
+      "totalPrice": 10,
+      "description": "EMAIL / PAPER PROOF REQUESTED",
+      "productName": "Proof charges",
+      "imprintColor": "",
+      "validationNotes": "Proof charges"
+    }
+  ],
+  "specialInstructions": "PLEASE SEND CONFIRMATION AND NOTIFY US OF ANY BACK ORDERS OR OVERRUNS. PLEASE SHIP GROUND ON OUR UPS #Y08A10 IF NO FREE FREIGHT UNLESS NOTED DIFFERENT. CONTACT JEANIE WITH QUESTIONS."
+}

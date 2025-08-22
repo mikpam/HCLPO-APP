@@ -109,7 +109,14 @@ Vector Database Preference: PGvector integration with existing PostgreSQL databa
   - **LLM Tiebreak Threshold**: Lowered from 0.75 → 0.50  
   - **Impact**: Prevents valid customers from being incorrectly flagged as "new_customer"
 
-### SKU Validation & Extraction Fixes
+### SKU Validation & Extraction Fixes (August 22, 2025)
+- **🎯 ENHANCED SKU VALIDATOR WITH DB LOOKUPS**: Fixed T811 and other SKUs not being recognized
+  - **Direct Database Lookups**: When SKUs aren't in cache, validator now queries database directly
+  - **Color Variant Mapping**: Maps color names to variant codes (e.g., "ROYAL BLUE" → "01" → "T811-01")
+  - **Base SKU Recognition**: Checks if base SKU exists (T811) even without exact variant match
+  - **Lower Vector Threshold**: Reduced from 0.85 to 0.75 for better semantic matching
+  - **Smart Color Matching**: Automatically finds appropriate color variant from base SKU + color name
+
 - **🔥 SKU VALIDATOR QUANTITY-AWARE LOGIC**: Fixed OE-MISC-CHARGE high quantity issue
   - **Quantity-Aware Charge Detection**: High quantities (>50) automatically treated as products, not charges
   - **Enhanced analyzeChargeDescription()**: Now considers quantity when determining charge vs product classification
