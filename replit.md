@@ -80,6 +80,25 @@ Vector Database Preference: PGvector integration with existing PostgreSQL databa
 
 ## Recent System Improvements
 
+### Customer Validation Architecture Standardization (2025-08-22)
+- **🎯 STANDARDIZED VALIDATION WORKFLOW**: Fixed validation inconsistencies causing false "new_customer" status
+  - **Root Cause**: Multiple validation services (OpenAI Customer Finder + Hybrid Validator) returned conflicting results
+  - **Example Issue**: PO 7f712714 showed customer found in metadata (95% confidence) but customerValidated=false
+  - **Solution**: Standardized on single Hybrid Customer Validator throughout entire pipeline
+  - **Removed**: Redundant OpenAI Customer Finder Service fallback calls to prevent inconsistencies
+
+- **🚀 ENHANCED BRAND MATCHING ALGORITHM**: Dramatically improved customer recognition accuracy
+  - **Root Cause**: "HALO" failed to match "Halo Branded Solutions" (scored only 0.050 confidence)
+  - **Solution**: Added sophisticated `calculateBrandMatch` method with brand containment logic
+  - **Brand Containment**: "HALO" → "Halo Branded Solutions" now scores 0.9 confidence
+  - **Business Logic**: Handles corporate suffixes (Inc, LLC, Corp, etc.) and normalization
+  - **Scoring Rebalance**: Increased brand matching weight from 5% → 30%, reduced base similarity 70% → 50%
+
+- **⚖️ ADJUSTED CONFIDENCE THRESHOLDS**: More reasonable acceptance criteria for customer matches
+  - **High Confidence Auto-Accept**: Lowered from 0.85 → 0.65
+  - **LLM Tiebreak Threshold**: Lowered from 0.75 → 0.50  
+  - **Impact**: Prevents valid customers from being incorrectly flagged as "new_customer"
+
 ### SKU Validation & Extraction Fixes
 - **🔥 SKU VALIDATOR QUANTITY-AWARE LOGIC**: Fixed OE-MISC-CHARGE high quantity issue
   - **Quantity-Aware Charge Detection**: High quantities (>50) automatically treated as products, not charges
@@ -97,7 +116,7 @@ Vector Database Preference: PGvector integration with existing PostgreSQL databa
   - **Impact**: Improves SKU validation accuracy by extracting clean base codes for database lookup
   - **Setup Charge Fix**: Updated SKU format from "SET UP" to "SETUP" to match database standard
 
-### Customer Validation Fixes
+### Customer Validation Fixes (Historical)
 - **🏢 ENHANCED COMPANY NAME NORMALIZATION**: Fixed business entity suffix matching issue
   - **Root Cause**: "Quality Logo Products, Inc." failed to match "Quality Logo Products" in database
   - **Solution**: Added comprehensive business entity suffix normalization function

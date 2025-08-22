@@ -408,7 +408,7 @@ export class HybridCustomerValidator {
   }
 
   /**
-   * Step 3: Rule-aware re-rank (app side)
+   * Step 3: Rule-aware re-rank (app side) - ENHANCED BRAND MATCHING
    */
   private reRankCandidates(candidates: CustomerCandidate[], input: CustomerValidatorInput): CustomerCandidate[] {
     console.log(`📊 RE-RANKING: Scoring ${candidates.length} candidates`);
@@ -416,12 +416,21 @@ export class HybridCustomerValidator {
     const rankedCandidates = candidates.map(candidate => {
       let finalScore = 0;
 
-      // Base similarity (70%)
-      finalScore += 0.70 * (candidate.cosineSim || 0);
+      // Base similarity (50% - reduced to make room for brand matching)
+      finalScore += 0.50 * (candidate.cosineSim || 0);
 
-      // Domain match bonus (15%)
+      // 🎯 ENHANCED BRAND MATCHING (30% - significantly increased)
+      if (input.customerName && candidate.companyName) {
+        const brandScore = this.calculateBrandMatch(input.customerName, candidate.companyName);
+        finalScore += 0.30 * brandScore;
+        if (brandScore > 0.7) {
+          console.log(`   🎯 Strong brand match: "${input.customerName}" → "${candidate.companyName}" (${(brandScore * 100).toFixed(1)}%)`);
+        }
+      }
+
+      // Domain match bonus (10%)
       if (candidate.domainMatch) {
-        finalScore += 0.15;
+        finalScore += 0.10;
       }
 
       // Phone match bonus (5%)
@@ -435,16 +444,6 @@ export class HybridCustomerValidator {
         // This would need address parsing from candidate.address
         // For now, placeholder logic
         finalScore += 0.05 * 0.5; // Partial credit
-      }
-
-      // Alias/brand match bonus (5%)
-      if (input.customerName && candidate.companyName) {
-        const inputWords = input.customerName.split(' ');
-        const candidateWords = candidate.companyName.toLowerCase().split(' ');
-        const matchRatio = inputWords.filter(word => 
-          candidateWords.some(cWord => cWord.includes(word))
-        ).length / inputWords.length;
-        finalScore += 0.05 * matchRatio;
       }
 
       return {
@@ -461,6 +460,69 @@ export class HybridCustomerValidator {
     });
 
     return rankedCandidates;
+  }
+
+  /**
+   * Enhanced brand matching algorithm for better customer recognition
+   */
+  private calculateBrandMatch(inputName: string, companyName: string): number {
+    if (!inputName || !companyName) return 0;
+
+    // Normalize both names for comparison
+    const normalizeForBrand = (name: string) => {
+      return name
+        .toLowerCase()
+        .trim()
+        .replace(/[^\w\s]/g, ' ') // Replace punctuation with spaces
+        .replace(/\s+/g, ' ') // Normalize whitespace
+        .replace(/\b(inc|llc|ltd|co|corp|company|corporation|enterprises|group|usa|com|net)\b/g, '') // Remove business suffixes
+        .trim();
+    };
+
+    const normalizedInput = normalizeForBrand(inputName);
+    const normalizedCompany = normalizeForBrand(companyName);
+
+    // Exact match after normalization
+    if (normalizedInput === normalizedCompany) {
+      return 1.0;
+    }
+
+    // Brand containment (e.g., "halo" in "halo branded solutions")
+    if (normalizedCompany.includes(normalizedInput) || normalizedInput.includes(normalizedCompany)) {
+      const shorter = normalizedInput.length < normalizedCompany.length ? normalizedInput : normalizedCompany;
+      const longer = normalizedInput.length >= normalizedCompany.length ? normalizedInput : normalizedCompany;
+      
+      // Strong match if shorter brand is significant portion of longer name
+      if (shorter.length >= 3 && longer.includes(shorter)) {
+        return 0.9; // High confidence for brand containment
+      }
+    }
+
+    // Word-by-word matching with business logic
+    const inputWords = normalizedInput.split(' ').filter(w => w.length > 2);
+    const companyWords = normalizedCompany.split(' ').filter(w => w.length > 2);
+
+    if (inputWords.length === 0 || companyWords.length === 0) return 0;
+
+    // Calculate word overlap
+    const matchingWords = inputWords.filter(inputWord =>
+      companyWords.some(companyWord => 
+        companyWord.includes(inputWord) || inputWord.includes(companyWord)
+      )
+    );
+
+    const wordMatchRatio = matchingWords.length / inputWords.length;
+
+    // Strong word overlap indicates good match
+    if (wordMatchRatio >= 0.8) {
+      return 0.8;
+    } else if (wordMatchRatio >= 0.5) {
+      return 0.6;
+    } else if (wordMatchRatio > 0) {
+      return 0.3;
+    }
+
+    return 0;
   }
 
   /**
@@ -680,9 +742,9 @@ OR: {"selected_id":"NONE","reason":"No reasonable matches found"}`
 
       console.log(`   📊 Top score: ${topScore.toFixed(3)}, Margin: ${margin.toFixed(3)}`);
 
-      // High confidence auto-accept
-      if (topScore >= 0.85 && margin >= 0.03) {
-        console.log(`   ✅ HIGH CONFIDENCE: Auto-accepting top candidate`);
+      // 🎯 ADJUSTED THRESHOLDS: High confidence auto-accept (enhanced brand matching allows lower thresholds)
+      if (topScore >= 0.65 && margin >= 0.03) {
+        console.log(`   ✅ HIGH CONFIDENCE: Auto-accepting top candidate (${topScore.toFixed(3)})`);
         
         const result: CustomerValidatorResult = {
           matched: true,
@@ -710,8 +772,8 @@ OR: {"selected_id":"NONE","reason":"No reasonable matches found"}`
         return result;
       }
 
-      // Borderline case - use LLM tiebreak
-      if (topScore >= 0.75 && margin < 0.03 && rankedCandidates.length > 1) {
+      // Borderline case - use LLM tiebreak (adjusted threshold)
+      if (topScore >= 0.50 && margin < 0.03 && rankedCandidates.length > 1) {
         console.log(`   🤖 BORDERLINE: Using LLM tiebreak`);
         
         const tiebreakResult = await this.llmTiebreak(rankedCandidates.slice(0, 3), normalizedInput);

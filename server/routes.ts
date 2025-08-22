@@ -891,52 +891,13 @@ async function processEmailThroughValidationSystem(messageToProcess: any, update
           console.log(`   ⚠️  OpenAI could not find HCL customer match`);
           console.log(`   └─ Status: ${customerMatch.status}, Method: ${customerMatch.method}, Confidence: ${Math.round((customerMatch.confidence || 0) * 100)}%`);
           
-          // Try backup lookup with simplified inputs if main attempt failed
-          try {
-            console.log(`\n🔍 FALLBACK CUSTOMER LOOKUP: Trying simplified search...`);
-            const fallbackMatch = await customerFinder.findCustomer({
-              customerName: extractionResult.purchaseOrder.customer.company,
-              customerEmail: extractionResult.purchaseOrder.customer.email || messageToProcess.sender,
-              senderEmail: messageToProcess.sender
-            });
-            
-            if (fallbackMatch.status === 'found' && fallbackMatch.customer_number) {
-              customerMeta = fallbackMatch;
-              console.log(`   ✅ Fallback found HCL customer: ${fallbackMatch.customer_name} (${fallbackMatch.customer_number})`);
-              console.log(`   └─ Method: ${fallbackMatch.method} (Confidence: ${Math.round((fallbackMatch.confidence || 0) * 100)}%)`);
-            } else {
-              console.log(`   ❌ Fallback customer lookup also failed`);
-            }
-          } catch (fallbackError) {
-            console.error(`   ❌ Fallback customer lookup also failed:`, fallbackError);
-          }
+          // Removed redundant fallback - standardizing on Hybrid Customer Validator only
+          console.log(`   ❌ Customer lookup deferred to main Hybrid Customer Validator (Step 7)`);
         }
       } catch (error) {
         console.error(`   ❌ Customer lookup failed:`, error);
-        // Try backup lookup with simplified inputs if main attempt failed
-        try {
-          console.log(`\n🔍 FALLBACK CUSTOMER LOOKUP: Trying simplified search...`);
-          const { OpenAICustomerFinderService } = await import('./services/openai-customer-finder');
-          const customerFinder = await validatorHealthService.recordValidatorCall(
-            'customerFinder',
-            async () => new OpenAICustomerFinderService()
-          );
-          const fallbackMatch = await customerFinder.findCustomer({
-            customerName: extractionResult.purchaseOrder.customer.company,
-            customerEmail: extractionResult.purchaseOrder.customer.email || messageToProcess.sender,
-            senderEmail: messageToProcess.sender
-          });
-          
-          if (fallbackMatch.status === 'found' && fallbackMatch.customer_number) {
-            customerMeta = fallbackMatch;
-            console.log(`   ✅ Fallback found HCL customer: ${fallbackMatch.customer_name} (${fallbackMatch.customer_number})`);
-            console.log(`   └─ Method: ${fallbackMatch.method} (Confidence: ${Math.round((fallbackMatch.confidence || 0) * 100)}%)`);
-          } else {
-            console.log(`   ❌ Fallback customer lookup also failed`);
-          }
-        } catch (fallbackError) {
-          console.error(`   ❌ Fallback customer lookup also failed:`, fallbackError);
-        }
+        // Removed redundant fallback - standardizing on Hybrid Customer Validator only
+        console.log(`   ❌ Customer lookup deferred to main Hybrid Customer Validator (Step 7)`);
       }
     }
     
