@@ -42,13 +42,28 @@ export function registerCustomerRoutes(app: Express): void {
 
       // Add search filtering if search parameter provided
       if (search && search.trim()) {
-        const searchTerm = `%${search.trim()}%`;
-        const searchCondition = or(
-          ilike(customers.customerNumber, searchTerm),
-          ilike(customers.companyName, searchTerm),
-          ilike(customers.email, searchTerm),
-          sql`${customers.alternateNames}::text ILIKE ${searchTerm}`
-        );
+        const searchValue = search.trim();
+        const searchTerm = `%${searchValue}%`;
+        
+        // Check if search looks like a customer number (starts with C or is all digits)
+        const isCustomerNumber = /^C?\d+$/.test(searchValue);
+        
+        let searchConditions: any[] = [];
+        
+        if (isCustomerNumber) {
+          // Exact match for customer numbers
+          const cnumber = searchValue.startsWith('C') ? searchValue : `C${searchValue}`;
+          searchConditions.push(eq(customers.customerNumber, cnumber));
+        } else {
+          // Partial match for other fields
+          searchConditions.push(
+            ilike(customers.companyName, searchTerm),
+            ilike(customers.email, searchTerm),
+            sql`${customers.alternateNames}::text ILIKE ${searchTerm}`
+          );
+        }
+        
+        const searchCondition = or(...searchConditions);
         whereCondition = whereCondition ? and(whereCondition, searchCondition) : searchCondition;
       }
 
@@ -114,13 +129,28 @@ export function registerCustomerRoutes(app: Express): void {
 
       // Add search filtering if search parameter provided
       if (search && search.trim()) {
-        const searchTerm = `%${search.trim()}%`;
-        const searchCondition = or(
-          ilike(customers.customerNumber, searchTerm),
-          ilike(customers.companyName, searchTerm),
-          ilike(customers.email, searchTerm),
-          sql`${customers.alternateNames}::text ILIKE ${searchTerm}`
-        );
+        const searchValue = search.trim();
+        const searchTerm = `%${searchValue}%`;
+        
+        // Check if search looks like a customer number (starts with C or is all digits)
+        const isCustomerNumber = /^C?\d+$/.test(searchValue);
+        
+        let searchConditions: any[] = [];
+        
+        if (isCustomerNumber) {
+          // Exact match for customer numbers
+          const cnumber = searchValue.startsWith('C') ? searchValue : `C${searchValue}`;
+          searchConditions.push(eq(customers.customerNumber, cnumber));
+        } else {
+          // Partial match for other fields
+          searchConditions.push(
+            ilike(customers.companyName, searchTerm),
+            ilike(customers.email, searchTerm),
+            sql`${customers.alternateNames}::text ILIKE ${searchTerm}`
+          );
+        }
+        
+        const searchCondition = or(...searchConditions);
         whereCondition = whereCondition ? and(whereCondition, searchCondition) : searchCondition;
       }
 
