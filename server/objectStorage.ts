@@ -130,6 +130,28 @@ export class ObjectStorageService {
     }
   }
 
+  // Generate a presigned GET URL for an object path
+  async generatePresignedGetUrl(objectPath: string, ttlSec: number = 7 * 24 * 60 * 60): Promise<string> {
+    // Remove /objects/ prefix if present
+    let cleanPath = objectPath;
+    if (cleanPath.startsWith('/objects/')) {
+      cleanPath = cleanPath.substring(9); // Remove '/objects/'
+    }
+    
+    // Parse the path to get bucket and object name
+    const privateObjectDir = this.getPrivateObjectDir();
+    const fullPath = `${privateObjectDir}/${cleanPath}`;
+    const { bucketName, objectName } = parseObjectPath(fullPath);
+    
+    // Generate presigned URL for GET access
+    return signObjectURL({
+      bucketName,
+      objectName,
+      method: "GET",
+      ttlSec: ttlSec,
+    });
+  }
+
   // Gets the upload URL for an object entity.
   async getObjectEntityUploadURL(): Promise<string> {
     const privateObjectDir = this.getPrivateObjectDir();

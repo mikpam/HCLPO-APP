@@ -1,32 +1,77 @@
 import { type PurchaseOrder } from "@shared/schema";
 import OpenAI from "openai";
+import { ObjectStorageService } from "../objectStorage";
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+const objectStorageService = new ObjectStorageService();
+
+/**
+ * Generate a presigned URL for an object storage path
+ * Converts internal paths like /objects/attachments/... to accessible URLs
+ */
+async function generatePresignedUrl(objectPath: string | null): Promise<string> {
+  if (!objectPath || objectPath === '') return '';
+  
+  try {
+    // Remove /objects/ prefix if present
+    let cleanPath = objectPath;
+    if (cleanPath.startsWith('/objects/')) {
+      cleanPath = cleanPath.substring(9); // Remove '/objects/'
+    }
+    
+    // Generate presigned URL using object storage service
+    const url = await objectStorageService.generatePresignedGetUrl(objectPath, 7 * 24 * 60 * 60); // 7 days TTL
+    return url;
+  } catch (error) {
+    console.error(`Failed to generate presigned URL for ${objectPath}:`, error);
+    return ''; // Return empty string if generation fails
+  }
+}
 
 /**
  * Generates NetSuite-ready payload from validated purchase order data
  * Uses OpenAI to format and structure the data according to NetSuite requirements
  */
 export async function generateNSPayload(po: PurchaseOrder): Promise<any> {
-  try {
-    // Map email intent from our format to NetSuite format
-    const mapEmailIntent = (intent: string | null): string => {
-      if (!intent) return "None";
-      const intentMap: Record<string, string> = {
-        'rush_order': 'Rush',
-        'purchase_order': 'Purchase Order',
-        'sample_request': 'Sample',
-        'follow_up': 'Follow Up',
-        'none': 'None'
-      };
-      return intentMap[intent.toLowerCase()] || 'Purchase Order';
+  // Map email intent from our format to NetSuite format
+  const mapEmailIntent = (intent: string | null): string => {
+    if (!intent) return "None";
+    const intentMap: Record<string, string> = {
+      'rush_order': 'Rush',
+      'purchase_order': 'Purchase Order',
+      'sample_request': 'Sample',
+      'follow_up': 'Follow Up',
+      'none': 'None'
     };
+    return intentMap[intent.toLowerCase()] || 'Purchase Order';
+  };
 
+  // Helper function to calculate subtotals
+  const calculateSubtotals = (lineItems: any[]): any => {
+    const subtotal = lineItems.reduce((sum, item) => {
+      const price = parseFloat(item.unitPrice || item.price || '0');
+      const quantity = parseInt(item.quantity || '0');
+      return sum + (price * quantity);
+    }, 0);
+    
+    return {
+      subtotal: subtotal.toFixed(2),
+      tax: '0.00',
+      shipping: '0.00',
+      total: subtotal.toFixed(2)
+    };
+  };
+
+  try {
     // Extract data from the jsonb fields
     const extractedData = po.extractedData as any || {};
     const purchaseOrderData = extractedData.purchaseOrder || {};
     const subtotals = extractedData.subtotals || {};
     const lineItemsArray = Array.isArray(po.lineItems) ? po.lineItems : [];
+
+    // Generate presigned URLs for documents
+    const sourceDocumentUrl = await generatePresignedUrl(po.extractionSourceFile);
+    const emlUrl = await generatePresignedUrl(po.emlFilePath);
 
     // Prepare the validated data for OpenAI formatting
     const validatedData = {
@@ -55,8 +100,8 @@ export async function generateNSPayload(po: PurchaseOrder): Promise<any> {
         shippingCarrier: po.shippingCarrier || purchaseOrderData.shippingCarrier || "",
         specialInstructions: extractedData.specialInstructions || "",
         emailIntent: mapEmailIntent(po.emailIntent),
-        sourceDocumentUrl: po.extractionSourceFile || "",
-        emlUrl: po.emlFilePath || ""
+        sourceDocumentUrl: sourceDocumentUrl,
+        emlUrl: emlUrl
       }
     };
 
