@@ -26,8 +26,14 @@ This is a full-stack TypeScript application that automates purchase order proces
 - **Database:** PostgreSQL with Drizzle ORM, PGvector for embeddings
 
 ### Core Processing Pipeline
-The system follows a strict 12-step automated pipeline:
-1. Gmail Ingestion → 2. Pre-processing → 3. Classification → 4. Document Filtering → 5. Gemini Extraction → 6. PO Creation → 7. Customer Validation → 8. Contact Validation → 9. SKU Validation → 10. Status Assignment → 11. NetSuite Import → 12. Gmail Labeling
+The system follows a streamlined 2-step automated pipeline (refactored from legacy 12-step Make.com workflow):
+
+**Step 1: GPT Classification** - OpenAI analyzes emails and determines processing route
+**Step 2: Gemini Extraction + Validation + Import** - Single consolidated step that:
+- Extracts PO data using Google Gemini
+- Validates customers, contacts, and SKUs through hybrid system
+- Creates NetSuite sales orders via User Event script
+- Updates Gmail labels and stores audit trails
 
 ### Database Safety Rules
 - **CRITICAL:** Never change primary key ID column types (serial ↔ varchar) - this breaks existing data
@@ -49,6 +55,12 @@ The system follows a strict 12-step automated pipeline:
 - **Google Gemini:** Document extraction from PDFs, images, Word docs, Excel files
 - **Embedding System:** OpenAI 1536-dimensional vectors stored in PGvector for semantic search
 
+### NetSuite Integration Architecture
+- **Sales Order Creation:** System sends validated PO data to NetSuite via REST API
+- **User Event Script:** Custom NetSuite script (`so_to_po_ue.js`) automatically converts Sales Orders to Purchase Orders
+- **Special Handling:** User Event script manages setup charges and OE-MISC codes during conversion
+- **Authentication:** Uses Token-Based Authentication (TBA) with NLAuth for secure API access
+
 ## Testing Instructions
 
 ### Manual Testing
@@ -58,9 +70,10 @@ The system follows a strict 12-step automated pipeline:
 - Use retry buttons in admin UI for testing specific PO validation flows
 
 ### Database Testing
-- Run queries via `execute_sql_tool` for debugging
-- Check PO status progression: `pending` → `validating` → `customer_found` → `ready_for_import`
+- Run queries via `execute_sql_tool` for debugging  
+- Check PO status progression: `pending` → `ready_for_netsuite`, `new_customer`, or `pending_review`
 - Verify embeddings: `SELECT * FROM customers WHERE embedding IS NOT NULL LIMIT 5`
+- Check error logs: `SELECT * FROM error_logs ORDER BY created_at DESC LIMIT 10` (stored in PostgreSQL)
 
 ### Validation Testing
 - Test customer validation: Check company name normalization (Inc., LLC handling)
@@ -73,7 +86,8 @@ The system follows a strict 12-step automated pipeline:
 - Check `/api/processing/current-status` for lock status
 - Use `/api/processing/check-stuck-processes` to recover stuck POs
 - Reset processing lock: Set `isProcessing` to false in memory if needed
-- Check error logs: Query `error_logs` table for processing failures
+- Check error logs: Query `error_logs` table in PostgreSQL for processing failures
+- Verify file storage: Check Replit object storage for .eml files and attachments
 
 ### Database Issues
 - **ID column changes:** Never alter existing ID column types - causes migration failures
@@ -107,16 +121,13 @@ The system follows a strict 12-step automated pipeline:
 
 ## Status Definitions
 
-### Purchase Order Statuses
-- `pending` - Awaiting customer validation
-- `validating` - Currently processing through validation pipeline  
-- `customer_found` - Customer validated, contact validation needed
-- `contact_validation_needed` - Customer found, contact resolution needed
-- `sku_validation_needed` - Customer and contact found, SKU validation needed
-- `ready_for_import` - All validations passed, ready for NetSuite
-- `new_customer` - Unknown customer, requires manual setup
-- `manual_review` - Requires human intervention
-- `validation_failed` - Technical validation error occurred
+### Purchase Order Statuses (Current Simplified Model)
+- `pending` - Initial state, awaiting processing through validation pipeline
+- `ready_for_netsuite` - All validations passed, ready for NetSuite import
+- `new_customer` - Unknown customer detected, requires manual customer setup
+- `pending_review` - Requires human intervention due to validation conflicts or errors
+
+**Legacy statuses** (from old 12-step system): `validating`, `customer_found`, `contact_validation_needed`, `sku_validation_needed`, `validation_failed` - these may appear in historical data but new POs use simplified status model.
 
 ### Processing Architecture
 - Single auto-processing endpoint prevents concurrent operations
