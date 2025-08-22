@@ -1381,30 +1381,142 @@ async function processPendingPO(pendingPO: any) {
     // Update PO with customer validation results
     let finalStatus = 'pending_review';
     const customerMeta: any = {};
+    let hasCustomer = false;
+    let hasContact = false;
+    let lineItemsValidated = false;
 
     if (customerValidationResult.matched) {
       customerMeta.customer_number = customerValidationResult.customerNumber;
       customerMeta.customer_name = customerValidationResult.customerName;
       customerMeta.method = customerValidationResult.method;
       customerMeta.confidence = customerValidationResult.confidence;
-      finalStatus = 'customer_found';
+      hasCustomer = true;
       console.log(`   ✅ Customer found: ${customerValidationResult.customerName} (${customerValidationResult.customerNumber})`);
     } else {
       customerMeta.customer_number = 'NO_CUSTOMER_NUMBER';
       customerMeta.customer_name = 'NO_CUSTOMER_FOUND';
       customerMeta.method = 'none';
       customerMeta.confidence = 0;
-      finalStatus = 'new_customer';
       console.log(`   ❌ Customer not found - flagged as new customer`);
     }
 
-    // Update the PO with final results
+    // Update customer metadata first
+    await db
+      .update(purchaseOrdersTable)
+      .set({
+        customerMeta: customerMeta,
+        customerValidated: customerValidationResult.matched,
+        statusChangedAt: new Date()
+      })
+      .where(eq(purchaseOrdersTable.id, pendingPO.id));
+
+    // Continue with contact validation if customer was found
+    if (hasCustomer) {
+      console.log(`\n👤 STEP 8: Running contact validation for pending PO ${pendingPO.poNumber}...`);
+      
+      const { HybridContactValidator } = await import('./services/hybrid-contact-validator');
+      const contactValidator = new HybridContactValidator();
+      
+      const contactInput = {
+        contactName: customerInput.contactName,
+        contactEmail: customerInput.customerEmail,
+        senderEmail: customerInput.senderEmail,
+        senderDomain: customerInput.senderDomain,
+        companyName: customerValidationResult.customerName,
+        customerNumber: customerValidationResult.customerNumber
+      };
+
+      console.log(`   👤 Contact validation input:`, contactInput);
+      
+      const contactValidationResult = await contactValidator.validateContact(contactInput);
+      console.log(`   ✅ Contact validation result:`, contactValidationResult);
+
+      if (contactValidationResult.matched_contact_id) {
+        hasContact = true;
+        
+        // Update contact metadata
+        const contactMeta = {
+          contact_name: contactValidationResult.name,
+          contact_email: contactValidationResult.email,
+          method: contactValidationResult.match_method,
+          confidence: contactValidationResult.confidence
+        };
+
+        await db
+          .update(purchaseOrdersTable)
+          .set({
+            contactMeta: contactMeta,
+            contactValidated: true,
+            statusChangedAt: new Date()
+          })
+          .where(eq(purchaseOrdersTable.id, pendingPO.id));
+
+        console.log(`   ✅ Contact found: ${contactValidationResult.name}`);
+      } else {
+        console.log(`   ❌ Contact not found in database`);
+      }
+
+      // Run SKU validation if we have line items
+      if (extractedData?.lineItems && Array.isArray(extractedData.lineItems) && extractedData.lineItems.length > 0) {
+        console.log(`\n📦 STEP 9: Running SKU validation for pending PO ${pendingPO.poNumber}...`);
+        console.log(`   📋 Found ${extractedData.lineItems.length} line items to validate`);
+        
+        const { OpenAISKUValidatorService } = await import('./services/openai-sku-validator');
+        const skuValidator = new OpenAISKUValidatorService();
+        
+        const skuValidationResult = await skuValidator.validateLineItems(extractedData.lineItems);
+
+        console.log(`   ✅ SKU validation completed:`, {
+          totalItems: extractedData.lineItems.length,
+          validatedItems: skuValidationResult.length,
+          processedItems: skuValidationResult
+        });
+
+        if (skuValidationResult && skuValidationResult.length > 0) {
+          lineItemsValidated = true;
+          
+          // Update line items with validation results
+          await db
+            .update(purchaseOrdersTable)
+            .set({
+              extractedData: {
+                ...extractedData,
+                lineItems: skuValidationResult
+              },
+              lineItemsValidated: true,
+              statusChangedAt: new Date()
+            })
+            .where(eq(purchaseOrdersTable.id, pendingPO.id));
+
+          console.log(`   ✅ Line items updated with validation results`);
+        } else {
+          console.log(`   ❌ SKU validation failed - no valid items returned`);
+        }
+      } else {
+        console.log(`   ⚠️ No line items found for SKU validation`);
+      }
+    }
+
+    // Determine final status based on all validation results
+    if (hasCustomer && hasContact && lineItemsValidated) {
+      finalStatus = 'ready_for_import';
+      console.log(`   🎯 All validations passed - ready for NetSuite import`);
+    } else if (hasCustomer && hasContact) {
+      finalStatus = 'sku_validation_needed';
+      console.log(`   📦 Customer & contact found, but SKU validation needed`);
+    } else if (hasCustomer) {
+      finalStatus = 'contact_validation_needed';
+      console.log(`   👤 Customer found, but contact validation needed`);
+    } else {
+      finalStatus = 'new_customer';
+      console.log(`   🆕 New customer - requires manual setup`);
+    }
+
+    // Update final status
     await db
       .update(purchaseOrdersTable)
       .set({
         status: finalStatus,
-        customerMeta: customerMeta,
-        customerValidated: customerValidationResult.matched,
         validationCompleted: true,
         statusChangedAt: new Date(),
         processingStartedAt: null
