@@ -44,6 +44,7 @@ export function registerCustomerRoutes(app: Express): void {
       if (search && search.trim()) {
         const searchTerm = `%${search.trim()}%`;
         const searchCondition = or(
+          ilike(customers.customerNumber, searchTerm),
           ilike(customers.companyName, searchTerm),
           ilike(customers.email, searchTerm),
           sql`${customers.alternateNames}::text ILIKE ${searchTerm}`
@@ -115,6 +116,7 @@ export function registerCustomerRoutes(app: Express): void {
       if (search && search.trim()) {
         const searchTerm = `%${search.trim()}%`;
         const searchCondition = or(
+          ilike(customers.customerNumber, searchTerm),
           ilike(customers.companyName, searchTerm),
           ilike(customers.email, searchTerm),
           sql`${customers.alternateNames}::text ILIKE ${searchTerm}`
