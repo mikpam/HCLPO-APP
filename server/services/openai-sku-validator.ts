@@ -70,8 +70,17 @@ export class OpenAISKUValidatorService {
     this.chargeCodebook.set('OE-MISC-ITEM', 'Unknown products');
   }
 
-  private analyzeChargeDescription(description: string): string | null {
+  private analyzeChargeDescription(description: string, quantity?: number): string | null {
     const descLower = description.toLowerCase();
+    
+    // QUANTITY-AWARE LOGIC: High quantities (>50) are likely products, not charges
+    // Even if they mention charge words, they should be treated as OE-MISC-ITEM
+    const isHighQuantity = (quantity || 0) > 50;
+    
+    if (isHighQuantity) {
+      console.log(`   📊 High quantity (${quantity}) detected - treating as product, not charge`);
+      return null; // Let it fall through to product logic
+    }
     
     // Check for specific charge patterns that should be converted to known charge codes
     if (descLower.includes('less') && descLower.includes('minimum')) return 'LTM';
@@ -485,13 +494,15 @@ ${JSON.stringify(lineItems, null, 2)}`;
       
       // OE-MISC-CHARGE analysis
       if (item.sku === 'OE-MISC-CHARGE' || item.finalSKU === 'OE-MISC-CHARGE') {
-        const chargeType = this.analyzeChargeDescription(item.description);
+        const chargeType = this.analyzeChargeDescription(item.description, item.quantity);
         if (chargeType) {
           finalSKUs[i] = chargeType;
-          console.log(`   💡 OE-MISC-CHARGE analyzed: "${item.description}" → ${chargeType}`);
+          console.log(`   💡 OE-MISC-CHARGE analyzed: "${item.description}" (qty: ${item.quantity}) → ${chargeType}`);
         } else {
-          finalSKUs[i] = 'OE-MISC-CHARGE';
-          console.log(`   💡 OE-MISC-CHARGE kept as placeholder for: "${item.description}"`);
+          // High quantities should become OE-MISC-ITEM (products), not charges
+          const fallbackSKU = (item.quantity || 0) > 50 ? 'OE-MISC-ITEM' : 'OE-MISC-CHARGE';
+          finalSKUs[i] = fallbackSKU;
+          console.log(`   💡 OE-MISC-CHARGE fallback: "${item.description}" (qty: ${item.quantity}) → ${fallbackSKU}`);
         }
         continue;
       }
@@ -506,13 +517,11 @@ ${JSON.stringify(lineItems, null, 2)}`;
       
       // Try vector search if available
       try {
-        const searchQuery = `${item.sku} ${item.description} ${item.itemColor}`.trim();
-        const vectorMatches = await this.searchItemsByEmbedding(searchQuery, 1);
+        const vectorResult = await this.vectorSearchItem(item);
         
-        if (vectorMatches.length > 0 && vectorMatches[0].similarity >= 0.75) {
-          const match = vectorMatches[0];
-          finalSKUs[i] = match.finalSku;
-          console.log(`   ✅ VECTOR MATCH: ${item.sku} → ${match.finalSku} (similarity: ${match.similarity})`);
+        if (vectorResult) {
+          finalSKUs[i] = vectorResult.finalSKU;
+          console.log(`   ✅ VECTOR MATCH: ${item.sku} → ${vectorResult.finalSKU}`);
           continue;
         }
       } catch (error) {
@@ -528,12 +537,13 @@ ${JSON.stringify(lineItems, null, 2)}`;
     if (needsAIValidation.length > 0) {
       console.log(`   🤖 ${needsAIValidation.length} items need AI validation...`);
       
-      // Create projection for AI (no quantities!)
+      // Create projection for AI (include quantities for quantity-aware decisions!)
       const projection = needsAIValidation.map(index => ({
         i: index,
         sku: normalizedInput[index].sku,
         description: normalizedInput[index].description,
-        itemColor: normalizedInput[index].itemColor
+        itemColor: normalizedInput[index].itemColor,
+        quantity: normalizedInput[index].quantity
       }));
       
       try {
@@ -623,7 +633,7 @@ ${JSON.stringify(lineItems, null, 2)}`;
   }
 
   // Helper method: AI validation that returns only finalSKUs array
-  private async resolveFinalSKUsWithAI(projection: Array<{i: number, sku: string, description: string, itemColor: string}>): Promise<string[]> {
+  private async resolveFinalSKUsWithAI(projection: Array<{i: number, sku: string, description: string, itemColor: string, quantity: number}>): Promise<string[]> {
     // Create color codes context
     const colorCodesContext = Array.from(this.colorCodes.entries()).map(([code, name]) =>
       `${code}: ${name}`
@@ -644,13 +654,21 @@ Return **only** a JSON array of strings, where each element is the finalSKU for 
 3. Return exactly ${projection.length} strings in the same order
 4. Each string should be a valid SKU format (uppercase, properly formatted)
 
+### CRITICAL QUANTITY LOGIC:
+* HIGH QUANTITIES (>50): Always treat as PRODUCTS → use OE-MISC-ITEM, never charge codes
+* LOW QUANTITIES (≤50): Can be charges if description matches charge patterns
+* Examples:
+  - "Run Charge" (qty 200) → "OE-MISC-ITEM" (product)
+  - "Setup Charge" (qty 1) → "SETUP" (charge)
+  - "Rush Charge" (qty 100) → "OE-MISC-ITEM" (product)
+
 ### Available Resources:
 * ColorCodes: ${colorCodesContext}
 * ChargeCodes: ${chargeCodesContext}
 * Fallbacks: OE-MISC-ITEM (unknown product), OE-MISC-CHARGE (unknown charge)
 
 ### Input to resolve:
-${JSON.stringify(projection.map(p => ({ sku: p.sku, description: p.description, itemColor: p.itemColor })), null, 2)}
+${JSON.stringify(projection.map(p => ({ sku: p.sku, description: p.description, itemColor: p.itemColor, quantity: p.quantity })), null, 2)}
 
 Return only the JSON array of finalSKU strings.`;
 
