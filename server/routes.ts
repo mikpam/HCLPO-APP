@@ -2105,6 +2105,67 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // GET /api/purchase-orders/:id/netsuite-payload - Get formatted NetSuite payload
+  app.get("/api/purchase-orders/:id/netsuite-payload", async (req, res) => {
+    try {
+      const { id } = req.params;
+      
+      // Get the purchase order
+      const purchaseOrder = await storage.getPurchaseOrder(id);
+      if (!purchaseOrder) {
+        return res.status(404).json({ error: "Purchase order not found" });
+      }
+
+      // Check if PO has NS payload
+      if (!purchaseOrder.nsPayload) {
+        return res.status(400).json({ 
+          error: "No NetSuite payload available. PO needs to be validated first." 
+        });
+      }
+
+      // Extract the actual purchase order data from the nested structure
+      const nsPayload = purchaseOrder.nsPayload as any;
+      const orderData = nsPayload.purchaseOrder || nsPayload;
+      
+      // Prepare the complete payload that would be sent to NetSuite
+      const netsuitePayload = {
+        action: 'createSalesOrder',
+        customerId: orderData.customer?.netsuiteId || null,
+        customer: orderData.customer,
+        lineItems: orderData.lineItems || [],
+        shipMethod: orderData.shipMethod || 'FedEx Ground',
+        shipDate: orderData.shipDate,
+        memo: orderData.memo || `PO ${purchaseOrder.poNumber}`,
+        externalId: orderData.externalId || purchaseOrder.poNumber,
+        attachmentUrls: [
+          nsPayload.sourceDocumentUrl,
+          nsPayload.emlUrl
+        ].filter(url => url),
+        metadata: {
+          poNumber: purchaseOrder.poNumber,
+          emailSubject: purchaseOrder.subject,
+          createdAt: purchaseOrder.createdAt,
+          extractedBy: purchaseOrder.extractedData?.engine || 'unknown'
+        }
+      };
+
+      // Return the formatted payload
+      res.json({
+        success: true,
+        poNumber: purchaseOrder.poNumber,
+        status: purchaseOrder.status,
+        payload: netsuitePayload
+      });
+      
+    } catch (error) {
+      console.error('❌ Error getting NetSuite payload:', error);
+      res.status(500).json({ 
+        error: 'Failed to get NetSuite payload',
+        details: (error as Error).message 
+      });
+    }
+  });
+
   // POST /api/purchase-orders/:id/import-netsuite - Send PO to NetSuite and update status
   app.post("/api/purchase-orders/:id/import-netsuite", async (req, res) => {
     try {
