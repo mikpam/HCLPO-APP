@@ -545,6 +545,7 @@ async function processEmailThroughValidationSystem(messageToProcess: any, update
                     lineItems: extractionResult?.lineItems || [],
                     contact: extractionResult?.purchaseOrder?.contact?.name || null,
                     customerMeta: extractionResult?.purchaseOrder?.customer || null,
+                    shipToAddress: extractionResult?.purchaseOrder?.shipTo || null, // Add shipping address
                     emlFilePath: emlFilePath,
                     extractionSourceFile: extractionSourceFile,
                     attachmentPaths: attachmentPaths.length > 0 ? attachmentPaths.map(att => att.storagePath) : [],
@@ -623,6 +624,7 @@ async function processEmailThroughValidationSystem(messageToProcess: any, update
                 poNumber: finalPONumber,
                 emailId: messageToProcess.id,
                 emailIntent: emailIntent, // Add email intent
+                shipToAddress: extractionResult?.purchaseOrder?.shipTo || null, // Add shipping address
                 sender: messageToProcess.sender,
                 subject: messageToProcess.subject,
                 route: 'ATTACHMENT_PO_FALLBACK', // Special route to indicate fallback was used
@@ -1118,6 +1120,7 @@ async function processEmailThroughValidationSystem(messageToProcess: any, update
         customerMeta: customerMeta,
         contactMeta: contactMeta,
         contact: contactMeta?.contact_name || extractionResult?.purchaseOrder?.contact?.name || null,
+        shipToAddress: extractionResult?.purchaseOrder?.shipTo || null, // Add shipping address
         emlFilePath: emlFilePath,
         extractionSourceFile: extractionSourceFile,
         attachmentPaths: attachmentPaths.length > 0 ? attachmentPaths.map(att => att.storagePath) : [],

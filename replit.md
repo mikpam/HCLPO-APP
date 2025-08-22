@@ -32,6 +32,7 @@ Vector Database Preference: PGvector integration with existing PostgreSQL databa
 - **Customer Indexing**: Multi-strategy lookup with database indexes, in-memory caching, and fuzzy matching.
 - **Error Tracking**: Comprehensive error logging system with detailed metadata, step tracking, and resolution status.
 - **Vector Database**: PGvector for semantic search on contacts and customers, enabling hybrid validation.
+- **Purchase Order Fields**: Enhanced with `emailIntent` (rush_order, purchase_order, sample_request, follow_up, none) and `shipToAddress` (JSONB containing name, company, address1, address2, city, state, zipCode, country).
 
 ### Email Processing Pipeline
 - **Architecture**: Complete 12-step automated pipeline. Single `/api/processing/process-auto` endpoint with no manual triggers.
