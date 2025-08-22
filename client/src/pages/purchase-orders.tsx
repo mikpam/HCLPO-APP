@@ -324,11 +324,18 @@ export default function PurchaseOrdersPage() {
   // Retry mutation for failed/stuck POs
   const retryMutation = useMutation({
     mutationFn: async (poId: string) => {
-      return apiRequest(`/api/processing/retry-dead-letter/${poId}`, {
-        method: 'POST'
+      const response = await fetch(`/api/processing/retry-dead-letter/${poId}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' }
       });
+      
+      if (!response.ok) {
+        throw new Error('Failed to retry purchase order');
+      }
+      
+      return response.json();
     },
-    onSuccess: (data, poId) => {
+    onSuccess: (data: any, poId) => {
       queryClient.invalidateQueries({ queryKey: ["/api/purchase-orders"] });
       toast({
         title: "Retry Started",
@@ -849,19 +856,17 @@ ${lineItems.map((item, i) =>
                                 <ExternalLink className="w-4 h-4" />
                               </Button>
                             )}
-                            {(order.status === 'manual_review' || order.status === 'failed' || order.status === 'error') && (
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => retryMutation.mutate(order.id)}
-                                disabled={retryMutation.isPending}
-                                className="h-8 w-8 p-0 text-orange-600 hover:text-orange-700"
-                                data-testid={`button-retry-${order.id}`}
-                                title="Retry Processing"
-                              >
-                                <RotateCcw className="w-4 h-4" />
-                              </Button>
-                            )}
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => retryMutation.mutate(order.id)}
+                              disabled={retryMutation.isPending}
+                              className="h-8 w-8 p-0 text-orange-600 hover:text-orange-700"
+                              data-testid={`button-retry-${order.id}`}
+                              title="Retry Processing"
+                            >
+                              <RotateCcw className="w-4 h-4" />
+                            </Button>
                           </div>
                         </TableCell>
                       </TableRow>
@@ -1041,19 +1046,17 @@ ${lineItems.map((item, i) =>
                                 <ExternalLink className="w-4 h-4" />
                               </Button>
                             )}
-                            {(order.status === 'manual_review' || order.status === 'failed' || order.status === 'error') && (
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => retryMutation.mutate(order.id)}
-                                disabled={retryMutation.isPending}
-                                className="h-8 w-8 p-0 text-orange-600 hover:text-orange-700"
-                                data-testid={`button-retry-mobile-${order.id}`}
-                                title="Retry Processing"
-                              >
-                                <RotateCcw className="w-4 h-4" />
-                              </Button>
-                            )}
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => retryMutation.mutate(order.id)}
+                              disabled={retryMutation.isPending}
+                              className="h-8 w-8 p-0 text-orange-600 hover:text-orange-700"
+                              data-testid={`button-retry-mobile-${order.id}`}
+                              title="Retry Processing"
+                            >
+                              <RotateCcw className="w-4 h-4" />
+                            </Button>
                           </div>
                         </div>
                       </div>

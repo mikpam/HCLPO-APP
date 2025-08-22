@@ -291,12 +291,11 @@ export async function retryDeadLetterPO(poId: string): Promise<{ success: boolea
       return { success: false, message: 'PO not found' };
     }
 
-    if (po[0].status !== 'manual_review') {
-      return { success: false, message: 'PO is not in manual_review status' };
-    }
+    // Allow retry for ANY status, not just manual_review
+    console.log(`🔄 MANUAL RETRY: Retrying PO ${po[0].poNumber} (current status: ${po[0].status})`);
 
-    // Reset for retry
-    const newStatus = po[0].extractedData ? 'pending_review' : 'pending';
+    // Reset for retry - always start from pending to reprocess fully
+    const newStatus = 'pending';
     
     await db
       .update(purchaseOrders)
@@ -306,13 +305,15 @@ export async function retryDeadLetterPO(poId: string): Promise<{ success: boolea
         lastError: null,
         deadLetterReason: null,
         processingStartedAt: new Date(),
-        statusChangedAt: new Date()
+        statusChangedAt: new Date(),
+        retryCount: (po[0].retryCount || 0) + 1,
+        lastRetryAt: new Date()
       })
       .where(eq(purchaseOrders.id, poId));
 
-    return { success: true, message: `PO ${po[0].poNumber} reset to ${newStatus} for retry` };
+    return { success: true, message: `PO ${po[0].poNumber} reset to ${newStatus} for complete reprocessing` };
   } catch (error) {
-    console.error('Error retrying dead letter PO:', error);
+    console.error('Error retrying PO:', error);
     return { success: false, message: 'Failed to retry PO' };
   }
 }
