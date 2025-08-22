@@ -822,7 +822,7 @@ OR: {"selected_id":"NONE","reason":"No reasonable matches found"}`
         (query_data, top_candidates, selected_customer_id, confidence_score, method, reasons, llm_response)
         VALUES (${JSON.stringify(auditData.query_data)}, ${JSON.stringify(auditData.top_candidates)}, 
                 ${auditData.selected_customer_id}, ${auditData.confidence_score}, ${auditData.method}, 
-                ${auditData.reasons}, ${auditData.llm_response ? JSON.stringify(auditData.llm_response) : null})
+                ${JSON.stringify(auditData.reasons)}, ${auditData.llm_response ? JSON.stringify(auditData.llm_response) : null})
       `);
     } catch (error) {
       console.error('Failed to log audit:', error);
