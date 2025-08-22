@@ -794,7 +794,7 @@ Processing Rules:
 3. Contact: Email priority: header contact → billing contact → sales rep email → empty string
 4. Address: Convert state abbreviations to full names, default country to "United States"
 5. SKU Processing:
-   a) Setup charges: description contains "setup charge"/"SETUP"/"setup"/"SU"/"set charge"/"Setup Fee" → sku="SET UP"
+   a) Setup charges: description contains "setup charge"/"SETUP"/"setup"/"SU"/"set charge"/"Setup Fee" → sku="SETUP"
    b) Extra color: description contains "extra color" → sku="EC" 
    c) Extra location: description contains "extra location" → sku="EL"
    d) Standard items: combine base SKU with color code as "SKUCODE-COLORCODE", default "OE-MISC-CHARGE"
@@ -951,7 +951,7 @@ Processing Rules:
 3. Contact: Email priority: header contact → billing contact → sales rep email → empty string
 4. Address: Convert state abbreviations to full names, default country to "United States"
 5. SKU Processing:
-   a) Setup charges: description contains "setup charge"/"SETUP"/"setup"/"SU"/"set charge"/"Setup Fee" → sku="SET UP"
+   a) Setup charges: description contains "setup charge"/"SETUP"/"setup"/"SU"/"set charge"/"Setup Fee" → sku="SETUP"
    b) Extra color: description contains "extra color" → sku="EC" 
    c) Extra location: description contains "extra location" → sku="EL"
    d) Standard items: combine base SKU with color code as "SKUCODE-COLORCODE", default "OE-MISC-CHARGE"
