@@ -2203,13 +2203,24 @@ export async function registerRoutes(app: Express): Promise<Server> {
         // Extract the actual purchase order data from the nested structure
         const orderData = nsPayload.purchaseOrder || nsPayload;
         
-        // Prepare attachment URLs if available
+        // Prepare attachment URLs if available - extract from the purchaseOrder object
         const attachmentUrls: string[] = [];
-        if (nsPayload.sourceDocumentUrl) {
-          attachmentUrls.push(nsPayload.sourceDocumentUrl);
+        const sourceUrl = orderData.sourceDocumentUrl || nsPayload.sourceDocumentUrl;
+        const emlUrl = orderData.emlUrl || nsPayload.emlUrl;
+        
+        if (sourceUrl && sourceUrl.startsWith('https://')) {
+          attachmentUrls.push(sourceUrl);
         }
-        if (nsPayload.emlUrl) {
-          attachmentUrls.push(nsPayload.emlUrl);
+        if (emlUrl && emlUrl.startsWith('https://')) {
+          attachmentUrls.push(emlUrl);
+        }
+        
+        // Log the URLs for debugging
+        if (!sourceUrl?.startsWith('https://')) {
+          console.log(`   ⚠️ Invalid source URL: ${sourceUrl}`);
+        }
+        if (!emlUrl?.startsWith('https://')) {
+          console.log(`   ⚠️ Invalid eml URL: ${emlUrl}`);
         }
         
         console.log(`   └─ Calling NetSuite API with ${attachmentUrls.length} attachments...`);

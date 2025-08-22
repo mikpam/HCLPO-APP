@@ -19,8 +19,9 @@ async function generatePresignedUrl(objectPath: string | null): Promise<string> 
       cleanPath = cleanPath.substring(9); // Remove '/objects/'
     }
     
-    // Generate presigned URL using object storage service
-    const url = await objectStorageService.generatePresignedGetUrl(objectPath, 7 * 24 * 60 * 60); // 7 days TTL
+    // Generate presigned URL using object storage service with cleaned path
+    const url = await objectStorageService.generatePresignedGetUrl(cleanPath, 7 * 24 * 60 * 60); // 7 days TTL
+    console.log(`   ✅ Generated presigned URL for ${cleanPath}`);
     return url;
   } catch (error) {
     console.error(`Failed to generate presigned URL for ${objectPath}:`, error);
@@ -152,6 +153,10 @@ Output: Only return the formatted JSON object following the NetSuite schema.`;
   } catch (error) {
     console.error(`❌ Failed to generate NS payload for PO ${po.poNumber}:`, error);
     
+    // Generate presigned URLs even for fallback
+    const fallbackSourceUrl = await generatePresignedUrl(po.extractionSourceFile);
+    const fallbackEmlUrl = await generatePresignedUrl(po.emlFilePath);
+    
     // Return a basic structure if OpenAI fails
     return {
       purchaseOrder: {
@@ -161,8 +166,8 @@ Output: Only return the formatted JSON object following the NetSuite schema.`;
         lineItems: po.lineItems || [],
         subtotals: calculateSubtotals(po.lineItems || []),
         emailIntent: mapEmailIntent(po.emailIntent),
-        sourceDocumentUrl: po.extractionSourceFile || "",
-        emlUrl: po.emlFilePath || "",
+        sourceDocumentUrl: fallbackSourceUrl,
+        emlUrl: fallbackEmlUrl,
         error: "Failed to generate complete NS payload"
       }
     };
