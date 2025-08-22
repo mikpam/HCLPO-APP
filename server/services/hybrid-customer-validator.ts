@@ -101,13 +101,26 @@ export class HybridCustomerValidator {
    * Step 0: Normalize inputs per email
    */
   private normalizeInput(input: CustomerValidatorInput): CustomerValidatorInput {
+    // Extract clean email from formats like "Name <email@domain.com>"
+    const extractCleanEmail = (email?: string): string | undefined => {
+      if (!email) return undefined;
+      // Remove angle brackets and extract email
+      const match = email.match(/<([^>]+)>/);
+      const cleanEmail = match ? match[1] : email;
+      // Remove any remaining brackets and trim
+      return cleanEmail.replace(/[<>]/g, '').toLowerCase().trim();
+    };
+    
+    const cleanCustomerEmail = extractCleanEmail(input.customerEmail);
+    const cleanSenderEmail = extractCleanEmail(input.senderEmail);
+    
     const normalized: CustomerValidatorInput = {
       customerName: input.customerName ? this.normalizeCompanyName(input.customerName) : undefined,
-      customerEmail: input.customerEmail?.toLowerCase().trim(),
-      senderEmail: input.senderEmail?.toLowerCase().trim(),
+      customerEmail: cleanCustomerEmail,
+      senderEmail: cleanSenderEmail,
       senderDomain: input.senderDomain?.toLowerCase().trim() || 
-                   input.senderEmail?.split('@')[1]?.toLowerCase().trim() ||
-                   input.customerEmail?.split('@')[1]?.toLowerCase().trim(),
+                   cleanSenderEmail?.split('@')[1]?.toLowerCase().trim() ||
+                   cleanCustomerEmail?.split('@')[1]?.toLowerCase().trim(),
       contactName: input.contactName?.toLowerCase().trim().replace(/\s+/g, ' '),
       phoneDigits: input.phoneDigits?.replace(/\D/g, ''),
       netsuiteId: input.netsuiteId?.trim(),

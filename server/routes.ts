@@ -247,46 +247,70 @@ async function processEmailThroughValidationSystem(messageToProcess: any, update
     totalEmails: 1
   });
 
-  // Check for forwarded email from @highcaliberline.com and extract CNumber
+  // Check for forwarded email patterns
   let isForwardedEmail = false;
   let extractedCNumber = null;
   let effectiveSender = messageToProcess.sender;
   let hclCustomerLookup = null;
   
-  if (messageToProcess.sender.includes('@highcaliberline.com')) {
-    console.log(`\n📨 FORWARDED EMAIL DETECTION: Checking for CNumber in @highcaliberline.com email...`);
+  // Expanded forwarded email detection
+  const forwardedSubjectPattern = /^(FW:|Fwd:|RE:\s*FW:|RE:\s*Fwd:)/i;
+  const purchaseOrderEmailPattern = /purchaseorder|po-automated|po\.automated|orders@/i;
+  const knownForwardingDomains = ['@highcaliberline.com', '@geiger.com'];
+  
+  const isFromKnownDomain = knownForwardingDomains.some(domain => 
+    messageToProcess.sender.toLowerCase().includes(domain)
+  );
+  const hasForwardedSubject = forwardedSubjectPattern.test(messageToProcess.subject);
+  const isPurchaseOrderEmail = purchaseOrderEmailPattern.test(messageToProcess.sender);
+  
+  // Check multiple forwarded email indicators
+  if (isFromKnownDomain || hasForwardedSubject || isPurchaseOrderEmail) {
+    console.log(`\n📨 FORWARDED EMAIL DETECTION:`);
+    console.log(`   └─ From known domain: ${isFromKnownDomain}`);
+    console.log(`   └─ Has forwarded subject: ${hasForwardedSubject}`);
+    console.log(`   └─ Is purchase order email: ${isPurchaseOrderEmail}`);
+    console.log(`   └─ Sender: ${messageToProcess.sender}`);
     
-    // Look for CNumber pattern in subject and body (more specific patterns to avoid zip codes)
-    const cNumberPattern = /(?:Account\s+C|Customer\s+C|CNumber\s*:?\s*C?|C\s*#\s*:?\s*C?)(\d{4,6})\b/i;
-    const subjectMatch = messageToProcess.subject.match(cNumberPattern);
-    const bodyMatch = messageToProcess.body.match(cNumberPattern);
+    isForwardedEmail = true;
     
-    // Additional validation: ensure it's a reasonable CNumber format (4-6 digits)
-    let validCNumber = null;
-    const foundMatch = subjectMatch?.[1] || bodyMatch?.[1];
-    if (foundMatch && foundMatch.length >= 4 && foundMatch.length <= 6) {
-      validCNumber = foundMatch;
-    }
-    
-    if (validCNumber) {
-      extractedCNumber = validCNumber;
-      isForwardedEmail = true;
-      console.log(`   ✅ Found CNumber: ${extractedCNumber}`);
+    // Special handling for HCL emails with CNumber
+    if (messageToProcess.sender.includes('@highcaliberline.com')) {
+      console.log(`   └─ Checking for CNumber in @highcaliberline.com email...`);
       
-      // Lookup customer using the advanced customer finder
-      const { customerFinderService } = await import('./services/customer-finder');
-      const fullCNumber = `C${extractedCNumber}`;
-      hclCustomerLookup = await customerFinderService.findByCNumber(fullCNumber);
+      // Look for CNumber pattern in subject and body (more specific patterns to avoid zip codes)
+      const cNumberPattern = /(?:Account\s+C|Customer\s+C|CNumber\s*:?\s*C?|C\s*#\s*:?\s*C?)(\d{4,6})\b/i;
+      const subjectMatch = messageToProcess.subject.match(cNumberPattern);
+      const bodyMatch = messageToProcess.body.match(cNumberPattern);
       
-      if (hclCustomerLookup.customer_number) {
-        console.log(`   ✅ HCL Customer found: ${hclCustomerLookup.customer_name} (${hclCustomerLookup.customer_number})`);
-        console.log(`   └─ This is a forwarded email - will use customer from Gemini extraction, or fallback to HCL lookup`);
-      } else {
-        console.log(`   ⚠️  No HCL customer found for CNumber: ${fullCNumber}`);
+      // Additional validation: ensure it's a reasonable CNumber format (4-6 digits)
+      let validCNumber = null;
+      const foundMatch = subjectMatch?.[1] || bodyMatch?.[1];
+      if (foundMatch && foundMatch.length >= 4 && foundMatch.length <= 6) {
+        validCNumber = foundMatch;
       }
-    } else {
-      console.log(`   └─ No CNumber found in subject or body`);
+      
+      if (validCNumber) {
+        extractedCNumber = validCNumber;
+        console.log(`   ✅ Found CNumber: ${extractedCNumber}`);
+        
+        // Lookup customer using the advanced customer finder
+        const { customerFinderService } = await import('./services/customer-finder');
+        const fullCNumber = `C${extractedCNumber}`;
+        hclCustomerLookup = await customerFinderService.findByCNumber(fullCNumber);
+        
+        if (hclCustomerLookup.customer_number) {
+          console.log(`   ✅ HCL Customer found: ${hclCustomerLookup.customer_name} (${hclCustomerLookup.customer_number})`);
+          console.log(`   └─ This is a forwarded email - will use customer from Gemini extraction, or fallback to HCL lookup`);
+        } else {
+          console.log(`   ⚠️  No HCL customer found for CNumber: ${fullCNumber}`);
+        }
+      } else {
+        console.log(`   └─ No CNumber found in subject or body`);
+      }
     }
+    
+    console.log(`   ✅ Email marked as FORWARDED - will prioritize extracted customer info`);
   }
 
   // Email queue item already created during atomic lock - use existing reservation
