@@ -2123,33 +2123,131 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
       }
 
+      // Check if already sent to prevent duplicates
+      if (purchaseOrder.status === 'sent_to_netsuite') {
+        return res.status(400).json({ 
+          error: "This PO has already been sent to NetSuite" 
+        });
+      }
+
       // Log the NetSuite send action
       console.log(`📤 Sending PO ${purchaseOrder.poNumber} to NetSuite...`);
       console.log(`   └─ Current status: ${purchaseOrder.status}`);
+      console.log(`   └─ NS Payload available: ${!!purchaseOrder.nsPayload}`);
       
-      // Update the status to indicate it's been sent to NetSuite
-      await storage.updatePurchaseOrder(id, {
-        status: "sent_to_netsuite",
-        statusChangedAt: new Date(),
-        updatedAt: new Date()
-      });
+      try {
+        // Actually send to NetSuite (using the imported singleton instance)
+        const nsPayload = purchaseOrder.nsPayload as any;
+        
+        // Prepare attachment URLs if available
+        const attachmentUrls: string[] = [];
+        if (nsPayload.sourceDocumentUrl) {
+          attachmentUrls.push(nsPayload.sourceDocumentUrl);
+        }
+        if (nsPayload.emlUrl) {
+          attachmentUrls.push(nsPayload.emlUrl);
+        }
+        
+        console.log(`   └─ Calling NetSuite API with ${attachmentUrls.length} attachments...`);
+        
+        // Call NetSuite API
+        const netsuiteResult = await netsuiteService.createSalesOrder(nsPayload, attachmentUrls);
+        
+        if (netsuiteResult.success) {
+          console.log(`   ✅ Successfully created sales order in NetSuite`);
+          console.log(`   └─ NetSuite Internal ID: ${netsuiteResult.internalId}`);
+          console.log(`   └─ NetSuite External ID: ${netsuiteResult.externalId}`);
+          
+          // Update the status to indicate it's been sent to NetSuite
+          await storage.updatePurchaseOrder(id, {
+            status: "sent_to_netsuite",
+            statusChangedAt: new Date(),
+            updatedAt: new Date()
+          });
+          
+          // Store NetSuite response info in nsPayload for audit trail
+          const updatedNsPayload = {
+            ...nsPayload,
+            netsuiteResponse: {
+              internalId: netsuiteResult.internalId,
+              externalId: netsuiteResult.externalId,
+              sentAt: new Date().toISOString(),
+              success: true
+            }
+          };
+          
+          // Update NS payload with response data
+          await storage.updatePurchaseOrder(id, {
+            nsPayload: updatedNsPayload
+          });
 
-      console.log(`   ✅ PO ${purchaseOrder.poNumber} marked as sent to NetSuite`);
-
-      // TODO: Actually send to NetSuite using netsuiteService.createSalesOrder
-      // For now, just update the status to track that it was sent
-      
-      res.json({
-        success: true,
-        message: `PO ${purchaseOrder.poNumber} has been sent to NetSuite`,
-        poNumber: purchaseOrder.poNumber,
-        status: "sent_to_netsuite"
-      });
+          console.log(`   ✅ PO ${purchaseOrder.poNumber} successfully sent to NetSuite`);
+          
+          res.json({
+            success: true,
+            message: `PO ${purchaseOrder.poNumber} has been successfully sent to NetSuite`,
+            poNumber: purchaseOrder.poNumber,
+            status: "sent_to_netsuite",
+            netsuiteId: netsuiteResult.internalId,
+            externalId: netsuiteResult.externalId
+          });
+        } else {
+          // NetSuite API call failed
+          console.error(`   ❌ NetSuite API error: ${netsuiteResult.error}`);
+          
+          // Log the error but don't update status to sent
+          await storage.createErrorLog({
+            type: 'netsuite_api_error',
+            message: `Failed to create sales order in NetSuite: ${netsuiteResult.error}`,
+            relatedPoId: id,
+            relatedPoNumber: purchaseOrder.poNumber,
+            metadata: {
+              netsuiteError: netsuiteResult.error,
+              payload: nsPayload
+            }
+          });
+          
+          res.status(500).json({
+            error: 'NetSuite API error',
+            details: netsuiteResult.error,
+            message: `Failed to send PO to NetSuite: ${netsuiteResult.error}`
+          });
+        }
+      } catch (netsuiteError: any) {
+        console.error('❌ NetSuite API call failed:', netsuiteError);
+        
+        // Check for 2FA requirement
+        if (netsuiteError.message === 'TWO_FA_REQUIRED') {
+          return res.status(401).json({
+            error: 'Two-factor authentication required',
+            message: 'Please complete 2FA setup in NetSuite and try again',
+            requiresTwoFA: true
+          });
+        }
+        
+        // Log the error
+        await storage.createErrorLog({
+          type: 'netsuite_connection_error',
+          message: `NetSuite connection error: ${netsuiteError.message}`,
+          relatedPoId: id,
+          relatedPoNumber: purchaseOrder.poNumber,
+          metadata: {
+            error: netsuiteError.message,
+            stack: netsuiteError.stack
+          }
+        });
+        
+        res.status(500).json({
+          error: 'Failed to connect to NetSuite',
+          details: netsuiteError.message,
+          message: `Connection error: ${netsuiteError.message}`
+        });
+      }
       
     } catch (error) {
-      console.error('❌ Error sending to NetSuite:', error);
+      console.error('❌ Error in import-netsuite endpoint:', error);
       res.status(500).json({ 
-        error: 'Failed to send to NetSuite',
+        error: 'Failed to process NetSuite import',
         details: (error as Error).message 
       });
     }
