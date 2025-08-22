@@ -2,6 +2,9 @@
  * NetSuite RESTlet Script for HCL Purchase Order Processing
  * Deploy this script in NetSuite as a RESTlet
  * 
+ * SIMPLIFIED VERSION - No customer creation needed
+ * All customer information is already correct in NetSuite
+ * 
  * @NApiVersion 2.1
  * @NScriptType Restlet
  */
@@ -19,12 +22,6 @@ define(['N/record', 'N/search', 'N/log'], function(record, search, log) {
             const action = requestBody.action;
             
             switch(action) {
-                case 'findCustomer':
-                    return findCustomer(requestBody);
-                    
-                case 'createCustomer':
-                    return createCustomer(requestBody);
-                    
                 case 'createSalesOrder':
                     return createSalesOrder(requestBody);
                     
@@ -35,7 +32,7 @@ define(['N/record', 'N/search', 'N/log'], function(record, search, log) {
                     return {
                         result: {
                             code: 1,
-                            message: 'Error: Action not supported. Available actions: findCustomer, createCustomer, createSalesOrder, test'
+                            message: 'Error: Action not supported. Available actions: createSalesOrder, test'
                         }
                     };
             }
@@ -50,157 +47,31 @@ define(['N/record', 'N/search', 'N/log'], function(record, search, log) {
         }
     }
     
-    /**
-     * Find customer by email, name, or NetSuite ID
-     */
-    function findCustomer(requestBody) {
-        try {
-            const customerData = requestBody.customer || requestBody;
-            
-            // Search by email first
-            if (customerData.email) {
-                const customerSearch = search.create({
-                    type: search.Type.CUSTOMER,
-                    filters: [
-                        ['email', 'is', customerData.email]
-                    ],
-                    columns: ['internalid', 'entityid', 'companyname', 'email']
-                });
-                
-                const searchResults = customerSearch.run().getRange(0, 1);
-                if (searchResults.length > 0) {
-                    return {
-                        success: true,
-                        customerId: searchResults[0].getValue('internalid'),
-                        customerName: searchResults[0].getValue('companyname'),
-                        email: searchResults[0].getValue('email')
-                    };
-                }
-            }
-            
-            // Search by company name
-            if (customerData.company) {
-                const customerSearch = search.create({
-                    type: search.Type.CUSTOMER,
-                    filters: [
-                        ['companyname', 'contains', customerData.company]
-                    ],
-                    columns: ['internalid', 'entityid', 'companyname', 'email']
-                });
-                
-                const searchResults = customerSearch.run().getRange(0, 1);
-                if (searchResults.length > 0) {
-                    return {
-                        success: true,
-                        customerId: searchResults[0].getValue('internalid'),
-                        customerName: searchResults[0].getValue('companyname'),
-                        email: searchResults[0].getValue('email')
-                    };
-                }
-            }
-            
-            return {
-                success: false,
-                message: 'Customer not found'
-            };
-            
-        } catch (e) {
-            log.error('Find Customer Error', e.toString());
-            throw e;
-        }
-    }
+
     
     /**
-     * Create a new customer
-     */
-    function createCustomer(requestBody) {
-        try {
-            const customerData = requestBody.customer || requestBody;
-            
-            // Create customer record
-            const customer = record.create({
-                type: record.Type.CUSTOMER,
-                isDynamic: true
-            });
-            
-            // Set required fields
-            if (customerData.company) {
-                customer.setValue('companyname', customerData.company);
-            }
-            
-            if (customerData.email) {
-                customer.setValue('email', customerData.email);
-            }
-            
-            if (customerData.phone) {
-                customer.setValue('phone', customerData.phone);
-            }
-            
-            // Set address if provided
-            if (customerData.address) {
-                customer.selectNewLine({ sublistId: 'addressbook' });
-                
-                const addressSubrecord = customer.getCurrentSublistSubrecord({
-                    sublistId: 'addressbook',
-                    fieldId: 'addressbookaddress'
-                });
-                
-                if (customerData.address.address1) {
-                    addressSubrecord.setValue('addr1', customerData.address.address1);
-                }
-                if (customerData.address.city) {
-                    addressSubrecord.setValue('city', customerData.address.city);
-                }
-                if (customerData.address.state) {
-                    addressSubrecord.setValue('state', customerData.address.state);
-                }
-                if (customerData.address.zipCode) {
-                    addressSubrecord.setValue('zip', customerData.address.zipCode);
-                }
-                
-                customer.commitLine({ sublistId: 'addressbook' });
-            }
-            
-            // Save the customer
-            const customerId = customer.save();
-            
-            return {
-                success: true,
-                customerId: customerId,
-                message: 'Customer created successfully'
-            };
-            
-        } catch (e) {
-            log.error('Create Customer Error', e.toString());
-            throw e;
-        }
-    }
-    
-    /**
-     * Create a sales order
+     * Create a sales order (simplified - no customer creation)
+     * All customer information is already correct in NetSuite
      */
     function createSalesOrder(requestBody) {
         try {
             log.debug('Creating Sales Order', JSON.stringify(requestBody));
             
-            // Get or create customer
+            // Get customer ID from request
             let customerId = requestBody.customerId;
             
+            // If customer object is provided, extract ID or name
             if (!customerId && requestBody.customer) {
-                // Try to find existing customer
-                const findResult = findCustomer(requestBody);
-                if (findResult.success) {
-                    customerId = findResult.customerId;
-                } else {
-                    // Create new customer
-                    const createResult = createCustomer(requestBody);
-                    customerId = createResult.customerId;
-                }
+                customerId = requestBody.customer.id || 
+                           requestBody.customer.name ||
+                           requestBody.customer.email;
             }
             
             if (!customerId) {
-                throw new Error('Customer ID is required');
+                throw new Error('Customer ID or name is required');
             }
+            
+            log.audit('Using Customer', customerId);
             
             // Create sales order
             const salesOrder = record.create({

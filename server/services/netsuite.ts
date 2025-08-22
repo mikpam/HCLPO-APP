@@ -184,7 +184,13 @@ export class NetSuiteService {
       if (typeof orderData.customer === 'string') {
         customerId = orderData.customer;
       } else {
-        customerId = await this.findOrCreateCustomer(orderData.customer);
+        // Skip customer creation - use existing customer info
+        // Just extract the NetSuite ID or customer name
+        customerId = orderData.customer?.id || 
+                    orderData.customer?.name || 
+                    orderData.customer?.email || 
+                    'UNKNOWN';
+        console.log(`📋 Using existing customer: ${customerId}`);
       }
 
       // Map shipping method with FedEx Ground as default
@@ -196,6 +202,7 @@ export class NetSuiteService {
       const salesOrderData = {
         action: 'createSalesOrder',
         customerId,
+        customer: typeof orderData.customer === 'object' ? orderData.customer : null,
         lineItems: processedLineItems,
         shipMethod,
         shipDate: orderData.shipDate,
