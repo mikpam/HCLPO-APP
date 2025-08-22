@@ -2139,6 +2139,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         // Actually send to NetSuite (using the imported singleton instance)
         const nsPayload = purchaseOrder.nsPayload as any;
         
+        // Extract the actual purchase order data from the nested structure
+        const orderData = nsPayload.purchaseOrder || nsPayload;
+        
         // Prepare attachment URLs if available
         const attachmentUrls: string[] = [];
         if (nsPayload.sourceDocumentUrl) {
@@ -2149,9 +2152,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
         
         console.log(`   └─ Calling NetSuite API with ${attachmentUrls.length} attachments...`);
+        console.log(`   └─ Customer: ${orderData.customer?.company || orderData.customer || 'Unknown'}`);
+        console.log(`   └─ Line Items: ${orderData.lineItems?.length || 0}`);
         
-        // Call NetSuite API
-        const netsuiteResult = await netsuiteService.createSalesOrder(nsPayload, attachmentUrls);
+        // Call NetSuite API with the correct data structure
+        const netsuiteResult = await netsuiteService.createSalesOrder(orderData, attachmentUrls);
         
         if (netsuiteResult.success) {
           console.log(`   ✅ Successfully created sales order in NetSuite`);
