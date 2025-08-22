@@ -1617,7 +1617,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           });
 
           if (!lockAcquired) {
-            console.log('📧 Auto-polling: System busy processing - will try again in 1 minute');
+            console.log('📧 Auto-polling: System busy processing - will try again in 30 seconds');
             isPollingInProgress = false;
             return; // Another process is running, skip this cycle
           }
@@ -1644,9 +1644,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
       };
       
-      // Enable automatic polling every 1 minute
-      setInterval(pollEmails, 60000);
-      console.log('📧 Automatic polling enabled - checking every 1 minute');
+      // Enable automatic polling every 30 seconds (reduced from 1 minute for faster processing)
+      setInterval(pollEmails, 30000);
+      console.log('📧 Automatic polling enabled - checking every 30 seconds');
       
     } catch (error) {
       console.error('❌ Failed to start email polling:', error);
