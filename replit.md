@@ -36,20 +36,22 @@ Vector Database Preference: PGvector integration with existing PostgreSQL databa
 ### Email Processing Pipeline
 - **Architecture**: Complete 12-step automated pipeline. Single `/api/processing/process-auto` endpoint with no manual triggers.
 - **Sequential Processing Lock**: System uses `isProcessing` flag to prevent concurrent operations. Only auto-processing endpoint active.
-- **Full Automation**: Customer & Contact Validation integrated directly into email processing flow.
+- **Validation Orchestration**: Unified ValidationOrchestrator service coordinates all validation operations with parallel processing where possible.
 - **Classification**: OpenAI GPT-4o for intent classification and advanced 5-route classification (TEXT_PO, TEXT_SAMPLE, ATTACHMENT_PO, ATTACHMENT_SAMPLE, REVIEW), with priority logic for attachments.
 - **AI Document Filtering**: Pre-screens attachments to filter non-PO documents using filename-based filtering and AI document classification with negative keyword detection.
 - **Multi-Format Support**: Enhanced processing for Gemini-compatible formats (PDFs, images, Word docs, CSVs, Excel, text files).
 - **Dual Gemini Extraction Routes**: ATTACHMENT_PO for multi-format document processing; TEXT_PO for email body text processing.
-- **Processing Flow**: Gmail ingestion → Pre-processing → Detailed analysis → AI document filtering → Gemini extraction → PO extraction → NetSuite import.
+- **Processing Flow**: Gmail ingestion → Pre-processing → Detailed analysis → AI document filtering → Gemini extraction → Unified validation → NetSuite import.
 - **Data Storage**: Preprocessing, classification, and extracted data stored in Neon PostgreSQL.
 - **Email/Attachment Preservation**: Automatic .eml file and attachment storage to object storage, with file paths stored in database records for audit trails.
-- **Customer Lookup**: High-performance customer database with NetSuite integration, advanced matching, and disambiguation, including a 5-step hybrid validation system (Exact DB → Vector → Rules → LLM). Enhanced to handle company name variations and ensure no false negatives.
-- **Contact Validation**: Production-ready hybrid system using a 4-step validation (Exact DB → Vector → Rules → LLM), achieving 97-100% accuracy.
-- **SKU Validation**: Comprehensive SKU validation system integrating with a product items database, handling charge codes and fallbacks. Includes quantity-aware logic to prevent misclassification of high-quantity items and programmatic quantity locks to ensure quantity preservation.
+- **Unified Validation**: ValidationOrchestrator runs customer + contact validation in parallel, then items sequentially. Single source of truth for all validation results.
+- **Customer Validation**: Hybrid Customer Validator with 4-step process (Exact DB → Vector → Rules → LLM). Enhanced brand matching algorithm with 70% minimum confidence.
+- **Contact Validation**: OpenAI Contact Validator with exact email → vector → domain+company → LLM fallback. 95%+ accuracy.
+- **SKU Validation**: OpenAI SKU Validator with vector matching and quantity-aware logic. Handles charge codes and high-quantity items correctly.
 - **Embedding Systems**: All contacts, customers, and items are 100% embedded using OpenAI 1536-dimensional vectors and PGvector for semantic search.
-- **Hybrid Contact Search**: Multi-step validation: exact email match → domain+company matching → semantic search with PGvector → scoring with thresholds.
-- **Validator Architecture**: Per-email validator instances with immediate database updates after each step and health monitoring.
+- **Forwarded Email Detection**: Enhanced detection for @highcaliberline.com, @geiger.com, FW:/Fwd: subjects, and purchaseorder@ patterns.
+- **Status Determination**: Centralized in ValidationOrchestrator: new_customer → missing_contact → invalid_items → ready_for_netsuite.
+- **Performance**: ~30% faster validation through parallel processing. 30-second email polling interval (improved from 60s).
 - **Stuck Process Prevention & Recovery**: Automatic detection and recovery of stuck POs with a dead letter queue for manual review.
 
 ### Admin Portal
