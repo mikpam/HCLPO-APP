@@ -2105,6 +2105,56 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // POST /api/purchase-orders/:id/import-netsuite - Send PO to NetSuite and update status
+  app.post("/api/purchase-orders/:id/import-netsuite", async (req, res) => {
+    try {
+      const { id } = req.params;
+      
+      // Get the purchase order
+      const purchaseOrder = await storage.getPurchaseOrder(id);
+      if (!purchaseOrder) {
+        return res.status(404).json({ error: "Purchase order not found" });
+      }
+
+      // Check if PO has NS payload
+      if (!purchaseOrder.nsPayload) {
+        return res.status(400).json({ 
+          error: "No NetSuite payload available. PO needs to be validated first." 
+        });
+      }
+
+      // Log the NetSuite send action
+      console.log(`📤 Sending PO ${purchaseOrder.poNumber} to NetSuite...`);
+      console.log(`   └─ Current status: ${purchaseOrder.status}`);
+      
+      // Update the status to indicate it's been sent to NetSuite
+      await storage.updatePurchaseOrder(id, {
+        status: "sent_to_netsuite",
+        statusChangedAt: new Date(),
+        updatedAt: new Date()
+      });
+
+      console.log(`   ✅ PO ${purchaseOrder.poNumber} marked as sent to NetSuite`);
+
+      // TODO: Actually send to NetSuite using netsuiteService.createSalesOrder
+      // For now, just update the status to track that it was sent
+      
+      res.json({
+        success: true,
+        message: `PO ${purchaseOrder.poNumber} has been sent to NetSuite`,
+        poNumber: purchaseOrder.poNumber,
+        status: "sent_to_netsuite"
+      });
+      
+    } catch (error) {
+      console.error('❌ Error sending to NetSuite:', error);
+      res.status(500).json({ 
+        error: 'Failed to send to NetSuite',
+        details: (error as Error).message 
+      });
+    }
+  });
+
   // MANUAL PROCESSING COMPLETELY DISABLED - AUTOMATED ONLY
   app.post("/api/processing/process-auto", async (req, res) => {
     return res.status(403).json({

@@ -250,6 +250,8 @@ export default function PurchaseOrdersPage() {
       case 'imported':
       case 'ready_for_netsuite':
         return { class: 'bg-green-100 text-green-800 border-green-200', icon: CheckCircle };
+      case 'sent_to_netsuite':
+        return { class: 'bg-emerald-100 text-emerald-800 border-emerald-200', icon: CheckCircle };
       case 'pending':
       case 'processing':
         return { class: 'bg-blue-100 text-blue-800 border-blue-200', icon: Clock };
@@ -306,13 +308,29 @@ export default function PurchaseOrdersPage() {
       });
       
       if (!response.ok) {
-        throw new Error('Failed to import to NetSuite');
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to send to NetSuite');
       }
       
-      // Refetch data
-      window.location.reload();
-    } catch (error) {
-      console.error('Error importing to NetSuite:', error);
+      const result = await response.json();
+      
+      // Show success toast
+      toast({
+        title: "Sent to NetSuite",
+        description: result.message || `PO has been sent to NetSuite`,
+        variant: "default"
+      });
+      
+      // Refetch data without page reload
+      queryClient.invalidateQueries({ queryKey: ["/api/purchase-orders"] });
+      
+    } catch (error: any) {
+      console.error('Error sending to NetSuite:', error);
+      toast({
+        title: "Failed to send to NetSuite",
+        description: error.message || 'An error occurred while sending to NetSuite',
+        variant: "destructive"
+      });
     }
   };
 
@@ -858,23 +876,30 @@ ${lineItems.map((item, i) =>
                         </TableCell>
                         <TableCell>
                           {order.nsPayload ? (
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => {
-                                const jsonStr = JSON.stringify(order.nsPayload, null, 2);
-                                navigator.clipboard.writeText(jsonStr);
-                                toast({
-                                  title: "NS Payload Copied",
-                                  description: "NetSuite payload copied to clipboard",
-                                  duration: 2000,
-                                });
-                              }}
-                              className="inline-flex items-center space-x-1 text-purple-600 hover:text-purple-800 text-sm h-8"
-                            >
-                              <FileJson className="w-4 h-4" />
-                              <span>View NS</span>
-                            </Button>
+                            <div className="flex items-center gap-2">
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => {
+                                  const jsonStr = JSON.stringify(order.nsPayload, null, 2);
+                                  navigator.clipboard.writeText(jsonStr);
+                                  toast({
+                                    title: "NS Payload Copied",
+                                    description: "NetSuite payload copied to clipboard",
+                                    duration: 2000,
+                                  });
+                                }}
+                                className="inline-flex items-center space-x-1 text-purple-600 hover:text-purple-800 text-sm h-8"
+                              >
+                                <FileJson className="w-4 h-4" />
+                                <span>View NS</span>
+                              </Button>
+                              {order.status === 'sent_to_netsuite' && (
+                                <Badge variant="secondary" className="text-xs bg-emerald-50 text-emerald-700">
+                                  Sent
+                                </Badge>
+                              )}
+                            </div>
                           ) : (
                             <span className="text-gray-400 text-sm">Not ready</span>
                           )}
@@ -894,16 +919,27 @@ ${lineItems.map((item, i) =>
                             >
                               <Eye className="w-4 h-4" />
                             </Button>
-                            {order.status === 'ready_for_netsuite' && (
+                            {(order.status === 'ready_for_netsuite' || order.status === 'sent_to_netsuite') && (
                               <Button
                                 variant="ghost"
                                 size="sm"
                                 onClick={() => handleImportToNetSuite(order.id)}
-                                className="h-8 w-8 p-0 text-green-600 hover:text-green-700"
+                                className={order.status === 'sent_to_netsuite' 
+                                  ? "h-8 w-8 p-0 text-emerald-600 hover:text-emerald-700" 
+                                  : "h-8 w-8 p-0 text-green-600 hover:text-green-700"
+                                }
                                 data-testid={`button-import-${order.id}`}
-                                title="Import to NetSuite"
+                                title={order.status === 'sent_to_netsuite' 
+                                  ? "Already sent to NetSuite - Click to resend" 
+                                  : "Send to NetSuite"
+                                }
+                                disabled={order.status === 'sent_to_netsuite'}
                               >
-                                <ExternalLink className="w-4 h-4" />
+                                {order.status === 'sent_to_netsuite' ? (
+                                  <CheckCircle className="w-4 h-4" />
+                                ) : (
+                                  <ExternalLink className="w-4 h-4" />
+                                )}
                               </Button>
                             )}
                             <Button
