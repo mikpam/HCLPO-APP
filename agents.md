@@ -35,6 +35,10 @@ The system follows a streamlined automated pipeline with unified validation orch
   - Customer + Contact validation in parallel (performance optimization)
   - SKU validation runs sequentially after customer/contact
   - Single source of truth for all validation results
+- Generates NS payload automatically when status becomes "ready_for_netsuite"
+  - Uses OpenAI GPT-4o to format validated data to NetSuite schema
+  - Maps email intent to NetSuite format (rush_order → Rush, etc.)
+  - Stores payload in `nsPayload` JSONB column for immediate NetSuite import
 - Creates NetSuite sales orders via User Event script
 - Updates Gmail labels and stores audit trails
 

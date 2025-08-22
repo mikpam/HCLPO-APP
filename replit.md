@@ -12,7 +12,7 @@ Database Enforcement: Only use Neon PostgreSQL endpoint: ep-mute-bush-afa56yb4-p
 
 ## System Architecture
 
-### Frontend Architecture
+### Frontend
 - **Framework**: React 18 with TypeScript using Vite.
 - **UI Components**: Shadcn/ui (Radix UI primitives).
 - **Styling**: Tailwind CSS with custom design tokens.
@@ -20,7 +20,7 @@ Database Enforcement: Only use Neon PostgreSQL endpoint: ep-mute-bush-afa56yb4-p
 - **Routing**: Wouter.
 - **Design System**: New York style variant with neutral color palette.
 
-### Backend Architecture
+### Backend
 - **Runtime**: Node.js with Express.js REST API.
 - **Language**: TypeScript with ES modules.
 - **Database ORM**: Drizzle ORM for PostgreSQL.
@@ -36,25 +36,23 @@ Database Enforcement: Only use Neon PostgreSQL endpoint: ep-mute-bush-afa56yb4-p
 - **Purchase Order Fields**: Enhanced with `emailIntent` (rush_order, purchase_order, sample_request, follow_up, none) and `shipToAddress` (JSONB containing name, company, address1, address2, city, state, zipCode, country).
 
 ### Email Processing Pipeline
-- **Architecture**: Complete 12-step automated pipeline. Single `/api/processing/process-auto` endpoint with no manual triggers.
-- **Sequential Processing Lock**: System uses `isProcessing` flag to prevent concurrent operations. Only auto-processing endpoint active.
+- **Architecture**: Complete 12-step automated pipeline with NS payload generation. Single `/api/processing/process-auto` endpoint with no manual triggers.
+- **Sequential Processing Lock**: System uses `isProcessing` flag to prevent concurrent operations.
 - **Validation Orchestration**: Unified ValidationOrchestrator service coordinates all validation operations with parallel processing where possible.
 - **Classification**: OpenAI GPT-4o for intent classification and advanced 5-route classification (TEXT_PO, TEXT_SAMPLE, ATTACHMENT_PO, ATTACHMENT_SAMPLE, REVIEW), with priority logic for attachments.
-- **Email Intent Tracking**: Captures and stores email intent (rush_order, purchase_order, sample_request, follow_up, none) in the `emailIntent` field for each PO.
-- **AI Document Filtering**: Pre-screens attachments to filter non-PO documents using filename-based filtering and AI document classification with negative keyword detection.
+- **Email Intent Tracking**: Captures and stores email intent in the `emailIntent` field.
+- **AI Document Filtering**: Pre-screens attachments to filter non-PO documents using filename-based filtering and AI document classification.
 - **Multi-Format Support**: Enhanced processing for Gemini-compatible formats (PDFs, images, Word docs, CSVs, Excel, text files).
 - **Dual Gemini Extraction Routes**: ATTACHMENT_PO for multi-format document processing; TEXT_PO for email body text processing.
-- **Processing Flow**: Gmail ingestion → Pre-processing → Detailed analysis → AI document filtering → Gemini extraction → Unified validation → NetSuite import.
-- **Data Storage**: Preprocessing, classification, and extracted data stored in Neon PostgreSQL.
+- **Processing Flow**: Gmail ingestion → Pre-processing → Detailed analysis → AI document filtering → Gemini extraction → Unified validation → NS payload generation → NetSuite ready.
+- **Data Storage**: Preprocessing, classification, extracted data, and NS payload stored in Neon PostgreSQL.
 - **Email/Attachment Preservation**: Automatic .eml file and attachment storage to object storage, with file paths stored in database records for audit trails.
-- **Unified Validation**: ValidationOrchestrator runs customer + contact validation in parallel, then items sequentially. Single source of truth for all validation results.
-- **Customer Validation**: Hybrid Customer Validator with 4-step process (Exact DB → Vector → Rules → LLM). Enhanced brand matching algorithm with 70% minimum confidence.
-- **Contact Validation**: OpenAI Contact Validator with exact email → vector → domain+company → LLM fallback. 95%+ accuracy.
-- **SKU Validation**: OpenAI SKU Validator with vector matching and quantity-aware logic. Handles charge codes and high-quantity items correctly.
+- **Unified Validation**: ValidationOrchestrator runs customer + contact validation in parallel, then items sequentially. Single source of truth for all validation results. Includes hybrid customer validator (Exact DB → Vector → Rules → LLM) and OpenAI contact/SKU validators.
+- **NS Payload Generation**: Automatic NetSuite payload creation when PO reaches "ready_for_netsuite" status, using OpenAI to format validated data.
 - **Embedding Systems**: All contacts, customers, and items are 100% embedded using OpenAI 1536-dimensional vectors and PGvector for semantic search.
-- **Forwarded Email Detection**: Enhanced detection for @highcaliberline.com, @geiger.com, FW:/Fwd: subjects, and purchaseorder@ patterns.
+- **Forwarded Email Detection**: Enhanced detection for common patterns.
 - **Status Determination**: Centralized in ValidationOrchestrator: new_customer → missing_contact → invalid_items → ready_for_netsuite.
-- **Performance**: ~30% faster validation through parallel processing. 30-second email polling interval (improved from 60s).
+- **Performance**: Approximately 30% faster validation through parallel processing. 30-second email polling interval.
 - **Stuck Process Prevention & Recovery**: Automatic detection and recovery of stuck POs with a dead letter queue for manual review.
 
 ### Admin Portal
@@ -71,7 +69,7 @@ Database Enforcement: Only use Neon PostgreSQL endpoint: ep-mute-bush-afa56yb4-p
 - **Gmail API**: Service account authentication for email retrieval and labeling.
 
 ### AI/ML Services
-- **OpenAI API**: Used for email pre-processing intent classification, detailed email gate logic, and comprehensive validation (customer, contact, SKU).
+- **OpenAI API**: Used for email pre-processing intent classification, detailed email gate logic, and comprehensive validation (customer, contact, SKU), and NetSuite payload generation.
 - **Google Gemini API**: Used for structured purchase order parsing and data extraction from both attachments and email text.
 
 ### Data Storage Services
@@ -82,80 +80,3 @@ Database Enforcement: Only use Neon PostgreSQL endpoint: ep-mute-bush-afa56yb4-p
 
 ### ERP Integration
 - **NetSuite REST API**: For sales order creation using TBA NLAuth authentication with 2FA support.
-
-## Recent System Improvements
-
-### Database Connection Fix & Item Table Access Restored (2025-08-22, 5:06 PM)
-- **🎯 ENFORCED NEON ENDPOINT**: Fixed critical database connection issue affecting entire system
-  - **Root Cause**: DATABASE_URL incorrectly prefixed with "psql" command, causing "getaddrinfo ENOTFOUND base" errors
-  - **Solution**: Implemented DATABASE_URL cleaning logic to extract actual PostgreSQL URL from psql command format
-  - **Enforcement**: Added validation to ensure only ep-mute-bush-afa56yb4-pooler.c-2.us-west-2.aws.neon.tech endpoint is used
-  - **Impact**: Restored access to 5,209 items (5,139 active, 70 inactive) for proper SKU validation
-  - **Result**: SKU validation now works correctly instead of defaulting everything to OE-MISC-ITEM
-
-### Customer Embedding Generation Complete (2025-08-22, 4:30 PM)
-- **🎯 100% CUSTOMER EMBEDDINGS**: All 11,200 customers now have vector embeddings
-  - **Ultra-fast generation**: 10,918 customers embedded in ~30 seconds using parallel processing
-  - **Batch processing**: 2,500 customers processed simultaneously with zero errors
-  - **PostgreSQL extensions**: Installed pg_trgm for similarity function support
-  - **Impact**: Dramatically improved customer matching accuracy through semantic search
-
-### Unified Validation Orchestrator Implementation (2025-08-22)
-- **🎯 COMPLETE VALIDATION REFACTOR**: Replaced scattered validation logic with unified ValidationOrchestrator
-  - **Architecture Change**: Single orchestrator coordinates all validation (customer, contact, items)
-  - **Performance**: Parallel validation where possible (customer + contact), reducing processing time by ~30%
-  - **Consistency**: Single source of truth for validation results, eliminating duplicate/conflicting validators
-  - **Code Reduction**: Consolidated 300+ lines of scattered validation into 100 lines of orchestrated logic
-  - **Status Determination**: Centralized status logic in orchestrator (new_customer → missing_contact → invalid_items → ready_for_netsuite)
-
-### Customer Validation Architecture Standardization (2025-08-22)
-- **🎯 STANDARDIZED VALIDATION WORKFLOW**: Fixed validation inconsistencies causing false "new_customer" status
-  - **Root Cause**: Multiple validation services (OpenAI Customer Finder + Hybrid Validator) returned conflicting results
-  - **Example Issue**: PO 7f712714 showed customer found in metadata (95% confidence) but customerValidated=false
-  - **Solution**: Standardized on single Hybrid Customer Validator throughout entire pipeline
-  - **Removed**: Redundant OpenAI Customer Finder Service fallback calls to prevent inconsistencies
-
-- **🚀 ENHANCED BRAND MATCHING ALGORITHM**: Dramatically improved customer recognition accuracy
-  - **Root Cause**: "HALO" failed to match "Halo Branded Solutions" (scored only 0.050 confidence)
-  - **Solution**: Added sophisticated `calculateBrandMatch` method with brand containment logic
-  - **Brand Containment**: "HALO" → "Halo Branded Solutions" now scores 0.9 confidence
-  - **Business Logic**: Handles corporate suffixes (Inc, LLC, Corp, etc.) and normalization
-  - **Scoring Rebalance**: Increased brand matching weight from 5% → 30%, reduced base similarity 70% → 50%
-
-- **⚖️ ADJUSTED CONFIDENCE THRESHOLDS**: More reasonable acceptance criteria for customer matches
-  - **High Confidence Auto-Accept**: Lowered from 0.85 → 0.65
-  - **LLM Tiebreak Threshold**: Lowered from 0.75 → 0.50  
-  - **Impact**: Prevents valid customers from being incorrectly flagged as "new_customer"
-
-### SKU Validation & Extraction Fixes (August 22, 2025)
-- **🎯 ENHANCED SKU VALIDATOR WITH DB LOOKUPS**: Fixed T811 and other SKUs not being recognized
-  - **Direct Database Lookups**: When SKUs aren't in cache, validator now queries database directly
-  - **Color Variant Mapping**: Maps color names to variant codes (e.g., "ROYAL BLUE" → "01" → "T811-01")
-  - **Base SKU Recognition**: Checks if base SKU exists (T811) even without exact variant match
-  - **Lower Vector Threshold**: Reduced from 0.85 to 0.75 for better semantic matching
-  - **Smart Color Matching**: Automatically finds appropriate color variant from base SKU + color name
-
-- **🔥 SKU VALIDATOR QUANTITY-AWARE LOGIC**: Fixed OE-MISC-CHARGE high quantity issue
-  - **Quantity-Aware Charge Detection**: High quantities (>50) automatically treated as products, not charges
-  - **Enhanced analyzeChargeDescription()**: Now considers quantity when determining charge vs product classification
-  - **AI Prompt Improvements**: OpenAI now receives quantity data and applies quantity-aware logic
-  - **Fixed OE-MISC Logic**: "Run Charge" with qty 200 → OE-MISC-ITEM (product), not OE-MISC-CHARGE (charge)
-  - **Fallback Enhancement**: High quantity items automatically get OE-MISC-ITEM instead of charge codes
-  - **Business Logic Correction**: Eliminates incorrect charge code assignment to high-quantity product lines
-
-- **🎯 GEMINI EXTRACTION SKU SEPARATION FIX**: Fixed SKU+color concatenation issue
-  - **Root Cause**: Gemini was incorrectly combining SKUs with colors (e.g., S989 + Blue → S989B)
-  - **Solution**: Added explicit SKU extraction rules to all Gemini prompts (PDF, text, reprocessing)
-  - **Critical Rules**: Extract base SKU only (S989, T802, H710), separate color in itemColor field
-  - **Prevention**: Stops creation of non-existent SKUs like S989B, T802-Black, H710Blue
-  - **Impact**: Improves SKU validation accuracy by extracting clean base codes for database lookup
-  - **Setup Charge Fix**: Updated SKU format from "SET UP" to "SETUP" to match database standard
-
-### Customer Validation Fixes (Historical)
-- **🏢 ENHANCED COMPANY NAME NORMALIZATION**: Fixed business entity suffix matching issue
-  - **Root Cause**: "Quality Logo Products, Inc." failed to match "Quality Logo Products" in database
-  - **Solution**: Added comprehensive business entity suffix normalization function
-  - **Handles**: Inc., LLC, Corp, Ltd, Company, Co, Limited, Enterprises, Group variations
-  - **Bidirectional Matching**: Enhanced fuzzy search with improved normalization
-  - **OpenAI LLM Fix**: Added "JSON" keyword to prompt to resolve API formatting error
-  - **Impact**: Eliminates false "new_customer" status for known customers with entity suffix variations

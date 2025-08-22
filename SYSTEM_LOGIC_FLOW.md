@@ -1,6 +1,18 @@
 # Purchase Order Processing System - Complete Logic Flow
 
-## 📧 **EMAIL PROCESSING PIPELINE** (Sequential Order)
+## Executive Summary
+This document outlines the complete 13-step automated purchase order processing pipeline that transforms email-based POs into NetSuite-ready data. The system leverages AI for classification, extraction, validation, and now automatic NS payload generation for seamless ERP integration.
+
+### Key Features
+- **Fully Automated**: 13-step sequential pipeline from email to NetSuite-ready payload
+- **AI-Powered**: OpenAI GPT-4o + Google Gemini for intelligent processing
+- **Hybrid Validation**: 4-step customer/contact/SKU validation with vector search
+- **NS Payload Generation**: Automatic NetSuite schema formatting for validated POs
+- **Complete Audit Trail**: Full email and attachment preservation with tracking
+- **Memory Optimized**: LRU caching with 69% memory reduction
+- **Real-time Monitoring**: Live processing status and health monitoring
+
+## 📧 **EMAIL PROCESSING PIPELINE** (13-Step Sequential Pipeline)
 
 ### **STEP 1: Email Ingestion**
 ```
@@ -117,7 +129,21 @@ Automatic Status Assignment:
 └── error: Processing failures or validation errors
 ```
 
-### **STEP 12: Gmail Labeling**
+### **STEP 12: NetSuite Payload Generation** (NEW)
+```
+Automatic NS Payload Creation (when status = ready_for_netsuite):
+├── TRIGGER: Automatically runs after status determination
+├── ENGINE: OpenAI GPT-4o formats validated data to NetSuite schema
+├── DATA MAPPING:
+│   ├── Customer: Merges validated customer with extraction data
+│   ├── Contact: Combines validated contact with extracted info
+│   ├── Line Items: Maps validated SKUs with quantities and pricing
+│   └── Intent: Converts email intent (rush_order → Rush, etc.)
+├── STORAGE: Saved in nsPayload JSONB column
+└── UI ACCESS: Available via "View NS" button in PO table
+```
+
+### **STEP 13: Gmail Labeling**
 ```
 Gmail API → Email Organization
 ├── ADD LABELS:
