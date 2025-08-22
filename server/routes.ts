@@ -843,63 +843,8 @@ async function processEmailThroughValidationSystem(messageToProcess: any, update
       console.log(`   ⚠️  Using fallback contact: ${messageToProcess.sender}`);
     }
 
-    // 🔥 UPDATE STATUS: Customer Validation
-    updateProcessingStatus({
-      currentStep: "customer_validation"
-    });
-
-    // Lookup customer in HCL database for all purchase orders using OpenAI-powered matching
-    if (extractionResult?.purchaseOrder?.customer) {
-      console.log(`\n🔍 OPENAI CUSTOMER LOOKUP:`);
-      console.log(`   └─ Searching HCL database for: ${extractionResult.purchaseOrder.customer.company || 'Unknown'}`);
-      
-      try {
-        // Create fresh customer finder instance for this email to prevent race conditions with health monitoring
-        const { OpenAICustomerFinderService } = await import('./services/openai-customer-finder');
-        const customerFinder = await validatorHealthService.recordValidatorCall(
-          'customerFinder',
-          async () => new OpenAICustomerFinderService()
-        );
-        const customerMatch = await customerFinder.findCustomer({
-          customerName: extractionResult.purchaseOrder.customer.company,
-          customerEmail: extractionResult.purchaseOrder.customer.email,
-          senderEmail: messageToProcess.sender,
-          asiNumber: extractionResult.purchaseOrder.asiNumber,
-          ppaiNumber: extractionResult.purchaseOrder.ppaiNumber,
-          address: extractionResult.purchaseOrder.customer.address1
-        });
-        
-        // Improved reliability with status-based handling
-        if (customerMatch.status === 'found' && customerMatch.customer_number) {
-          customerMeta = customerMatch;
-          console.log(`   ✅ OpenAI found HCL customer: ${customerMatch.customer_name} (${customerMatch.customer_number})`);
-          console.log(`   └─ Method: ${customerMatch.method} (Confidence: ${Math.round((customerMatch.confidence || 0) * 100)}%)`);
-          
-          // STEP 1 COMPLETION: Update database immediately with customer validation results
-          try {
-            if (purchaseOrder) {
-              await storage.updatePurchaseOrder(purchaseOrder.id, {
-                customerMeta: customerMeta,
-                status: 'customer_found'
-              });
-              console.log(`   ✅ STEP 1 COMPLETED: Customer data stored in database`);
-            }
-          } catch (stepError) {
-            console.error(`   ❌ STEP 1 FAILED: Could not store customer data:`, stepError);
-          }
-        } else {
-          console.log(`   ⚠️  OpenAI could not find HCL customer match`);
-          console.log(`   └─ Status: ${customerMatch.status}, Method: ${customerMatch.method}, Confidence: ${Math.round((customerMatch.confidence || 0) * 100)}%`);
-          
-          // Removed redundant fallback - standardizing on Hybrid Customer Validator only
-          console.log(`   ❌ Customer lookup deferred to main Hybrid Customer Validator (Step 7)`);
-        }
-      } catch (error) {
-        console.error(`   ❌ Customer lookup failed:`, error);
-        // Removed redundant fallback - standardizing on Hybrid Customer Validator only
-        console.log(`   ❌ Customer lookup deferred to main Hybrid Customer Validator (Step 7)`);
-      }
-    }
+    // 🔥 REMOVED DUPLICATE VALIDATION: Using only Hybrid Customer Validator in Step 7
+    // This eliminates conflicting validation results between OpenAI Finder and Hybrid Validator
     
     if (isForwardedEmail && extractionResult?.purchaseOrder?.customer) {
       console.log(`\n📋 FORWARDED EMAIL PROCESSING:`);

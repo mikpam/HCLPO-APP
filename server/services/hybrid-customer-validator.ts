@@ -426,6 +426,13 @@ export class HybridCustomerValidator {
         if (brandScore > 0.7) {
           console.log(`   🎯 Strong brand match: "${input.customerName}" → "${candidate.companyName}" (${(brandScore * 100).toFixed(1)}%)`);
         }
+        
+        // 🔥 BRAND BOOST: If strong brand match, ensure minimum 70% total score
+        // This fixes HALO → Halo Branded Solutions scoring only 27%
+        if (brandScore >= 0.8) {
+          finalScore = Math.max(finalScore, 0.70);
+          console.log(`   🚀 Brand boost applied: minimum 70% for strong brand match`);
+        }
       }
 
       // Domain match bonus (10%)
