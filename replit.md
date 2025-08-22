@@ -38,6 +38,7 @@ Vector Database Preference: PGvector integration with existing PostgreSQL databa
 - **Sequential Processing Lock**: System uses `isProcessing` flag to prevent concurrent operations. Only auto-processing endpoint active.
 - **Validation Orchestration**: Unified ValidationOrchestrator service coordinates all validation operations with parallel processing where possible.
 - **Classification**: OpenAI GPT-4o for intent classification and advanced 5-route classification (TEXT_PO, TEXT_SAMPLE, ATTACHMENT_PO, ATTACHMENT_SAMPLE, REVIEW), with priority logic for attachments.
+- **Email Intent Tracking**: Captures and stores email intent (rush_order, purchase_order, sample_request, follow_up, none) in the `emailIntent` field for each PO.
 - **AI Document Filtering**: Pre-screens attachments to filter non-PO documents using filename-based filtering and AI document classification with negative keyword detection.
 - **Multi-Format Support**: Enhanced processing for Gemini-compatible formats (PDFs, images, Word docs, CSVs, Excel, text files).
 - **Dual Gemini Extraction Routes**: ATTACHMENT_PO for multi-format document processing; TEXT_PO for email body text processing.

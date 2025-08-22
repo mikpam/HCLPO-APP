@@ -324,7 +324,27 @@ async function processEmailThroughValidationSystem(messageToProcess: any, update
     body: messageToProcess.body,
     attachments: messageToProcess.attachments
   });
-  console.log(`   └─ Pre-processing: ${processingResult.preprocessing.response} (Continue: ${processingResult.preprocessing.shouldProceed})`);
+  
+  // Map preprocessing response to email intent format
+  const mapEmailIntent = (preprocessingResponse: string): string => {
+    switch (preprocessingResponse) {
+      case 'Purchase Order':
+        return 'purchase_order';
+      case 'Sample Request':
+        return 'sample_request';
+      case 'Rush Order':
+        return 'rush_order';
+      case 'Follow Up':
+        return 'follow_up';
+      case 'None of these':
+        return 'none';
+      default:
+        return 'none';
+    }
+  };
+  
+  const emailIntent = mapEmailIntent(processingResult.preprocessing.response);
+  console.log(`   └─ Pre-processing: ${processingResult.preprocessing.response} (Intent: ${emailIntent}, Continue: ${processingResult.preprocessing.shouldProceed})`);
   if (processingResult.classification) {
     console.log(`   └─ Detailed route: ${processingResult.classification.recommended_route} (${Math.round((processingResult.classification.analysis_flags.confidence_score || 0) * 100)}%)`);
   }
@@ -518,6 +538,7 @@ async function processEmailThroughValidationSystem(messageToProcess: any, update
                     subject: messageToProcess.subject,
                     route: processingResult.classification.recommended_route,
                     confidence: processingResult.classification.analysis_flags?.confidence_score || 0,
+                    emailIntent: emailIntent, // Add email intent
                     status: 'pending_validation', // Updated status - extraction complete, pending validation
                     originalJson: processingResult.classification,
                     extractedData: extractionResult, // Store the complete Gemini extraction
@@ -601,6 +622,7 @@ async function processEmailThroughValidationSystem(messageToProcess: any, update
               purchaseOrder = await storage.createPurchaseOrder({
                 poNumber: finalPONumber,
                 emailId: messageToProcess.id,
+                emailIntent: emailIntent, // Add email intent
                 sender: messageToProcess.sender,
                 subject: messageToProcess.subject,
                 route: 'ATTACHMENT_PO_FALLBACK', // Special route to indicate fallback was used
