@@ -174,27 +174,145 @@ export class HybridCustomerValidator {
       }
     }
 
-    // Priority 5: By Company (strict)
+    // Priority 5: By Company (enhanced fuzzy matching)
     if (input.customerName) {
-      const companyMatches = await db
+      // First try exact ILIKE match
+      const exactCompanyMatches = await db
         .select()
         .from(customers)
         .where(ilike(customers.companyName, input.customerName))
         .orderBy(sql`LENGTH(company_name) ASC`)
         .limit(10);
 
-      if (companyMatches.length === 1) {
-        console.log(`   ✅ Single company match: ${companyMatches[0].companyName}`);
-        return this.mapToCandidate(companyMatches[0]);
+      if (exactCompanyMatches.length === 1) {
+        console.log(`   ✅ Single exact company match: ${exactCompanyMatches[0].companyName}`);
+        return this.mapToCandidate(exactCompanyMatches[0]);
       }
-      if (companyMatches.length > 1) {
-        console.log(`   🔍 Multiple company matches (${companyMatches.length}), need disambiguation`);
-        return companyMatches.map(this.mapToCandidate);
+      if (exactCompanyMatches.length > 1) {
+        console.log(`   🔍 Multiple exact company matches (${exactCompanyMatches.length}), need disambiguation`);
+        return exactCompanyMatches.map(this.mapToCandidate);
+      }
+
+      // If no exact match, try bidirectional fuzzy matching
+      console.log(`   🔍 No exact company match, trying bidirectional fuzzy search...`);
+      
+      // Clean input name for better matching
+      const cleanInputName = input.customerName
+        .replace(/\b(inc|llc|corp|ltd|co|com|net|org|usa|america|group|international|intl)\b/gi, '')
+        .trim();
+      
+      if (cleanInputName.length >= 3) {
+        const fuzzyCompanyMatches = await db
+          .select()
+          .from(customers)
+          .where(sql`
+            LOWER(company_name) LIKE LOWER(${'%' + cleanInputName + '%'}) 
+            OR LOWER(${'%' + cleanInputName + '%'}) LIKE LOWER(company_name)
+            OR LOWER(company_name) LIKE LOWER(${'%' + input.customerName + '%'})
+            OR LOWER(${'%' + input.customerName + '%'}) LIKE LOWER(company_name)
+          `)
+          .orderBy(sql`
+            CASE 
+              WHEN LOWER(company_name) = LOWER(${input.customerName}) THEN 1
+              WHEN LOWER(company_name) = LOWER(${cleanInputName}) THEN 2
+              WHEN LOWER(company_name) LIKE LOWER(${'%' + cleanInputName + '%'}) THEN 3
+              ELSE 4
+            END,
+            LENGTH(company_name) ASC
+          `)
+          .limit(10);
+
+        if (fuzzyCompanyMatches.length === 1) {
+          console.log(`   ✅ Single fuzzy company match: "${input.customerName}" → "${fuzzyCompanyMatches[0].companyName}"`);
+          return this.mapToCandidate(fuzzyCompanyMatches[0]);
+        }
+        if (fuzzyCompanyMatches.length > 1) {
+          console.log(`   🔍 Multiple fuzzy company matches (${fuzzyCompanyMatches.length}), need disambiguation`);
+          return fuzzyCompanyMatches.map(this.mapToCandidate);
+        }
       }
     }
 
     console.log(`   ❌ No exact matches found`);
     return null;
+  }
+
+  /**
+   * Fallback method: Get potential candidates for LLM review when no matches found
+   */
+  private async getFallbackCandidatesForLLM(input: CustomerValidatorInput): Promise<CustomerCandidate[]> {
+    console.log(`🔍 FALLBACK SEARCH: Getting broader candidate set for LLM review`);
+    
+    const fallbackCandidates: CustomerCandidate[] = [];
+    
+    // Strategy 1: Fuzzy company name matching with broader patterns
+    if (input.customerName && input.customerName.length >= 3) {
+      console.log(`   📝 Fuzzy company search for: "${input.customerName}"`);
+      
+      // Remove common business suffixes and try partial matches
+      const cleanName = input.customerName
+        .replace(/\b(inc|llc|corp|ltd|co|com|net|org|usa|america|group|international|intl)\b/gi, '')
+        .trim();
+      
+      if (cleanName.length >= 3) {
+        const fuzzyMatches = await db
+          .select()
+          .from(customers)
+          .where(sql`
+            LOWER(company_name) LIKE LOWER(${'%' + cleanName + '%'}) 
+            OR LOWER(${'%' + cleanName + '%'}) LIKE LOWER(company_name)
+            OR SIMILARITY(LOWER(company_name), LOWER(${cleanName})) > 0.3
+          `)
+          .orderBy(sql`SIMILARITY(LOWER(company_name), LOWER(${cleanName})) DESC`)
+          .limit(10);
+        
+        fallbackCandidates.push(...fuzzyMatches.map(this.mapToCandidate));
+        console.log(`   🎯 Found ${fuzzyMatches.length} fuzzy company matches`);
+      }
+    }
+    
+    // Strategy 2: Domain-based broader search
+    if (input.senderDomain && fallbackCandidates.length < 5) {
+      console.log(`   🌐 Domain-based search for: "${input.senderDomain}"`);
+      
+      const domainMatches = await db
+        .select()
+        .from(customers)
+        .where(sql`
+          LOWER(email) LIKE LOWER(${'%' + input.senderDomain + '%'})
+          OR LOWER(company_name) LIKE LOWER(${'%' + input.senderDomain.split('.')[0] + '%'})
+        `)
+        .limit(8);
+      
+      const newDomainCandidates = domainMatches
+        .map(this.mapToCandidate)
+        .filter(candidate => !fallbackCandidates.some(existing => existing.id === candidate.id));
+      
+      fallbackCandidates.push(...newDomainCandidates);
+      console.log(`   🎯 Found ${newDomainCandidates.length} new domain-based matches`);
+    }
+    
+    // Strategy 3: If still low results, get top active customers for manual review
+    if (fallbackCandidates.length < 3) {
+      console.log(`   📊 Adding top active customers for LLM consideration`);
+      
+      const topCustomers = await db
+        .select()
+        .from(customers)
+        .where(eq(customers.isActive, true))
+        .orderBy(sql`company_name ASC`)
+        .limit(5);
+      
+      const newTopCandidates = topCustomers
+        .map(this.mapToCandidate)
+        .filter(candidate => !fallbackCandidates.some(existing => existing.id === candidate.id));
+      
+      fallbackCandidates.push(...newTopCandidates);
+      console.log(`   🎯 Added ${newTopCandidates.length} top customers for LLM review`);
+    }
+    
+    console.log(`   📋 Total fallback candidates: ${fallbackCandidates.length}`);
+    return fallbackCandidates.slice(0, 10); // Limit to top 10 for LLM efficiency
   }
 
   /**
@@ -352,7 +470,27 @@ export class HybridCustomerValidator {
       messages: [
         {
           role: "system",
-          content: "You are a deterministic resolver. Choose exactly one candidate_id or say \"NONE\". Base your choice ONLY on the provided fields; do not infer new facts. Respond with JSON format: {\"selected_id\":\"...\",\"reason\":\"...\"}"
+          content: `You are an expert customer matching assistant for purchase order processing. 
+
+TASK: Analyze the query customer information and select the BEST matching candidate from the provided list, or return "NONE" if no good match exists.
+
+MATCHING RULES:
+1. EXACT MATCHES: Prioritize exact matches on company name, email domain, or customer number
+2. COMPANY NAME VARIATIONS: Look for different formats of the same company:
+   - "DISCOUNTMUGS" matches "DiscountMugs.com" 
+   - "ABC Inc" matches "ABC Company" or "ABC Corp"
+   - Ignore common suffixes: .com, .net, Inc, LLC, Corp, Ltd, Co, USA
+3. DOMAIN MATCHING: Company domain should reasonably match sender domain
+4. FUZZY MATCHING: Accept reasonable variations in spelling, spacing, punctuation
+5. BUSINESS LOGIC: Consider if this makes business sense (same industry, geography, etc.)
+
+CONFIDENCE THRESHOLDS:
+- HIGH CONFIDENCE: Exact match or obvious variation → Select candidate
+- MEDIUM CONFIDENCE: Similar but uncertain → Select if reasonable business match
+- LOW CONFIDENCE: Weak similarity → Return "NONE"
+
+OUTPUT FORMAT: {"selected_id":"C12345","reason":"Company name match: DISCOUNTMUGS → DiscountMugs.com"}
+OR: {"selected_id":"NONE","reason":"No reasonable matches found"}`
         },
         {
           role: "user",
@@ -437,7 +575,50 @@ export class HybridCustomerValidator {
       }
 
       if (candidates.length === 0) {
-        console.log(`   ❌ NO MATCHES: No candidates found`);
+        console.log(`   ❌ NO VECTOR MATCHES: No semantic candidates found - trying LLM fallback`);
+        
+        // Try LLM with a broader search of top customers for edge cases
+        const fallbackCandidates = await this.getFallbackCandidatesForLLM(normalizedInput);
+        
+        if (fallbackCandidates.length > 0) {
+          console.log(`   🤖 LLM FALLBACK: Found ${fallbackCandidates.length} potential matches for LLM review`);
+          
+          const llmResult = await this.llmTiebreak(fallbackCandidates, normalizedInput);
+          
+          if (llmResult.selectedId) {
+            const selectedCandidate = fallbackCandidates.find(c => c.customerNumber === llmResult.selectedId);
+            
+            if (selectedCandidate) {
+              console.log(`   ✅ LLM FALLBACK SUCCESS: ${selectedCandidate.companyName}`);
+              
+              const result: CustomerValidatorResult = {
+                matched: true,
+                method: 'vector+llm',
+                customerNumber: selectedCandidate.customerNumber,
+                customerName: selectedCandidate.companyName,
+                confidence: 0.8, // High confidence from LLM but not exact match
+                reasons: ['llm_fallback_match', llmResult.reason],
+                alternatives: []
+              };
+              
+              auditData = {
+                ...auditData,
+                selected_customer_id: selectedCandidate.customerNumber,
+                confidence_score: 0.8,
+                method: 'vector+llm',
+                reasons: ['llm_fallback_match'],
+                llm_response: llmResult.llmResponse,
+                top_candidates: fallbackCandidates.slice(0, 5)
+              };
+              
+              await this.logAudit(auditData);
+              console.log(`   ⏱️ Completed in ${Date.now() - startTime}ms`);
+              return result;
+            }
+          }
+        }
+        
+        console.log(`   ❌ NO MATCHES: No candidates found even with LLM fallback`);
         
         const result: CustomerValidatorResult = {
           matched: false,

@@ -3,7 +3,23 @@
 ## Overview
 This full-stack web application automates purchase order processing from email sources, integrating with external services to manage the workflow from ingestion to sales order creation. The system provides a dashboard for monitoring and management, aiming to streamline operations and enhance efficiency in handling purchase orders. The business vision is to provide a robust, automated solution for managing the entire purchase order lifecycle, significantly reducing manual effort and improving data accuracy. This system has high market potential for businesses dealing with large volumes of email-based purchase orders, offering a competitive advantage through operational efficiency and enhanced data management. The project ambition is to become a leading solution in automated PO processing, continuously integrating advanced AI and robust ERP capabilities.
 
-## Recent Changes (August 21, 2025)
+## Recent Changes (August 22, 2025)
+- **🔥 CUSTOMER VALIDATION ENHANCED**: Major improvements to handle company name variations and edge cases
+  - **LLM Fallback Always**: When no exact/vector matches found, system now automatically tries LLM with broader candidate search
+  - **Enhanced Fuzzy Matching**: Added bidirectional LIKE matching and business suffix removal (Inc, LLC, .com, etc.)
+  - **Broader Fallback Search**: New `getFallbackCandidatesForLLM()` method with 3 strategies:
+    - Fuzzy company name matching with cleaned suffixes
+    - Domain-based broader search patterns  
+    - Top active customers for manual LLM review
+  - **Improved LLM Prompt**: Enhanced system prompt with specific business rules for company name variations
+    - Explicit handling of cases like "DISCOUNTMUGS" → "DiscountMugs.com"
+    - Clear confidence thresholds and matching logic
+    - Better business context understanding
+  - **DISCOUNTMUGS Fix**: Fixed root cause - system now handles company name format differences
+  - **Enhanced Exact Search**: Step 1 now includes bidirectional fuzzy matching before falling to vector search
+  - **No More False Negatives**: Known customers should no longer be marked as "NO_CUSTOMER_FOUND"
+
+## Previous Changes (August 21, 2025)
 - **🔥 QUANTITY-LOCK VALIDATION FULLY IMPLEMENTED**: Complete rewrite of SKU validator with bulletproof quantity preservation
   - **Programmatic Quantity Lock**: Quantities locked at code level - never touched by AI models
   - **Strict Index Mapping**: New architecture preserves exact input[i] → output[i] mapping with no reordering
