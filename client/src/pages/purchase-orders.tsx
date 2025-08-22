@@ -1,4 +1,4 @@
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation } from "@tanstack/react-query";
 import { PurchaseOrder } from "@shared/schema";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -8,8 +8,9 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useState, useMemo } from "react";
-import { Eye, ExternalLink, FileText, Search, Filter, ArrowUpDown, MoreHorizontal, MapPin, Calendar, User, Users, Mail, Hash, CheckCircle, XCircle, Clock, Plus, Minus, FileText as FileTextIcon, Mail as MailIcon, Copy } from "lucide-react";
+import { Eye, ExternalLink, FileText, Search, Filter, ArrowUpDown, MoreHorizontal, MapPin, Calendar, User, Users, Mail, Hash, CheckCircle, XCircle, Clock, Plus, Minus, FileText as FileTextIcon, Mail as MailIcon, Copy, RotateCcw } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { queryClient, apiRequest } from "@/lib/queryClient";
 
 export default function PurchaseOrdersPage() {
   const { toast } = useToast();
@@ -319,6 +320,30 @@ export default function PurchaseOrdersPage() {
     setSelectedOrder(order);
     setIsViewModalOpen(true);
   };
+
+  // Retry mutation for failed/stuck POs
+  const retryMutation = useMutation({
+    mutationFn: async (poId: string) => {
+      return apiRequest(`/api/processing/retry-dead-letter/${poId}`, {
+        method: 'POST'
+      });
+    },
+    onSuccess: (data, poId) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/purchase-orders"] });
+      toast({
+        title: "Retry Started",
+        description: data.success ? "Purchase order retry initiated successfully" : data.message,
+        variant: data.success ? "default" : "destructive"
+      });
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Retry Failed",
+        description: error.message || "Failed to retry purchase order",
+        variant: "destructive"
+      });
+    }
+  });
 
   const handleViewFile = async (filePath: string, type: 'pdf' | 'eml', title: string) => {
     try {
@@ -807,6 +832,8 @@ ${lineItems.map((item, i) =>
                               size="sm"
                               onClick={() => handleViewOrder(order)}
                               className="h-8 w-8 p-0"
+                              data-testid={`button-view-${order.id}`}
+                              title="View PO Details"
                             >
                               <Eye className="w-4 h-4" />
                             </Button>
@@ -816,8 +843,23 @@ ${lineItems.map((item, i) =>
                                 size="sm"
                                 onClick={() => handleImportToNetSuite(order.id)}
                                 className="h-8 w-8 p-0 text-green-600 hover:text-green-700"
+                                data-testid={`button-import-${order.id}`}
+                                title="Import to NetSuite"
                               >
                                 <ExternalLink className="w-4 h-4" />
+                              </Button>
+                            )}
+                            {(order.status === 'manual_review' || order.status === 'failed' || order.status === 'error') && (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => retryMutation.mutate(order.id)}
+                                disabled={retryMutation.isPending}
+                                className="h-8 w-8 p-0 text-orange-600 hover:text-orange-700"
+                                data-testid={`button-retry-${order.id}`}
+                                title="Retry Processing"
+                              >
+                                <RotateCcw className="w-4 h-4" />
                               </Button>
                             )}
                           </div>
@@ -976,16 +1018,43 @@ ${lineItems.map((item, i) =>
                               {customer.customerNumber || 'N/A'}
                             </span>
                           </div>
-                          {order.status === 'ready_for_netsuite' && (
+                          <div className="flex items-center space-x-2">
                             <Button
                               variant="ghost"
                               size="sm"
-                              onClick={() => handleImportToNetSuite(order.id)}
-                              className="h-8 w-8 p-0 text-green-600 hover:text-green-700"
+                              onClick={() => handleViewOrder(order)}
+                              className="h-8 w-8 p-0"
+                              data-testid={`button-view-mobile-${order.id}`}
+                              title="View PO Details"
                             >
-                              <ExternalLink className="w-4 h-4" />
+                              <Eye className="w-4 h-4" />
                             </Button>
-                          )}
+                            {order.status === 'ready_for_netsuite' && (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => handleImportToNetSuite(order.id)}
+                                className="h-8 w-8 p-0 text-green-600 hover:text-green-700"
+                                data-testid={`button-import-mobile-${order.id}`}
+                                title="Import to NetSuite"
+                              >
+                                <ExternalLink className="w-4 h-4" />
+                              </Button>
+                            )}
+                            {(order.status === 'manual_review' || order.status === 'failed' || order.status === 'error') && (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => retryMutation.mutate(order.id)}
+                                disabled={retryMutation.isPending}
+                                className="h-8 w-8 p-0 text-orange-600 hover:text-orange-700"
+                                data-testid={`button-retry-mobile-${order.id}`}
+                                title="Retry Processing"
+                              >
+                                <RotateCcw className="w-4 h-4" />
+                              </Button>
+                            )}
+                          </div>
                         </div>
                       </div>
                     </CardContent>
