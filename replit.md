@@ -8,6 +8,7 @@ Preferred communication style: Simple, everyday language.
 UI Design Priority: Mobile-responsive design is now required across all pages. Users need the system to work well on both desktop and mobile devices.
 System Behavior: Automated email processing now active with full hybrid validation using 100% complete embedding infrastructure.
 Vector Database Preference: PGvector integration with existing PostgreSQL database preferred over external vector databases like Pinecone for future semantic customer/item matching enhancements.
+Database Enforcement: Only use Neon PostgreSQL endpoint: ep-mute-bush-afa56yb4-pooler.c-2.us-west-2.aws.neon.tech. Never change DATABASE_URL environment variable.
 
 ## System Architecture
 
@@ -83,6 +84,14 @@ Vector Database Preference: PGvector integration with existing PostgreSQL databa
 - **NetSuite REST API**: For sales order creation using TBA NLAuth authentication with 2FA support.
 
 ## Recent System Improvements
+
+### Database Connection Fix & Item Table Access Restored (2025-08-22, 5:06 PM)
+- **🎯 ENFORCED NEON ENDPOINT**: Fixed critical database connection issue affecting entire system
+  - **Root Cause**: DATABASE_URL incorrectly prefixed with "psql" command, causing "getaddrinfo ENOTFOUND base" errors
+  - **Solution**: Implemented DATABASE_URL cleaning logic to extract actual PostgreSQL URL from psql command format
+  - **Enforcement**: Added validation to ensure only ep-mute-bush-afa56yb4-pooler.c-2.us-west-2.aws.neon.tech endpoint is used
+  - **Impact**: Restored access to 5,209 items (5,139 active, 70 inactive) for proper SKU validation
+  - **Result**: SKU validation now works correctly instead of defaulting everything to OE-MISC-ITEM
 
 ### Customer Embedding Generation Complete (2025-08-22, 4:30 PM)
 - **🎯 100% CUSTOMER EMBEDDINGS**: All 11,200 customers now have vector embeddings

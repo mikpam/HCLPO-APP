@@ -3,20 +3,35 @@ import { Pool } from 'pg';
 import * as schema from "../shared/schema";
 
 // ENFORCED: Single Neon PostgreSQL database only
-// No other databases are allowed in this system
-const dbUrl = process.env.DATABASE_URL;
+// REQUIRED ENDPOINT: ep-mute-bush-afa56yb4-pooler.c-2.us-west-2.aws.neon.tech
+let dbUrl = process.env.DATABASE_URL;
+const REQUIRED_ENDPOINT = 'ep-mute-bush-afa56yb4-pooler.c-2.us-west-2.aws.neon.tech';
 
-// Validate this is the Neon database
-if (!dbUrl?.includes('neon.tech')) {
-  console.error('❌ ERROR: Only Neon PostgreSQL database is allowed!');
-  console.error('Current DATABASE_URL does not point to neon.tech');
-  throw new Error('System requires Neon PostgreSQL database. Please set DATABASE_URL to a valid Neon connection string.');
+// Clean the DATABASE_URL if it has "psql" command prefix
+if (dbUrl) {
+  // Remove "psql" command prefix and quotes if present
+  if (dbUrl.startsWith('psql')) {
+    // Extract the actual URL from psql command format
+    const match = dbUrl.match(/['"]?(postgresql:\/\/[^'"]+)['"]?/);
+    if (match) {
+      dbUrl = match[1];
+      console.log('✅ Cleaned DATABASE_URL from psql command format');
+    }
+  }
+}
+
+// Validate this is the correct Neon database endpoint
+if (!dbUrl?.includes(REQUIRED_ENDPOINT)) {
+  console.error('❌ ERROR: Only the specific Neon endpoint is allowed!');
+  console.error(`Required endpoint: ${REQUIRED_ENDPOINT}`);
+  console.error('Current DATABASE_URL does not match the required endpoint');
+  throw new Error(`System requires Neon PostgreSQL at ${REQUIRED_ENDPOINT}`);
 }
 
 console.log('✅ Neon Database connection verified:', {
   isNeonDb: true,
-  nodeEnv: process.env.NODE_ENV,
-  dbHost: dbUrl.split('@')[1]?.split('/')[0]?.substring(0, 20) + '...'
+  endpoint: REQUIRED_ENDPOINT,
+  nodeEnv: process.env.NODE_ENV
 });
 
 if (!process.env.DATABASE_URL) {
@@ -26,12 +41,10 @@ if (!process.env.DATABASE_URL) {
 }
 
 // Configure pool with Neon-specific SSL settings
+// Use the cleaned dbUrl instead of raw process.env.DATABASE_URL
 export const pool = new Pool({ 
-  connectionString: process.env.DATABASE_URL,
-  ssl: {
-    rejectUnauthorized: false, // Required for Neon
-    require: true // SSL is mandatory for Neon
-  },
+  connectionString: dbUrl, // Use cleaned URL
+  ssl: true, // Simplified SSL configuration for Neon
   max: 10, // Connection pool size
   idleTimeoutMillis: 30000,
   connectionTimeoutMillis: 10000
