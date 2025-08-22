@@ -77,3 +77,22 @@ Vector Database Preference: PGvector integration with existing PostgreSQL databa
 
 ### ERP Integration
 - **NetSuite REST API**: For sales order creation using TBA NLAuth authentication with 2FA support.
+
+## Recent System Improvements
+
+### SKU Validation & Extraction Fixes
+- **🔥 SKU VALIDATOR QUANTITY-AWARE LOGIC**: Fixed OE-MISC-CHARGE high quantity issue
+  - **Quantity-Aware Charge Detection**: High quantities (>50) automatically treated as products, not charges
+  - **Enhanced analyzeChargeDescription()**: Now considers quantity when determining charge vs product classification
+  - **AI Prompt Improvements**: OpenAI now receives quantity data and applies quantity-aware logic
+  - **Fixed OE-MISC Logic**: "Run Charge" with qty 200 → OE-MISC-ITEM (product), not OE-MISC-CHARGE (charge)
+  - **Fallback Enhancement**: High quantity items automatically get OE-MISC-ITEM instead of charge codes
+  - **Business Logic Correction**: Eliminates incorrect charge code assignment to high-quantity product lines
+
+- **🎯 GEMINI EXTRACTION SKU SEPARATION FIX**: Fixed SKU+color concatenation issue
+  - **Root Cause**: Gemini was incorrectly combining SKUs with colors (e.g., S989 + Blue → S989B)
+  - **Solution**: Added explicit SKU extraction rules to all Gemini prompts (PDF, text, reprocessing)
+  - **Critical Rules**: Extract base SKU only (S989, T802, H710), separate color in itemColor field
+  - **Prevention**: Stops creation of non-existent SKUs like S989B, T802-Black, H710Blue
+  - **Impact**: Improves SKU validation accuracy by extracting clean base codes for database lookup
+  - **Setup Charge Fix**: Updated SKU format from "SET UP" to "SETUP" to match database standard

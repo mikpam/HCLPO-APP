@@ -1,0 +1,118 @@
+{
+  "engine": "gemini",
+  "lineItems": [
+    {
+      "sku": "T802",
+      "finalSKU": "OE-MISC-ITEM",
+      "quantity": 150,
+      "itemColor": "Black",
+      "unitPrice": 1.887,
+      "totalPrice": 283.05,
+      "description": "BreezeMate Type-C Mini Fan\nBlack",
+      "imprintColor": "White"
+    },
+    {
+      "sku": "T802",
+      "finalSKU": "OE-MISC-ITEM",
+      "quantity": 150,
+      "itemColor": "White",
+      "unitPrice": 0,
+      "totalPrice": 0,
+      "description": "BreezeMate Type-C Mini Fan\nWhite",
+      "imprintColor": "Black"
+    }
+  ],
+  "subtotals": {
+    "grandTotal": 283.05,
+    "merchandiseSubtotal": 283.05,
+    "additionalChargesSubtotal": 0
+  },
+  "purchaseOrder": {
+    "shipTo": {
+      "city": "Eagan",
+      "name": "Swag Room",
+      "state": "Minnesota",
+      "company": "Arcon Solutions Inc",
+      "country": "United States",
+      "zipCode": "55121",
+      "address1": "2915 Commers Drive",
+      "address2": "Suite 1500"
+    },
+    "vendor": {
+      "city": "Azusa",
+      "name": "High Caliber Line",
+      "email": "",
+      "phone": "(800) 707-2757",
+      "state": "California",
+      "country": "United States",
+      "zipCode": "91702",
+      "address1": "6250 N Irwindale Ave",
+      "address2": ""
+    },
+    "contact": {
+      "name": "Christine D'Arrigo",
+      "email": "cdarrigo@arconinc.com",
+      "phone": "",
+      "jobTitle": "CSR"
+    },
+    "customer": {
+      "city": "Eagan",
+      "email": "",
+      "phone": "952.882.6069",
+      "state": "Minnesota",
+      "company": "ARCON",
+      "country": "United States",
+      "zipCode": "55121",
+      "address1": "2915 Commers Drive",
+      "address2": "",
+      "lastName": "",
+      "firstName": "",
+      "customerNumber": "C55548"
+    },
+    "asiNumber": "",
+    "orderDate": "08/21/2025",
+    "ppaiNumber": "",
+    "inHandsDate": "",
+    "shippingMethod": "Best Available",
+    "salesPersonName": "Christine D'Arrigo",
+    "shippingCarrier": "",
+    "requiredShipDate": "09/04/2025",
+    "salesPersonEmail": "cdarrigo@arconinc.com",
+    "purchaseOrderNumber": "19535-01"
+  },
+  "additionalNotes": [
+    "NOTE: 150 are a donation for the Arcon 2025 Product Showcase per Patty Gomez and 150 are being purchased by Arcon at EQP - less 50%"
+  ],
+  "validatedLineItems": [
+    {
+      "sku": "T802",
+      "finalSKU": "OE-MISC-ITEM",
+      "quantity": 150,
+      "itemColor": "Black",
+      "unitPrice": 1.887,
+      "isValidSKU": true,
+      "totalPrice": 283.05,
+      "description": "BreezeMate Type-C Mini Fan\nBlack",
+      "productName": "Unknown products",
+      "imprintColor": "White",
+      "validationNotes": "Unknown products"
+    },
+    {
+      "sku": "T802",
+      "finalSKU": "OE-MISC-ITEM",
+      "quantity": 150,
+      "itemColor": "White",
+      "unitPrice": 0,
+      "isValidSKU": true,
+      "totalPrice": 0,
+      "description": "BreezeMate Type-C Mini Fan\nWhite",
+      "productName": "Unknown products",
+      "imprintColor": "Black",
+      "validationNotes": "Unknown products"
+    }
+  ],
+  "specialInstructions": "Item #T802\nColor: White (150), Black (150)\nImprint: arcon.\nImprint Color: White Fan-Black Imprint, Black Fan-White Imprint\nArtwork attached\nEmail proof to cdarrigo@arconinc.com\nAttachment(s):- arconlcretrobold (2) (2).pdf"
+}
+Engine: gemini
+Type: Unknown
+Export Data

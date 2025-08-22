@@ -380,6 +380,12 @@ Output *only* the following JSON object, with no other text, comments, or explan
       // Enhanced prompt specifically focused on line item extraction
       const enhancedPrompt = `🚨 CRITICAL: This document was identified as a PURCHASE ORDER but NO LINE ITEMS were extracted in the previous attempt.
 
+CRITICAL SKU EXTRACTION RULES:
+- Extract SKU as BASE CODE ONLY (e.g. "S989", "T802", "H710")
+- DO NOT append color letters to SKU (avoid "S989B", "T802-Black", "H710Blue")
+- Extract color separately in itemColor field
+- Keep SKU and color information completely separate
+
 ENHANCED LINE ITEM EXTRACTION FOCUS:
 Please carefully examine this document again and extract ALL line items with EXTREME attention to detail.
 
@@ -530,6 +536,12 @@ CRITICAL: Focus intensely on finding and extracting ALL line items from this pur
       const cleanBody = body.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
       
       const prompt = `Extract purchase order data from the following email content and return ONLY a valid JSON object following this exact schema.
+
+CRITICAL SKU EXTRACTION RULES:
+- Extract SKU as BASE CODE ONLY (e.g. "S989", "T802", "H710")
+- DO NOT append color letters to SKU (avoid "S989B", "T802-Black", "H710Blue")
+- Extract color separately in itemColor field
+- Keep SKU and color information completely separate
 
 EMAIL CONTENT:
 Subject: ${subject}
@@ -706,6 +718,12 @@ ColorCode Map:
 
       const prompt = `Extract purchase order data from the attached document and return ONLY a valid JSON object following this exact schema.
 
+CRITICAL SKU EXTRACTION RULES:
+- Extract SKU as BASE CODE ONLY (e.g. "S989", "T802", "H710")
+- DO NOT append color letters to SKU (avoid "S989B", "T802-Black", "H710Blue")
+- Extract color separately in itemColor field
+- Keep SKU and color information completely separate
+
 REQUIRED JSON SCHEMA - Return ONLY this structure:
 {
   "purchaseOrder": {
@@ -797,7 +815,11 @@ Processing Rules:
    a) Setup charges: description contains "setup charge"/"SETUP"/"setup"/"SU"/"set charge"/"Setup Fee" → sku="SETUP"
    b) Extra color: description contains "extra color" → sku="EC" 
    c) Extra location: description contains "extra location" → sku="EL"
-   d) Standard items: combine base SKU with color code as "SKUCODE-COLORCODE", default "OE-MISC-CHARGE"
+   d) Standard items: EXTRACT BASE SKU ONLY - do NOT append color codes to SKU
+      - Extract SKU as base code only (e.g. "S989", "T802", "H710")
+      - Extract color separately in itemColor field
+      - DO NOT combine SKU + color (e.g. avoid "S989B", "T802-Black", "H710Blue")
+      - Let the validation system handle SKU + color mapping
 6. Dates: MM/DD/YYYY format, ensure logical sequence
 7. Price Validation: Verify calculations, flag discrepancies >$0.01 in additionalNotes
 8. Required Fields: Use "" for missing text, null for missing numbers
@@ -954,7 +976,11 @@ Processing Rules:
    a) Setup charges: description contains "setup charge"/"SETUP"/"setup"/"SU"/"set charge"/"Setup Fee" → sku="SETUP"
    b) Extra color: description contains "extra color" → sku="EC" 
    c) Extra location: description contains "extra location" → sku="EL"
-   d) Standard items: combine base SKU with color code as "SKUCODE-COLORCODE", default "OE-MISC-CHARGE"
+   d) Standard items: EXTRACT BASE SKU ONLY - do NOT append color codes to SKU
+      - Extract SKU as base code only (e.g. "S989", "T802", "H710")
+      - Extract color separately in itemColor field
+      - DO NOT combine SKU + color (e.g. avoid "S989B", "T802-Black", "H710Blue")
+      - Let the validation system handle SKU + color mapping
 6. Dates: MM/DD/YYYY format, ensure logical sequence
 7. Price Validation: Verify calculations, flag discrepancies >$0.01 in additionalNotes
 8. Required Fields: Use "" for missing text, null for missing numbers
