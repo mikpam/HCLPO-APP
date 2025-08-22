@@ -16,6 +16,7 @@ import { netsuiteService } from "./services/netsuite";
 // openaiCustomerFinderService now uses per-email instances to prevent race conditions
 import { OpenAISKUValidatorService } from "./services/openai-sku-validator";
 import { OpenAIContactValidatorService } from "./services/openai-contact-validator";
+import { ValidationOrchestrator } from "./services/validation-orchestrator";
 import { db } from "./db";
 import { purchaseOrders as purchaseOrdersTable, errorLogs, customers, contacts } from "@shared/schema";
 import { eq, desc, and, or, lt, sql, isNotNull } from "drizzle-orm";
@@ -867,8 +868,8 @@ async function processEmailThroughValidationSystem(messageToProcess: any, update
       console.log(`   ⚠️  Using fallback contact: ${messageToProcess.sender}`);
     }
 
-    // 🔥 REMOVED DUPLICATE VALIDATION: Using only Hybrid Customer Validator in Step 7
-    // This eliminates conflicting validation results between OpenAI Finder and Hybrid Validator
+    // 🔥 REFACTORED: Using Unified ValidationOrchestrator instead of scattered validation logic
+    // This eliminates duplicate validators and ensures consistent results
     
     if (isForwardedEmail && extractionResult?.purchaseOrder?.customer) {
       console.log(`\n📋 FORWARDED EMAIL PROCESSING:`);
@@ -881,238 +882,163 @@ async function processEmailThroughValidationSystem(messageToProcess: any, update
       effectiveSenderForPO = customerInfo.email || messageToProcess.sender;
     }
 
-    // 🔥 STEP 7: AUTOMATIC CUSTOMER VALIDATION (from SYSTEM_LOGIC_FLOW.md)
-    let customerValidationResult: any = null;
+    // 🔥 UNIFIED VALIDATION: Steps 7-9 combined using ValidationOrchestrator
+    let validationResult: any = null;
     let customerValidated = false;
-    if (extractionResult) {
-      console.log(`\n🔍 STEP 7: Running automatic customer validation for PO ${poNumber}...`);
-      
-      updateProcessingStatus({
-        currentStep: "customer_validation"
-      });
-
-      try {
-        const customer = extractionResult?.purchaseOrder?.customer || {};
-        
-        // Import and create validator instance
-        const { HybridCustomerValidator } = await import('./services/hybrid-customer-validator');
-        const hybridValidator = new HybridCustomerValidator();
-        
-        // Prepare input for hybrid validator
-        const validationInput = {
-          customerName: customer.company || customer.customerName,
-          customerEmail: customer.email || effectiveSenderForPO,
-          senderEmail: effectiveSenderForPO || undefined,
-          customerNumber: customer.customerNumber,
-          contactName: customer.contactName,
-          address: customer.address
-        };
-        
-        console.log(`   🔍 Customer validation input:`, validationInput);
-        
-        // Run 4-step hybrid validation (Exact DB → Vector → Rules → LLM)
-        customerValidationResult = await hybridValidator.validateCustomer(validationInput);
-        
-        console.log(`   ✅ Customer validation result:`, customerValidationResult);
-        
-        // Store validation result for later use when creating PO
-        if (customerValidationResult.matched) {
-          customerValidated = true;
-          customerMeta = {
-            method: customerValidationResult.method,
-            status: "found",
-            resolved: true,
-            confidence: customerValidationResult.confidence,
-            customer_name: customerValidationResult.customerName,
-            customer_number: customerValidationResult.customerNumber
-          };
-          
-          console.log(`   ✅ Customer validation completed: ${customerValidationResult.customerName} (${customerValidationResult.customerNumber})`);
-        } else {
-          console.log(`   ❌ Customer validation failed: ${customerValidationResult.reasons?.join(', ') || 'Unknown reason'}`);
-          
-          // Check if contact validation provided associated customer info
-          if (contactMeta?.associated_customer?.customer_number) {
-            console.log(`   🔄 Using customer info from contact association: ${contactMeta.associated_customer.company_name} (${contactMeta.associated_customer.customer_number})`);
-            customerValidated = true;
-            customerMeta = {
-              method: 'contact_association',
-              status: "found",
-              resolved: true,
-              confidence: 0.85,
-              customer_name: contactMeta.associated_customer.company_name,
-              customer_number: contactMeta.associated_customer.customer_number
-            };
-            customerValidationResult = {
-              matched: true,
-              method: 'contact_association',
-              confidence: 0.85,
-              customerName: contactMeta.associated_customer.company_name,
-              customerNumber: contactMeta.associated_customer.customer_number,
-              reasons: ['Customer found via contact association']
-            };
-          }
-        }
-        
-      } catch (error) {
-        console.error(`   ❌ Customer validation error:`, error);
-        
-        // Check if contact validation provided associated customer info even on error
-        if (contactMeta?.associated_customer?.customer_number) {
-          console.log(`   🔄 Using customer info from contact association (fallback): ${contactMeta.associated_customer.company_name} (${contactMeta.associated_customer.customer_number})`);
-          customerValidated = true;
-          customerMeta = {
-            method: 'contact_association',
-            status: "found",
-            resolved: true,
-            confidence: 0.85,
-            customer_name: contactMeta.associated_customer.company_name,
-            customer_number: contactMeta.associated_customer.customer_number
-          };
-          customerValidationResult = {
-            matched: true,
-            method: 'contact_association',
-            confidence: 0.85,
-            customerName: contactMeta.associated_customer.company_name,
-            customerNumber: contactMeta.associated_customer.customer_number,
-            reasons: ['Customer found via contact association']
-          };
-        }
-      }
-    }
-
-    // 🔥 STEP 8: AUTOMATIC CONTACT VALIDATION (from SYSTEM_LOGIC_FLOW.md)
-    let contactValidationResult: any = null;
     let contactValidated = false;
+    let lineItemsValidated = false;
+    let validatedLineItems: any[] | null = null;
+    
     if (extractionResult) {
-      console.log(`\n📞 STEP 8: Running automatic contact validation for PO ${poNumber}...`);
+      console.log(`\n🎯 UNIFIED VALIDATION: Running complete validation for PO ${poNumber}...`);
       
       updateProcessingStatus({
-        currentStep: "contact_validation"
+        currentStep: "validation_orchestration"
       });
 
       try {
+        // Create ValidationOrchestrator instance
+        const orchestrator = new ValidationOrchestrator(validatorHealthService);
+        
+        // Prepare unified validation input
         const customer = extractionResult?.purchaseOrder?.customer || {};
         const contact = extractionResult?.purchaseOrder?.contact || {};
         
-        // Import and create validator instance
-        const { OpenAIContactValidatorService } = await import('./services/openai-contact-validator');
-        const contactValidator = new OpenAIContactValidatorService();
-        
-        // Prepare input for contact validator - using the correct interface fields
-        const contactInput = {
-          extractedData: extractionResult,
-          senderName: contact.name || customer.contactName || effectiveSenderForPO?.split('<')[0]?.trim() || '',
-          senderEmail: contact.email || customer.email || effectiveSenderForPO || '',
-          resolvedCustomerId: customerValidationResult?.customerNumber || customerMeta?.customer_number || '',
-          companyId: customerValidationResult?.customerNumber || ''
-        };
-        
-        console.log(`   📞 Contact validation input:`, contactInput);
-        
-        // Run 4-step contact validation (Exact Email → Vector → Domain+Company → LLM)
-        contactValidationResult = await contactValidator.validateContact(contactInput);
-        
-        console.log(`   ✅ Contact validation result:`, contactValidationResult);
-        
-        // Store validation result for later use when creating PO
-        contactValidated = contactValidationResult.match_method !== 'UNKNOWN' && 
-                          contactValidationResult.confidence > 0.5;
-        
-        // If validation failed but we have extracted contact data, use it as unverified
-        const extractedContact = extractionResult?.purchaseOrder?.contact || {};
-        const hasExtractedContact = extractedContact.name || extractedContact.email;
-        
-        const updatedContactMeta = {
-          method: contactValidationResult.match_method,
-          status: contactValidated ? "found" : (hasExtractedContact ? "unverified" : "not_found"),
-          resolved: contactValidated,
-          confidence: contactValidationResult.confidence,
-          contact_name: contactValidated ? contactValidationResult.name : (extractedContact.name || ''),
-          contact_email: contactValidated ? contactValidationResult.email : (extractedContact.email || ''),
-          contact_phone: extractedContact.phone || '',
-          is_verified: contactValidated,
-          source: contactValidated ? 'validated' : 'extracted_unverified'
-        };
-        
-        contactMeta = updatedContactMeta;
-        
-        if (contactValidated) {
-          console.log(`   ✅ Contact validation completed: ${contactValidationResult.name} <${contactValidationResult.email}>`);
-          
-          // If contact has associated customer info and customer wasn't found earlier, use it
-          if (contactValidationResult.associated_customer?.customer_number && !customerValidated) {
-            console.log(`   🔄 Updating customer from contact association: ${contactValidationResult.associated_customer.company_name} (${contactValidationResult.associated_customer.customer_number})`);
-            customerValidated = true;
-            customerMeta = {
-              method: 'contact_association',
-              status: "found",
-              resolved: true,
-              confidence: 0.85,
-              customer_name: contactValidationResult.associated_customer.company_name,
-              customer_number: contactValidationResult.associated_customer.customer_number
-            };
-            customerValidationResult = {
-              matched: true,
-              method: 'contact_association',
-              confidence: 0.85,
-              customerName: contactValidationResult.associated_customer.company_name,
-              customerNumber: contactValidationResult.associated_customer.customer_number,
-              reasons: ['Customer found via contact association']
-            };
+        const validationInput = {
+          customer: {
+            company: customer.company || customer.customerName,
+            email: customer.email || effectiveSenderForPO,
+            senderEmail: effectiveSenderForPO || undefined,
+            customerNumber: customer.customerNumber,
+            address: customer.address,
+            contactName: customer.contactName
+          },
+          contact: {
+            name: contact.name || customer.contactName,
+            email: contact.email || customer.email || effectiveSenderForPO,
+            phone: contact.phone,
+            jobTitle: contact.jobTitle,
+            extractedData: extractionResult,
+            senderName: contact.name || effectiveSenderForPO?.split('<')[0]?.trim(),
+            senderEmail: contact.email || effectiveSenderForPO
+          },
+          items: extractionResult?.lineItems || [],
+          metadata: {
+            poNumber,
+            emailId: messageToProcess.id,
+            sender: effectiveSenderForPO,
+            subject: messageToProcess.subject
           }
+        };
+        
+        console.log(`   📋 Validation input prepared for orchestrator`);
+        
+        // Run unified validation (parallel customer + contact, then items)
+        validationResult = await orchestrator.validatePurchaseOrder(validationInput);
+        
+        console.log(`   ✅ Unified validation complete in ${validationResult.processingTimeMs}ms`);
+        console.log(`   └─ Final status: ${validationResult.status}`);
+        
+        // Extract validation results
+        customerValidated = validationResult.customer.matched;
+        contactValidated = validationResult.contact.matched;
+        lineItemsValidated = validationResult.items.matched;
+        
+        // Build customer metadata from orchestrator results
+        if (customerValidated) {
+          customerMeta = {
+            method: validationResult.customer.method,
+            status: "found",
+            resolved: true,
+            confidence: validationResult.customer.confidence,
+            customer_name: validationResult.customer.customerName,
+            customer_number: validationResult.customer.customerNumber
+          };
         } else {
-          console.log(`   ❌ Contact validation failed: ${contactValidationResult.evidence?.join(', ') || 'No valid contact found'}`);
+          customerMeta = {
+            method: 'not_found',
+            status: "new_customer",
+            resolved: false,
+            confidence: 0,
+            customer_name: customer.company || customer.customerName || '',
+            customer_number: ''
+          };
         }
         
-      } catch (error) {
-        console.error(`   ❌ Contact validation error:`, error);
-      }
-    }
-
-    // 🔥 STEP 9: SKU/LINE ITEM VALIDATION (from SYSTEM_LOGIC_FLOW.md)
-    let validatedLineItems: any[] | null = null;
-    let lineItemsValidated = false;
-    if (extractionResult?.lineItems?.length > 0) {
-      console.log(`\n🔍 STEP 9: Running SKU/Line item validation for PO ${poNumber}...`);
-      
-      updateProcessingStatus({
-        currentStep: "line_item_validation"
-      });
-      
-      console.log(`   └─ Processing ${extractionResult.lineItems.length} line items for validation`);
-      
-      try {
-        // Create fresh validator instance for this email to prevent race conditions with health monitoring
-        const skuValidator = await validatorHealthService.recordValidatorCall(
-          'skuValidator',
-          async () => new OpenAISKUValidatorService()
-        );
-        validatedLineItems = await skuValidator.validateLineItems(extractionResult.lineItems);
+        // Build contact metadata from orchestrator results
+        if (contactValidated) {
+          contactMeta = {
+            method: validationResult.contact.method,
+            status: "found",
+            resolved: true,
+            confidence: validationResult.contact.confidence,
+            contact_name: validationResult.contact.contactName || validationResult.contact.data?.name || '',
+            contact_email: validationResult.contact.contactEmail || validationResult.contact.data?.email || '',
+            contact_phone: validationResult.contact.data?.phone || contact.phone || '',
+            is_verified: true,
+            source: 'validated'
+          };
+        } else {
+          // Use extracted contact data as unverified
+          const hasExtractedContact = contact.name || contact.email;
+          contactMeta = {
+            method: validationResult.contact.method || 'UNKNOWN',
+            status: hasExtractedContact ? "unverified" : "not_found",
+            resolved: false,
+            confidence: validationResult.contact.confidence || 0,
+            contact_name: contact.name || '',
+            contact_email: contact.email || '',
+            contact_phone: contact.phone || '',
+            is_verified: false,
+            source: 'extracted_unverified'
+          };
+        }
         
-        console.log(`   ✅ SKU validation complete: ${validatedLineItems?.length || 0} items processed`);
-        lineItemsValidated = true;
-        
-        // Merge validated SKUs back into original line items structure
-        if (validatedLineItems && validatedLineItems.length > 0 && extractionResult.lineItems) {
-          extractionResult.lineItems.forEach((originalItem: any, index: number) => {
-            const validatedItem = validatedLineItems?.[index];
-            if (validatedItem) {
-              // Preserve original structure and add finalSKU
-              originalItem.finalSKU = validatedItem.finalSKU || '';
-              
-              // Log validation results
-              if (originalItem.sku !== validatedItem.finalSKU && validatedItem.finalSKU) {
-                console.log(`      ${index + 1}. "${originalItem.sku || validatedItem.sku}" → "${validatedItem.finalSKU}"`);
+        // Handle validated line items
+        if (validationResult.items.data && validationResult.items.data.length > 0) {
+          validatedLineItems = validationResult.items.data;
+          
+          // Merge validated SKUs back into original line items structure
+          if (extractionResult.lineItems) {
+            extractionResult.lineItems.forEach((originalItem: any, index: number) => {
+              const validatedItem = validatedLineItems?.[index];
+              if (validatedItem) {
+                // Preserve original structure and add finalSKU
+                originalItem.finalSKU = validatedItem.finalSKU || '';
+                
+                // Log validation results
+                if (originalItem.sku !== validatedItem.finalSKU && validatedItem.finalSKU) {
+                  console.log(`      ${index + 1}. "${originalItem.sku || validatedItem.sku}" → "${validatedItem.finalSKU}"`);
+                }
               }
-            }
-          });
+            });
+          }
         }
         
       } catch (error) {
-        console.error(`   ❌ SKU validation failed:`, error);
-        console.log(`   └─ Continuing with original line items`);
-        // Continue without validation rather than failing the entire process
+        console.error(`   ❌ Unified validation error:`, error);
+        
+        // Create fallback metadata on error
+        customerMeta = {
+          method: 'error',
+          status: "error",
+          resolved: false,
+          confidence: 0,
+          customer_name: '',
+          customer_number: ''
+        };
+        
+        contactMeta = {
+          method: 'error',
+          status: "error",
+          resolved: false,
+          confidence: 0,
+          contact_name: '',
+          contact_email: '',
+          contact_phone: '',
+          is_verified: false,
+          source: 'error'
+        };
       }
     }
 
