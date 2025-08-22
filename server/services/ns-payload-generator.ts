@@ -78,6 +78,8 @@ export async function generateNSPayload(po: PurchaseOrder): Promise<any> {
     const validatedData = {
       purchaseOrder: {
         purchaseOrderNumber: po.poNumber,
+        externalId: po.poNumber, // Add externalId for NetSuite
+        poNumber: po.poNumber, // Add poNumber field as well
         orderDate: purchaseOrderData.orderDate || new Date().toISOString().split('T')[0],
         inHandsDate: purchaseOrderData.inHandsDate || null,
         requiredShipDate: purchaseOrderData.requiredShipDate || null,

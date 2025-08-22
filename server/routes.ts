@@ -2138,9 +2138,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         memo: orderData.memo || `PO ${purchaseOrder.poNumber}`,
         externalId: orderData.externalId || purchaseOrder.poNumber,
         attachmentUrls: [
-          nsPayload.sourceDocumentUrl,
-          nsPayload.emlUrl
-        ].filter(url => url),
+          orderData.sourceDocumentUrl || nsPayload.sourceDocumentUrl,
+          orderData.emlUrl || nsPayload.emlUrl
+        ].filter(url => url && url.startsWith('https://')),
         metadata: {
           poNumber: purchaseOrder.poNumber,
           emailSubject: purchaseOrder.subject,

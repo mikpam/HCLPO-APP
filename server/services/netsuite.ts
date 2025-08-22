@@ -203,6 +203,7 @@ export class NetSuiteService {
         action: 'createSalesOrder',
         customerId,
         customer: typeof orderData.customer === 'object' ? orderData.customer : null,
+        purchaseOrderNumber: orderData.externalId || orderData.poNumber || orderData.purchaseOrderNumber, // Use available PO number
         lineItems: processedLineItems,
         shipMethod,
         shipDate: orderData.shipDate,
@@ -210,6 +211,9 @@ export class NetSuiteService {
         externalId: orderData.externalId,
         attachmentUrls: attachmentUrls || []  // Include object storage URLs
       };
+
+      // Log the payload for debugging
+      console.log('📦 NetSuite Payload:', JSON.stringify(salesOrderData, null, 2));
 
       const result = await this.makeRestletCall('POST', salesOrderData);
 
