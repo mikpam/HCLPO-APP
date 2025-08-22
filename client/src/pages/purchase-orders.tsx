@@ -8,7 +8,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useState, useMemo } from "react";
-import { Eye, ExternalLink, FileText, Search, Filter, ArrowUpDown, MoreHorizontal, MapPin, Calendar, User, Users, Mail, Hash, CheckCircle, XCircle, Clock, Plus, Minus, FileText as FileTextIcon, Mail as MailIcon, Copy, RotateCcw } from "lucide-react";
+import { Eye, ExternalLink, FileText, Search, Filter, ArrowUpDown, MoreHorizontal, MapPin, Calendar, User, Users, Mail, Hash, CheckCircle, XCircle, Clock, Plus, Minus, FileText as FileTextIcon, Mail as MailIcon, Copy, RotateCcw, FileJson } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 
@@ -580,6 +580,7 @@ ${lineItems.map((item, i) =>
                     <TableHead className="w-[100px]">Source Document</TableHead>
                     <TableHead className="w-[80px]">EML</TableHead>
                     <TableHead className="w-[120px]">Validated JSON</TableHead>
+                    <TableHead className="w-[120px]">NS Payload</TableHead>
                     <TableHead className="w-[100px]">PO KEY</TableHead>
                     <TableHead className="w-[100px]">Actions</TableHead>
                   </TableRow>
@@ -854,6 +855,29 @@ ${lineItems.map((item, i) =>
                           >
                             {getValidationBadge(order.extractedData).label}
                           </Badge>
+                        </TableCell>
+                        <TableCell>
+                          {order.nsPayload ? (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => {
+                                const jsonStr = JSON.stringify(order.nsPayload, null, 2);
+                                navigator.clipboard.writeText(jsonStr);
+                                toast({
+                                  title: "NS Payload Copied",
+                                  description: "NetSuite payload copied to clipboard",
+                                  duration: 2000,
+                                });
+                              }}
+                              className="inline-flex items-center space-x-1 text-purple-600 hover:text-purple-800 text-sm h-8"
+                            >
+                              <FileJson className="w-4 h-4" />
+                              <span>View NS</span>
+                            </Button>
+                          ) : (
+                            <span className="text-gray-400 text-sm">Not ready</span>
+                          )}
                         </TableCell>
                         <TableCell>
                           <span className="text-gray-400 text-sm">-</span>
