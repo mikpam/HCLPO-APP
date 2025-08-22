@@ -96,3 +96,12 @@ Vector Database Preference: PGvector integration with existing PostgreSQL databa
   - **Prevention**: Stops creation of non-existent SKUs like S989B, T802-Black, H710Blue
   - **Impact**: Improves SKU validation accuracy by extracting clean base codes for database lookup
   - **Setup Charge Fix**: Updated SKU format from "SET UP" to "SETUP" to match database standard
+
+### Customer Validation Fixes
+- **🏢 ENHANCED COMPANY NAME NORMALIZATION**: Fixed business entity suffix matching issue
+  - **Root Cause**: "Quality Logo Products, Inc." failed to match "Quality Logo Products" in database
+  - **Solution**: Added comprehensive business entity suffix normalization function
+  - **Handles**: Inc., LLC, Corp, Ltd, Company, Co, Limited, Enterprises, Group variations
+  - **Bidirectional Matching**: Enhanced fuzzy search with improved normalization
+  - **OpenAI LLM Fix**: Added "JSON" keyword to prompt to resolve API formatting error
+  - **Impact**: Eliminates false "new_customer" status for known customers with entity suffix variations

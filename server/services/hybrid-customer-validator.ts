@@ -64,11 +64,45 @@ interface CustomerValidatorResult {
 export class HybridCustomerValidator {
   
   /**
+   * Normalize company name by removing business entity suffixes
+   */
+  private normalizeCompanyName(companyName: string): string {
+    if (!companyName) return '';
+    
+    // Convert to lowercase for normalization
+    let normalized = companyName.toLowerCase().trim();
+    
+    // Remove common business entity suffixes (case insensitive)
+    const suffixes = [
+      ', inc.', ', inc', ' inc.', ' inc',
+      ', llc.', ', llc', ' llc.', ' llc', 
+      ', corp.', ', corp', ' corp.', ' corp',
+      ', corporation', ' corporation',
+      ', company', ' company', ' co.',
+      ', ltd.', ', ltd', ' ltd.', ' ltd',
+      ', limited', ' limited',
+      ', enterprises', ' enterprises',
+      ', group', ' group'
+    ];
+    
+    // Remove suffixes from end of string
+    for (const suffix of suffixes) {
+      if (normalized.endsWith(suffix)) {
+        normalized = normalized.slice(0, -suffix.length).trim();
+        break;
+      }
+    }
+    
+    // Remove extra whitespace and normalize
+    return normalized.replace(/\s+/g, ' ').trim();
+  }
+
+  /**
    * Step 0: Normalize inputs per email
    */
   private normalizeInput(input: CustomerValidatorInput): CustomerValidatorInput {
     const normalized: CustomerValidatorInput = {
-      customerName: input.customerName?.toLowerCase().trim().replace(/\s+/g, ' '),
+      customerName: input.customerName ? this.normalizeCompanyName(input.customerName) : undefined,
       customerEmail: input.customerEmail?.toLowerCase().trim(),
       senderEmail: input.senderEmail?.toLowerCase().trim(),
       senderDomain: input.senderDomain?.toLowerCase().trim() || 
@@ -196,10 +230,8 @@ export class HybridCustomerValidator {
       // If no exact match, try bidirectional fuzzy matching
       console.log(`   🔍 No exact company match, trying bidirectional fuzzy search...`);
       
-      // Clean input name for better matching
-      const cleanInputName = input.customerName
-        .replace(/\b(inc|llc|corp|ltd|co|com|net|org|usa|america|group|international|intl)\b/gi, '')
-        .trim();
+      // Use improved normalization for better matching
+      const cleanInputName = this.normalizeCompanyName(input.customerName);
       
       if (cleanInputName.length >= 3) {
         const fuzzyCompanyMatches = await db
@@ -250,9 +282,7 @@ export class HybridCustomerValidator {
       console.log(`   📝 Fuzzy company search for: "${input.customerName}"`);
       
       // Remove common business suffixes and try partial matches
-      const cleanName = input.customerName
-        .replace(/\b(inc|llc|corp|ltd|co|com|net|org|usa|america|group|international|intl)\b/gi, '')
-        .trim();
+      const cleanName = this.normalizeCompanyName(input.customerName);
       
       if (cleanName.length >= 3) {
         const fuzzyMatches = await db
@@ -489,7 +519,8 @@ CONFIDENCE THRESHOLDS:
 - MEDIUM CONFIDENCE: Similar but uncertain → Select if reasonable business match
 - LOW CONFIDENCE: Weak similarity → Return "NONE"
 
-OUTPUT FORMAT: {"selected_id":"C12345","reason":"Company name match: DISCOUNTMUGS → DiscountMugs.com"}
+OUTPUT FORMAT: Return a JSON response with "selected_id" and "reason" fields:
+{"selected_id":"C12345","reason":"Company name match: DISCOUNTMUGS → DiscountMugs.com"}
 OR: {"selected_id":"NONE","reason":"No reasonable matches found"}`
         },
         {
