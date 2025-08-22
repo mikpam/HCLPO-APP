@@ -2523,9 +2523,116 @@ Content: Original email with attachments
     }
   });
 
-  const server = createServer(app);
-  return server;
-}
+  // Documentation route for AI agents
+  app.get('/docs/agents', async (req: any, res: any) => {
+  try {
+    const fs = await import('fs/promises');
+    const path = await import('path');
+    
+    const agentsDocPath = path.join(process.cwd(), 'agents.md');
+    const agentsContent = await fs.readFile(agentsDocPath, 'utf-8');
+    
+    // Convert markdown to HTML for better display
+    const htmlContent = `
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Agents Documentation - HCL Procurement Platform</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background: #f8f9fa;
+        }
+        .container {
+            background: white;
+            padding: 40px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        h1 { color: #2563eb; border-bottom: 3px solid #2563eb; padding-bottom: 10px; }
+        h2 { color: #1e40af; border-bottom: 2px solid #e5e7eb; padding-bottom: 8px; margin-top: 30px; }
+        h3 { color: #1e3a8a; margin-top: 25px; }
+        h4 { color: #1e40af; }
+        code {
+            background: #f1f5f9;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-family: 'Monaco', 'Menlo', monospace;
+            font-size: 0.9em;
+        }
+        pre {
+            background: #f8fafc;
+            border: 1px solid #e2e8f0;
+            border-radius: 6px;
+            padding: 15px;
+            overflow-x: auto;
+        }
+        .back-link {
+            display: inline-block;
+            margin-bottom: 20px;
+            color: #2563eb;
+            text-decoration: none;
+            font-weight: 500;
+        }
+        .back-link:hover { text-decoration: underline; }
+        .highlight { background: #fef3c7; padding: 10px; border-radius: 4px; margin: 10px 0; }
+        ul, ol { margin: 10px 0; padding-left: 20px; }
+        li { margin: 5px 0; }
+        strong { color: #1e40af; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <a href="/" class="back-link">← Back to Dashboard</a>
+        <div id="content"></div>
+    </div>
+    
+    <script>
+        // Simple markdown-to-HTML converter
+        const content = \`${agentsContent.replace(/`/g, '\\`').replace(/\$/g, '\\$')}\`;
+        
+        let html = content
+            // Headers
+            .replace(/^### (.*$)/gim, '<h3>$1</h3>')
+            .replace(/^## (.*$)/gim, '<h2>$1</h2>')
+            .replace(/^# (.*$)/gim, '<h1>$1</h1>')
+            // Bold
+            .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+            // Code blocks
+            .replace(/\`\`\`([\\s\\S]*?)\`\`\`/g, '<pre><code>$1</code></pre>')
+            // Inline code
+            .replace(/\`([^\`]*?)\`/g, '<code>$1</code>')
+            // Lists
+            .replace(/^- (.*$)/gim, '<li>$1</li>')
+            .replace(/(<li>.*<\/li>)/s, '<ul>$1</ul>')
+            // Line breaks
+            .replace(/\\n\\n/g, '</p><p>')
+            .replace(/^(?!<[hul])/gm, '<p>')
+            .replace(/(?<![>])$/gm, '</p>')
+            // Clean up
+            .replace(/<p><\/p>/g, '')
+            .replace(/<p>(<[hul])/g, '$1')
+            .replace(/(<\/[hul][^>]*>)<\/p>/g, '$1');
+            
+        document.getElementById('content').innerHTML = html;
+    </script>
+</body>
+</html>`;
+    
+    res.setHeader('Content-Type', 'text/html');
+    res.send(htmlContent);
+  } catch (error) {
+    console.error('Error serving agents documentation:', error);
+    res.status(500).json({ error: 'Failed to load documentation' });
+  }
+});
 
 // Helper function to parse object paths (from objectStorage.ts)
 function parseObjectPath(path: string): { bucketName: string; objectName: string } {
@@ -2544,4 +2651,8 @@ function parseObjectPath(path: string): { bucketName: string; objectName: string
     bucketName,
     objectName,
   };
+}
+
+  const server = createServer(app);
+  return server;
 }
