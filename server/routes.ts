@@ -1355,7 +1355,7 @@ async function processPendingPO(pendingPO: any) {
 
     // Determine final status based on all validation results
     if (hasCustomer && hasContact && lineItemsValidated) {
-      finalStatus = 'ready_for_import';
+      finalStatus = 'ready_for_netsuite';
       console.log(`   🎯 All validations passed - ready for NetSuite import`);
     } else if (hasCustomer && hasContact) {
       finalStatus = 'sku_validation_needed';
