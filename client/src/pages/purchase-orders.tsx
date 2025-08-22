@@ -562,6 +562,8 @@ ${lineItems.map((item, i) =>
                     </TableHead>
                     <TableHead className="w-[80px]">Email</TableHead>
                     <TableHead className="w-[160px]">Contact</TableHead>
+                    <TableHead className="w-[100px]">Intent</TableHead>
+                    <TableHead className="w-[180px]">Ship To</TableHead>
                     <TableHead className="w-[140px]">
                       <Button 
                         variant="ghost" 
@@ -721,6 +723,30 @@ ${lineItems.map((item, i) =>
                               </div>
                             )}
                           </div>
+                        </TableCell>
+                        <TableCell>
+                          <Badge variant="outline" className="text-xs">
+                            {order.emailIntent ? order.emailIntent.replace(/_/g, ' ') : 'none'}
+                          </Badge>
+                        </TableCell>
+                        <TableCell>
+                          {(() => {
+                            const shipTo = order.shipToAddress as any;
+                            if (!shipTo) return <span className="text-gray-400 text-sm">No address</span>;
+                            
+                            return (
+                              <div className="text-xs space-y-0.5">
+                                {shipTo.company && <div className="font-medium">{shipTo.company}</div>}
+                                {shipTo.name && <div>{shipTo.name}</div>}
+                                {shipTo.address1 && <div>{shipTo.address1}</div>}
+                                {(shipTo.city || shipTo.state || shipTo.zipCode) && (
+                                  <div>
+                                    {[shipTo.city, shipTo.state, shipTo.zipCode].filter(Boolean).join(', ')}
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })()}
                         </TableCell>
                         <TableCell>
                           <Badge className={`${statusBadge.class} text-xs`}>
