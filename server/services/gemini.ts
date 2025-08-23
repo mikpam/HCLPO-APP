@@ -809,7 +809,8 @@ Processing Rules:
    a) ALWAYS identify Vendor first: "High Caliber Line" or aliases ("CALIBRE INTERNATIONAL LLC", "HCL", "High Caliber")
    b) Customer: Main company from header/logo (NEVER from Ship To section, NEVER "High Caliber Line")
    c) Ship-To: Final delivery destination from "Ship To"/"Deliver To" section
-3. Contact: Email priority: header contact → billing contact → sales rep email → empty string
+3. Contact: Email priority: header contact → billing contact → bill-to email → questions/inquiries email → sales rep email → empty string
+   - Look for emails labeled as "Bill To", "Questions", "Inquiries", "Contact Us" as fallback contact emails
 4. Address: Convert state abbreviations to full names, default country to "United States"
 5. SKU Processing:
    a) Setup charges: description contains "setup charge"/"SETUP"/"setup"/"SU"/"set charge"/"Setup Fee" → sku="SETUP"
@@ -970,7 +971,8 @@ Processing Rules:
    a) ALWAYS identify Vendor first: "High Caliber Line" or aliases ("CALIBRE INTERNATIONAL LLC", "HCL", "High Caliber")
    b) Customer: Main company from header/logo (NEVER from Ship To section, NEVER "High Caliber Line")
    c) Ship-To: Final delivery destination from "Ship To"/"Deliver To" section
-3. Contact: Email priority: header contact → billing contact → sales rep email → empty string
+3. Contact: Email priority: header contact → billing contact → bill-to email → questions/inquiries email → sales rep email → empty string
+   - Look for emails labeled as "Bill To", "Questions", "Inquiries", "Contact Us" as fallback contact emails
 4. Address: Convert state abbreviations to full names, default country to "United States"
 5. SKU Processing:
    a) Setup charges: description contains "setup charge"/"SETUP"/"setup"/"SU"/"set charge"/"Setup Fee" → sku="SETUP"
