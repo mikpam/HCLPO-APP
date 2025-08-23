@@ -146,6 +146,13 @@ The system follows a streamlined automated pipeline with unified validation orch
 
 ## Recent Critical Fixes (August 2025)
 
+### Error Reason Tracking & Enhanced Validation (August 23, 2025)
+- **Error Visibility:** Added `errorReason` column to purchase_orders table for clear manual review reasons
+- **Smarter Validation:** Updated ValidationOrchestrator to allow blank contacts when customer is successfully validated
+- **Contact Email Discovery:** Enhanced Gemini extraction to find emails in bill-to, questions, and inquiries sections
+- **Bulk Reprocessing:** Successfully reprocessed 8 POs from manual review to ready_for_netsuite with improved logic
+- **Error Categories:** Standardized reasons: "No line items found", "Customer validation failed", "Contact validation failed", "Document extraction failed", "Sample request", "Invalid SKUs"
+
 ### Unified Validation Orchestrator (August 22, 2025)
 - **COMPLETE REFACTOR:** Replaced scattered validation logic with unified ValidationOrchestrator service
 - **Parallel Processing:** Customer + Contact validation run simultaneously (~30% performance improvement)

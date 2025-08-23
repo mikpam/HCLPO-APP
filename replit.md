@@ -38,22 +38,24 @@ Database Enforcement: Only use Neon PostgreSQL endpoint: ep-mute-bush-afa56yb4-p
 ### Email Processing Pipeline
 - **Architecture**: Complete 12-step automated pipeline with NS payload generation. Single `/api/processing/process-auto` endpoint with no manual triggers.
 - **Sequential Processing Lock**: System uses `isProcessing` flag to prevent concurrent operations.
-- **Validation Orchestration**: Unified ValidationOrchestrator service coordinates all validation operations with parallel processing where possible.
+- **Validation Orchestration**: Unified ValidationOrchestrator service coordinates all validation operations with parallel processing where possible. Smart logic allows blank contacts when customer is validated.
 - **Classification**: OpenAI GPT-4o for intent classification and advanced 5-route classification (TEXT_PO, TEXT_SAMPLE, ATTACHMENT_PO, ATTACHMENT_SAMPLE, REVIEW), with priority logic for attachments.
 - **Email Intent Tracking**: Captures and stores email intent in the `emailIntent` field.
 - **AI Document Filtering**: Pre-screens attachments to filter non-PO documents using filename-based filtering and AI document classification.
 - **Multi-Format Support**: Enhanced processing for Gemini-compatible formats (PDFs, images, Word docs, CSVs, Excel, text files).
 - **Dual Gemini Extraction Routes**: ATTACHMENT_PO for multi-format document processing; TEXT_PO for email body text processing.
+- **Enhanced Contact Discovery**: Gemini extraction looks for contact emails in header → billing → bill-to → questions/inquiries → sales rep sections.
 - **Processing Flow**: Gmail ingestion → Pre-processing → Detailed analysis → AI document filtering → Gemini extraction → Unified validation → NS payload generation → NetSuite ready.
-- **Data Storage**: Preprocessing, classification, extracted data, and NS payload stored in Neon PostgreSQL.
+- **Data Storage**: Preprocessing, classification, extracted data, NS payload, and error reasons stored in Neon PostgreSQL.
 - **Email/Attachment Preservation**: Automatic .eml file and attachment storage to object storage, with file paths stored in database records for audit trails.
-- **Unified Validation**: ValidationOrchestrator runs customer + contact validation in parallel, then items sequentially. Single source of truth for all validation results. Includes hybrid customer validator (Exact DB → Vector → Rules → LLM) and OpenAI contact/SKU validators.
+- **Unified Validation**: ValidationOrchestrator runs customer validation first, then contact validation (optional if customer found), then items sequentially. Single source of truth for all validation results. Includes hybrid customer validator (Exact DB → Vector → Rules → LLM) and OpenAI contact/SKU validators.
 - **NS Payload Generation**: Automatic NetSuite payload creation when PO reaches "ready_for_netsuite" status, using OpenAI to format validated data.
 - **Embedding Systems**: All contacts, customers, and items are 100% embedded using OpenAI 1536-dimensional vectors and PGvector for semantic search.
 - **Forwarded Email Detection**: Enhanced detection for common patterns.
 - **Status Determination**: Centralized in ValidationOrchestrator: new_customer → missing_contact → invalid_items → ready_for_netsuite.
+- **Error Reason Tracking**: Clear visibility into why POs require manual review with standardized error categories stored in `errorReason` field.
 - **Performance**: Approximately 30% faster validation through parallel processing. 30-second email polling interval.
-- **Stuck Process Prevention & Recovery**: Automatic detection and recovery of stuck POs with a dead letter queue for manual review.
+- **Stuck Process Prevention & Recovery**: Automatic detection and recovery of stuck POs with error reason population for manual review cases.
 
 ### Admin Portal
 - **Functionality**: Comprehensive PO management interface, customer management, and item management with CRUD functionality.
