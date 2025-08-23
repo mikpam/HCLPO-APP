@@ -4,6 +4,7 @@ import { OpenAISKUValidatorService } from './openai-sku-validator';
 import { ValidatorHealthService } from './validator-health';
 import { generateNSPayload } from './ns-payload-generator';
 import type { StandardValidationResult, ValidationInput, ValidationResult, POStatus } from '../types/validation';
+import { toPacificISO } from '../utils/pacific-time.js';
 
 /**
  * Unified Validation Orchestrator
@@ -57,7 +58,7 @@ export class ValidationOrchestrator {
         status,
         validationComplete: true,
         processingTimeMs: Date.now() - startTime,
-        timestamp: new Date().toISOString()
+        timestamp: toPacificISO()
       };
 
       console.log(`   ✅ Validation complete in ${result.processingTimeMs}ms`);

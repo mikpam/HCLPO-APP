@@ -11,6 +11,7 @@ import { useState, useMemo } from "react";
 import { Eye, ExternalLink, FileText, Search, Filter, ArrowUpDown, MoreHorizontal, MapPin, Calendar, User, Users, Mail, Hash, CheckCircle, XCircle, Clock, Plus, Minus, FileText as FileTextIcon, Mail as MailIcon, Copy, RotateCcw, FileJson } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
+import { formatPacificTime, formatPacificDateShort, formatPacificTimeOnly } from "@/lib/pacific-time";
 
 export default function PurchaseOrdersPage() {
   const { toast } = useToast();
@@ -301,12 +302,7 @@ export default function PurchaseOrdersPage() {
 
   const formatDate = (dateInput: string | Date | null) => {
     if (!dateInput) return 'N/A';
-    const date = typeof dateInput === 'string' ? new Date(dateInput) : dateInput;
-    return date.toLocaleDateString('en-US', {
-      month: 'short',
-      day: 'numeric',
-      year: 'numeric'
-    });
+    return formatPacificDateShort(dateInput);
   };
 
   const getLineItemsCount = (order: PurchaseOrder) => {
@@ -431,7 +427,7 @@ export default function PurchaseOrdersPage() {
 Purchase Order: ${order.poNumber || 'N/A'}
 Customer: ${customerInfo.name || 'N/A'}  
 Total Amount: ${totalAmount > 0 ? `$${totalAmount.toFixed(2)}` : 'N/A'}
-Processing Date: ${order.createdAt ? new Date(order.createdAt).toLocaleDateString() : 'N/A'}
+Processing Date: ${order.createdAt ? formatPacificDateShort(order.createdAt) : 'N/A'}
 
 Status: Email successfully processed and purchase order created
 Source: Email processing system
@@ -1247,7 +1243,7 @@ ${lineItems.map((item, i) =>
                     <div className="flex justify-between">
                       <span className="text-gray-600">Created:</span>
                       <span className="font-medium">
-                        {selectedOrder.createdAt ? new Date(selectedOrder.createdAt).toLocaleDateString() : 'N/A'}
+                        {selectedOrder.createdAt ? formatPacificTime(selectedOrder.createdAt, true, false) : 'N/A'}
                       </span>
                     </div>
                   </div>

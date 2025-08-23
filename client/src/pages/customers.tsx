@@ -4,6 +4,7 @@ import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { formatPacificTime } from "@/lib/pacific-time";
 import { 
   Table, 
   TableBody, 
@@ -156,11 +157,11 @@ function CustomerModal({ customer }: { customer: CustomerApiResponse }) {
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs text-gray-500">
           <div>
             <label className="font-medium">Created</label>
-            <p>{new Date(customer.created_at).toLocaleString()}</p>
+            <p>{formatPacificTime(customer.created_at, true, false)}</p>
           </div>
           <div>
             <label className="font-medium">Last Updated</label>
-            <p>{new Date(customer.updated_at).toLocaleString()}</p>
+            <p>{formatPacificTime(customer.updated_at, true, false)}</p>
           </div>
         </div>
       </div>

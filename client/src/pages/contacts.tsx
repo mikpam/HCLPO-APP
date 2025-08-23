@@ -4,6 +4,7 @@ import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { formatPacificDateShort } from "@/lib/pacific-time";
 import { 
   Table, 
   TableBody, 
@@ -336,7 +337,7 @@ export default function ContactsPage() {
 
   const formatDate = (dateString: string | null) => {
     if (!dateString) return "Never";
-    return new Date(dateString).toLocaleDateString();
+    return formatPacificDateShort(dateString);
   };
 
   const formatVerificationMethod = (method: string | null) => {

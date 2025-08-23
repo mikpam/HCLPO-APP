@@ -40,7 +40,7 @@ if (!process.env.DATABASE_URL) {
   );
 }
 
-// Configure pool with Neon-specific SSL settings
+// Configure pool with Neon-specific SSL settings and Pacific Time
 // Use the cleaned dbUrl instead of raw process.env.DATABASE_URL
 export const pool = new Pool({ 
   connectionString: dbUrl, // Use cleaned URL
@@ -49,6 +49,13 @@ export const pool = new Pool({
   idleTimeoutMillis: 30000,
   connectionTimeoutMillis: 10000
 });
+
+// ENFORCE PACIFIC TIME FOR ALL DATABASE CONNECTIONS
+pool.on('connect', (client) => {
+  client.query("SET TIME ZONE 'America/Los_Angeles'");
+});
+
+console.log('⏰ TIMEZONE: All database connections will use Pacific Time (America/Los_Angeles)');
 
 // Single database instance - Neon PostgreSQL only
 export const db = drizzle(pool, { schema });

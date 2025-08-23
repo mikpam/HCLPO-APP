@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { EmailQueue } from "@shared/schema";
 import { Button } from "@/components/ui/button";
+import { formatPacificTime } from "@/lib/pacific-time";
 
 export default function EmailQueuePage() {
   const { data: emailQueue, isLoading } = useQuery<EmailQueue[]>({
@@ -125,7 +126,7 @@ export default function EmailQueuePage() {
                       </td>
                       <td className="px-6 py-4 text-sm text-secondary">
                         {email.processedAt ? 
-                          new Date(email.processedAt).toLocaleString() : 
+                          formatPacificTime(email.processedAt, true, false) : 
                           'Not processed'
                         }
                       </td>

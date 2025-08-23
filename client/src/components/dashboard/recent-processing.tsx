@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { RecentEmailItem } from "@/types";
+import { formatPacificTimeOnly } from "@/lib/pacific-time";
 
 export default function RecentProcessing() {
   const { data: recentEmails, isLoading } = useQuery<RecentEmailItem[]>({
@@ -120,10 +121,7 @@ export default function RecentProcessing() {
                     </div>
                   </td>
                   <td className="px-6 py-4 text-sm text-secondary">
-                    {new Date(email.processedAt).toLocaleTimeString([], { 
-                      hour: '2-digit', 
-                      minute: '2-digit' 
-                    })}
+                    {formatPacificTimeOnly(email.processedAt, false)}
                   </td>
                 </tr>
               );

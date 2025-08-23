@@ -2,6 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
+import { formatPacificTimeOnly } from "@/lib/pacific-time";
 
 interface MemoryHealthData {
   heapUsedMB: number;
@@ -147,7 +148,7 @@ export default function MemoryHealth() {
         <div className="border-t pt-4">
           <div className="flex items-center justify-between text-xs">
             <span className="text-gray-500">
-              Last updated: {new Date(memoryHealth.timestamp).toLocaleTimeString()}
+              Last updated: {formatPacificTimeOnly(memoryHealth.timestamp, false)}
             </span>
             <Badge variant="outline" className="text-green-600 border-green-200">
               <i className="fas fa-check-circle mr-1"></i>

@@ -3,6 +3,7 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { formatPacificDateShort } from "@/lib/pacific-time";
 
 import { AlertCircle, Upload, FileText, Download, Trash2, Eye } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -197,7 +198,7 @@ export default function FileManagementPage() {
                     <div className="flex-1">
                       <div className="font-medium">{file.filename}</div>
                       <div className="text-sm text-muted-foreground">
-                        {formatFileSize(file.size)} • Uploaded {new Date(file.uploadedAt).toLocaleDateString()}
+                        {formatFileSize(file.size)} • Uploaded {formatPacificDateShort(file.uploadedAt)}
                       </div>
                     </div>
                   </div>

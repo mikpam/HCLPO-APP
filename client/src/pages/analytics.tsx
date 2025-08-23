@@ -10,6 +10,7 @@ import { PurchaseOrder, ErrorLog, EmailQueue } from "@shared/schema";
 import { useState } from "react";
 import { Eye, AlertTriangle, CheckCircle, Clock, Bug } from "lucide-react";
 import MemoryHealth from "@/components/dashboard/memory-health";
+import { formatPacificTime, formatPacificTimeOnly, formatPacificDateShort } from "@/lib/pacific-time";
 
 export default function AnalyticsPage() {
   const [selectedError, setSelectedError] = useState<ErrorLog | null>(null);
@@ -141,7 +142,7 @@ export default function AnalyticsPage() {
     } else if (diffInHours < 24) {
       return `${Math.floor(diffInHours)}h ago`;
     } else {
-      return d.toLocaleDateString() + ' ' + d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      return formatPacificTime(d, true, false);
     }
   };
 
@@ -618,7 +619,7 @@ export default function AnalyticsPage() {
                 <label className="text-sm font-medium text-gray-600">Timestamp</label>
                 <div className="mt-1">
                   <p className="text-sm text-gray-700">
-                    {new Date(selectedError.createdAt).toLocaleString()}
+                    {formatPacificTime(selectedError.createdAt, true, false)}
                   </p>
                 </div>
               </div>

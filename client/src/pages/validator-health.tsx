@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { Activity, CheckCircle, XCircle, AlertTriangle, Clock, RefreshCw } from "lucide-react";
 import { useState } from "react";
+import { formatPacificTimeOnly } from "@/lib/pacific-time";
 
 interface ValidatorHealthData {
   validatorType: string;
@@ -124,7 +125,7 @@ export default function ValidatorHealthPage() {
               </div>
               <div className="text-center">
                 <div className="text-sm text-muted-foreground">Last Updated</div>
-                <div className="text-sm font-medium">{new Date(healthData.lastUpdated).toLocaleTimeString()}</div>
+                <div className="text-sm font-medium">{formatPacificTimeOnly(healthData.lastUpdated, false)}</div>
               </div>
             </div>
           ) : (
@@ -163,7 +164,7 @@ export default function ValidatorHealthPage() {
                 </div>
                 <div>
                   <div className="text-sm text-muted-foreground">Last Check</div>
-                  <div className="font-medium text-xs">{new Date(validator.lastCheckTime).toLocaleTimeString()}</div>
+                  <div className="font-medium text-xs">{formatPacificTimeOnly(validator.lastCheckTime, false)}</div>
                 </div>
               </div>
               {validator.lastError && (

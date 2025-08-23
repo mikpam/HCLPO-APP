@@ -3,6 +3,7 @@ import { ErrorLog } from "@shared/schema";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
+import { formatPacificTime } from "@/lib/pacific-time";
 
 export default function ErrorLogsPage() {
   const queryClient = useQueryClient();
@@ -132,7 +133,7 @@ export default function ErrorLogsPage() {
                         </Badge>
                       </td>
                       <td className="px-6 py-4 text-sm text-secondary">
-                        {error.createdAt ? new Date(error.createdAt).toLocaleString() : 'N/A'}
+                        {error.createdAt ? formatPacificTime(error.createdAt, true, false) : 'N/A'}
                       </td>
                       <td className="px-6 py-4">
                         {!error.resolved ? (

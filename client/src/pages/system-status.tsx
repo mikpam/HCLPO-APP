@@ -4,6 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
+import { formatPacificTime, formatPacificTimeOnly } from "@/lib/pacific-time";
 
 export default function SystemStatusPage() {
   const { data: systemHealth, isLoading: healthLoading } = useQuery<SystemHealthItem[]>({
@@ -127,7 +128,7 @@ export default function SystemStatusPage() {
                           <p className="font-medium text-slate-800">{service.service}</p>
                           <div className="flex items-center space-x-2 text-xs text-secondary">
                             <i className={getStatusIcon(service.status)}></i>
-                            <span>Last check: {new Date(service.lastCheck).toLocaleTimeString()}</span>
+                            <span>Last check: {formatPacificTimeOnly(service.lastCheck, false)}</span>
                           </div>
                         </div>
                       </div>
@@ -240,7 +241,7 @@ export default function SystemStatusPage() {
                           </span>
                         </td>
                         <td className="px-6 py-4 text-sm text-secondary">
-                          {new Date(service.lastCheck).toLocaleString()}
+                          {formatPacificTime(service.lastCheck, true, false)}
                         </td>
                         <td className="px-6 py-4">
                           <div className="w-20">
