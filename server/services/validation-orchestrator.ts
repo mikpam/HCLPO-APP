@@ -31,13 +31,16 @@ export class ValidationOrchestrator {
     const startTime = Date.now();
 
     try {
-      // Step 1: Parallel customer and contact validation (independent operations)
-      const [customerResult, contactResult] = await Promise.all([
-        this.validateCustomerWithHealth(input.customer),
-        this.validateContactWithHealth(input.contact, input.customer?.customerNumber)
-      ]);
+      // Step 1: Validate customer first (contact validation depends on it)
+      const customerResult = await this.validateCustomerWithHealth(input.customer);
+      
+      // Step 2: Validate contact (can be optional if customer is validated)
+      const contactResult = await this.validateContactWithHealth(
+        input.contact, 
+        customerResult.matched ? (customerResult.customerNumber || 'validated') : undefined
+      );
 
-      // Step 2: Sequential item validation (may depend on customer for pricing)
+      // Step 3: Sequential item validation (may depend on customer for pricing)
       const itemsResult = await this.validateItemsWithHealth(
         input.items || [],
         customerResult?.customerNumber
@@ -118,6 +121,26 @@ export class ValidationOrchestrator {
    * Validate contact with health monitoring
    */
   private async validateContactWithHealth(contactData: any, customerNumber?: string): Promise<StandardValidationResult> {
+    // If customer is found with customer number, allow blank contact
+    if (customerNumber && !contactData) {
+      console.log(`✅ Customer found with number ${customerNumber}, allowing blank contact`);
+      return {
+        matched: true,
+        confidence: 0.8,
+        method: 'customer_validated_blank_allowed',
+        data: { 
+          verified: true, 
+          name: 'Customer Default', 
+          note: 'Contact not required - customer validated with number' 
+        },
+        contactName: 'Customer Default',
+        contactEmail: undefined,
+        contactRole: undefined,
+        errors: undefined,
+        alternatives: []
+      };
+    }
+
     if (!contactData && !customerNumber) {
       return this.createEmptyResult('contact');
     }
@@ -133,6 +156,22 @@ export class ValidationOrchestrator {
             resolvedCustomerId: customerNumber,
             companyId: customerNumber
           });
+
+          // If customer is validated with number but contact validation fails, still pass
+          if (customerNumber && !validationResult.verified) {
+            console.log(`⚠️ Contact validation failed but customer ${customerNumber} is valid, allowing to proceed`);
+            return {
+              matched: true,
+              confidence: 0.7,
+              method: 'customer_validated_contact_optional',
+              data: validationResult,
+              contactName: validationResult.name || contactData?.name || 'Customer Contact',
+              contactEmail: validationResult.email || contactData?.email,
+              contactRole: validationResult.role,
+              errors: undefined,
+              alternatives: []
+            };
+          }
 
           // Convert to standard format
           return {
@@ -152,6 +191,21 @@ export class ValidationOrchestrator {
       return result;
     } catch (error) {
       console.error('Contact validation error:', error);
+      // If customer is validated, don't fail on contact validation error
+      if (customerNumber) {
+        console.log(`⚠️ Contact validation error but customer ${customerNumber} is valid, allowing to proceed`);
+        return {
+          matched: true,
+          confidence: 0.6,
+          method: 'customer_validated_error_ignored',
+          data: { error: error.message },
+          contactName: contactData?.name || 'Customer Contact',
+          contactEmail: contactData?.email,
+          contactRole: undefined,
+          errors: undefined,
+          alternatives: []
+        };
+      }
       return this.createErrorResult('contact', error);
     }
   }
