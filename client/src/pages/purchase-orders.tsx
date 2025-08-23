@@ -615,6 +615,7 @@ ${lineItems.map((item, i) =>
                         <ArrowUpDown className="ml-2 h-3 w-3" />
                       </Button>
                     </TableHead>
+                    <TableHead className="w-[200px]">Review Reason</TableHead>
                     <TableHead className="w-[400px]">Line Items</TableHead>
                     <TableHead className="w-[120px]">Customer Number</TableHead>
                     <TableHead className="w-[100px]">Source Document</TableHead>
@@ -794,6 +795,19 @@ ${lineItems.map((item, i) =>
                             <StatusIcon className="w-3 h-3 mr-1" />
                             {getStatusDisplayText(order.status)}
                           </Badge>
+                        </TableCell>
+                        <TableCell>
+                          {(order.status === 'manual_review' || order.status === 'invalid_items') ? (
+                            <div className="text-xs text-gray-600">
+                              {order.errorMessage || 
+                                (order.status === 'invalid_items' ? 'Invalid or missing item SKUs' : 
+                                  (!order.extractedData ? 'No extracted data' : 
+                                    (!order.lineItems || order.lineItems.length === 0 ? 'No line items' : 
+                                      'Validation required')))}
+                            </div>
+                          ) : (
+                            <span className="text-gray-400 text-xs">-</span>
+                          )}
                         </TableCell>
                         <TableCell>
                           <div className="max-w-[400px]">
