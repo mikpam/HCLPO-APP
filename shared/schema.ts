@@ -37,6 +37,7 @@ export const purchaseOrders = pgTable("purchase_orders", {
   failureCount: integer("failure_count").notNull().default(0), // Total failure count across all attempts
   lastError: text("last_error"), // Last error message for debugging
   deadLetterReason: text("dead_letter_reason"), // Why moved to dead letter queue
+  errorReason: text("error_reason"), // Specific reason why PO requires manual review
   comments: text("comments"),
   pokey: text("pokey").unique(),
   emailId: text("email_id"),

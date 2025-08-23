@@ -799,7 +799,7 @@ ${lineItems.map((item, i) =>
                         <TableCell>
                           {(order.status === 'manual_review' || order.status === 'invalid_items') ? (
                             <div className="text-xs text-gray-600">
-                              {order.errorMessage || 
+                              {order.errorReason || 
                                 (order.status === 'invalid_items' ? 'Invalid or missing item SKUs' : 
                                   (!order.extractedData ? 'No extracted data' : 
                                     (!order.lineItems || order.lineItems.length === 0 ? 'No line items' : 
@@ -1035,6 +1035,19 @@ ${lineItems.map((item, i) =>
                           </Button>
                         </div>
                       </div>
+                      
+                      {/* Error Reason for Manual Review */}
+                      {(order.status === 'manual_review' || order.status === 'invalid_items') && (
+                        <div className="bg-orange-50 border border-orange-200 rounded-md p-2 mb-2">
+                          <div className="text-xs text-orange-700 font-medium">
+                            Review Reason: {order.errorReason || 
+                              (order.status === 'invalid_items' ? 'Invalid or missing item SKUs' : 
+                                (!order.extractedData ? 'No extracted data' : 
+                                  (!order.lineItems || order.lineItems.length === 0 ? 'No line items' : 
+                                    'Validation required')))}
+                          </div>
+                        </div>
+                      )}
                       
                       <div className="space-y-2">
                         <div className="flex items-center space-x-2">

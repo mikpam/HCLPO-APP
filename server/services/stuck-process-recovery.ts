@@ -112,6 +112,7 @@ export async function checkAndRecoverStuckProcesses(): Promise<{
               failureCount: newFailureCount,
               lastError: `Stuck in ${state} for ${minutesStuck} minutes`,
               deadLetterReason: `Exceeded max failures (${MAX_FAILURES}) - stuck in ${state} state`,
+              errorReason: `Processing timeout - stuck in ${state} state`,
               statusChangedAt: now,
               processingStartedAt: null
             })
@@ -210,6 +211,7 @@ export async function checkAndRecoverStuckProcesses(): Promise<{
         .set({
           status: 'manual_review',
           deadLetterReason: 'In error state for over 24 hours',
+          errorReason: 'Processing error - stuck in error state',
           statusChangedAt: now
         })
         .where(eq(purchaseOrders.id, po.id));
