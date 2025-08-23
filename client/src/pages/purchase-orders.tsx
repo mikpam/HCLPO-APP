@@ -261,8 +261,30 @@ export default function PurchaseOrdersPage() {
         return { class: 'bg-purple-100 text-purple-800 border-purple-200', icon: User };
       case 'error':
         return { class: 'bg-red-100 text-red-800 border-red-200', icon: XCircle };
+      case 'manual_review':
+        return { class: 'bg-orange-100 text-orange-800 border-orange-200', icon: User };
       default:
         return { class: 'bg-gray-100 text-gray-800 border-gray-200', icon: Clock };
+    }
+  };
+
+  const getStatusDisplayText = (status: string) => {
+    switch (status) {
+      case 'manual_review':
+        return 'For human review';
+      case 'new_customer':
+        return 'New customer';
+      case 'pending_review':
+        return 'Pending review';
+      case 'ready_for_netsuite':
+        return 'Ready for NetSuite';
+      case 'sent_to_netsuite':
+        return 'Sent to NetSuite';
+      default:
+        // For other statuses, convert snake_case to Title Case
+        return status.split('_').map(word => 
+          word.charAt(0).toUpperCase() + word.slice(1)
+        ).join(' ');
     }
   };
 
@@ -770,7 +792,7 @@ ${lineItems.map((item, i) =>
                         <TableCell>
                           <Badge className={`${statusBadge.class} text-xs`}>
                             <StatusIcon className="w-3 h-3 mr-1" />
-                            {order.status}
+                            {getStatusDisplayText(order.status)}
                           </Badge>
                         </TableCell>
                         <TableCell>
@@ -987,7 +1009,7 @@ ${lineItems.map((item, i) =>
                         <div className="flex items-center space-x-2">
                           <Badge className={`${statusBadge.class} text-xs`}>
                             <StatusIcon className="w-3 h-3 mr-1" />
-                            {order.status}
+                            {getStatusDisplayText(order.status)}
                           </Badge>
                           <Button
                             variant="ghost"
@@ -1182,7 +1204,7 @@ ${lineItems.map((item, i) =>
                     <div className="flex justify-between">
                       <span className="text-gray-600">Status:</span>
                       <Badge className={`${getStatusBadge(selectedOrder.status).class} border`}>
-                        {selectedOrder.status.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase())}
+                        {getStatusDisplayText(selectedOrder.status)}
                       </Badge>
                     </div>
                     <div className="flex justify-between">
