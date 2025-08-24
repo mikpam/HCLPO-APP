@@ -394,67 +394,36 @@ export default function PurchaseOrdersPage() {
         // For PDFs, open in new tab (same as file management tab)
         const pdfUrl = filePath.startsWith('/objects/') ? filePath : `/objects/attachments/${filePath.split('/').pop()}`;
         window.open(pdfUrl, '_blank');
+      } else if (type === 'eml' && filePath) {
+        // For EML files, download the actual file from object storage
+        const downloadUrl = `/api/files/view?path=${encodeURIComponent(filePath)}`;
+        
+        // Create a temporary anchor element to trigger download
+        const link = document.createElement('a');
+        link.href = downloadUrl;
+        link.download = `PO_${title.replace(/[^a-zA-Z0-9-]/g, '_')}.eml`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        
+        toast({
+          title: "Download started",
+          description: "The .eml file is being downloaded",
+        });
       } else {
-        // For EML files, show available purchase order information instead of trying to fetch from storage
-        const order = filteredAndSortedOrders.find(o => 
-          o.emlFilePath === filePath || 
-          (title && title.includes(o.poNumber))
-        );
-        
-        if (!order) {
-          setFileViewModal({
-            isOpen: true,
-            type,
-            content: 'Purchase order not found for this EML file.',
-            title: 'Email Information - Not Found'
-          });
-          return;
-        }
-
-        // Get customer info using the same function as the table
-        const customerInfo = getCustomerInfo(order);
-        
-        // Calculate total from line items
-        const lineItems = (order.lineItems as any[]) || [];
-        const totalAmount = lineItems.reduce((sum, item) => {
-          const price = parseFloat(item?.unitPrice || item?.price || '0');
-          const qty = parseInt(item?.quantity || '1');
-          return sum + (price * qty);
-        }, 0);
-        
-        let emailInfo = `=== EMAIL INFORMATION ===
-
-Purchase Order: ${order.poNumber || 'N/A'}
-Customer: ${customerInfo.name || 'N/A'}  
-Total Amount: ${totalAmount > 0 ? `$${totalAmount.toFixed(2)}` : 'N/A'}
-Processing Date: ${order.createdAt ? formatPacificDateShort(order.createdAt) : 'N/A'}
-
-Status: Email successfully processed and purchase order created
-Source: Email processing system
-File Path: ${filePath}
-
-Note: The original email file is stored in the system but cannot be displayed 
-due to object storage configuration. All email data has been extracted 
-and is available in the purchase order details above.
-
-=== PURCHASE ORDER DETAILS ===
-
-Line Items: ${lineItems.length} items
-${lineItems.map((item, i) => 
-  `${i + 1}. ${item?.description || item?.sku || 'Unknown Item'} - Qty: ${item?.quantity || '1'} - $${item?.unitPrice || item?.price || 'N/A'}`
-).join('\n') || 'No line items available'}
-
-=== END EMAIL INFORMATION ===`;
-        
-        setFileViewModal({
-          isOpen: true,
-          type,
-          content: emailInfo,
-          title: `Email Information - PO ${order?.poNumber || 'Unknown'}`
+        toast({
+          title: "Error",
+          description: "File path not available",
+          variant: "destructive"
         });
       }
     } catch (error) {
       console.error('Error loading file:', error);
+      toast({
+        title: "Error",
+        description: "Failed to download file",
+        variant: "destructive"
+      });
     }
   };
 

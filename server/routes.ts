@@ -2436,39 +2436,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       console.log(`📁 Viewing file: ${path}`);
 
-      // For EML files, return a simple message since we have storage permission issues
-      if (path.includes('.eml')) {
-        const poNumber = path.match(/PO\s+([A-Z0-9-]+)/i)?.[1] || 'Unknown';
-        const emailContent = `
-=== EMAIL CONTENT FOR PO ${poNumber} ===
-
-This EML file contains the original email that contained this purchase order.
-
-Due to Google Cloud Storage permission restrictions in the current environment, 
-the full EML content cannot be displayed directly. 
-
-The email has been successfully processed and the purchase order data 
-has been extracted and is available in the system.
-
-File Path: ${path}
-Status: Email processed and archived
-Content: Original email with attachments
-
-=== END EMAIL CONTENT ===
-        `;
-        
-        res.setHeader('Content-Type', 'text/plain; charset=utf-8');
-        res.send(emailContent.trim());
-        return;
-      }
-
-      // For other files, try the object storage service
       const objectStorageService = new ObjectStorageService();
 
       // Check if this is an object entity path (starts with /objects/)
       if (path.startsWith('/objects/')) {
         try {
           const objectFile = await objectStorageService.getObjectEntityFile(path);
+          
+          // For EML files, set proper content type and disposition for download
+          if (path.includes('.eml')) {
+            const poNumber = path.match(/PO[_\s]+([A-Z0-9-]+)/i)?.[1] || 'email';
+            res.setHeader('Content-Type', 'message/rfc822');
+            res.setHeader('Content-Disposition', `attachment; filename="PO_${poNumber}.eml"`);
+          }
+          
           await objectStorageService.downloadObject(objectFile, res);
           return;
         } catch (error) {
