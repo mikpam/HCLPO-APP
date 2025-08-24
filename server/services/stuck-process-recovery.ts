@@ -81,7 +81,7 @@ export async function checkAndRecoverStuckProcesses(): Promise<{
             or(
               // Check processing started timestamp
               and(
-                purchaseOrders.processingStartedAt !== null,
+                sql`${purchaseOrders.processingStartedAt} IS NOT NULL`,
                 lt(purchaseOrders.processingStartedAt, timeoutThreshold)
               ),
               // Fallback to status changed timestamp
@@ -224,6 +224,77 @@ export async function checkAndRecoverStuckProcesses(): Promise<{
         action: 'dead_lettered',
         reason: 'Error state > 24 hours'
       });
+    }
+
+    // Check for pending_review POs that have data but incomplete validation
+    console.log('   🔄 Checking for pending_review POs with incomplete validation...');
+    const pendingReviewPOs = await db
+      .select({
+        id: purchaseOrders.id,
+        poNumber: purchaseOrders.poNumber,
+        extractedData: purchaseOrders.extractedData,
+        customerValidated: purchaseOrders.customerValidated,
+        contactValidated: purchaseOrders.contactValidated,
+        lineItemsValidated: purchaseOrders.lineItemsValidated,
+        validationCompleted: purchaseOrders.validationCompleted,
+        errorReason: purchaseOrders.errorReason,
+        route: purchaseOrders.route
+      })
+      .from(purchaseOrders)
+      .where(
+        and(
+          eq(purchaseOrders.status, 'pending_review'),
+          // Has extraction data
+          sql`${purchaseOrders.extractedData} IS NOT NULL`,
+          // But validation never completed
+          eq(purchaseOrders.validationCompleted, false),
+          // And no blocking error reason
+          or(
+            isNull(purchaseOrders.errorReason),
+            inArray(purchaseOrders.errorReason, ['', 'NS_PAYLOAD_MISSING', 'NS_PAYLOAD_GENERATION_FAILED'])
+          )
+        )
+      );
+    
+    if (pendingReviewPOs.length > 0) {
+      console.log(`   └─ Found ${pendingReviewPOs.length} pending_review POs that need validation`);
+      
+      for (const po of pendingReviewPOs) {
+        // Check if it has the minimum data needed for validation
+        const hasExtractedData = po.extractedData && Object.keys(po.extractedData).length > 0;
+        const isNotArtworkRoute = !po.route?.includes('ARTWORK') && !po.route?.includes('REVIEW');
+        
+        if (hasExtractedData && isNotArtworkRoute) {
+          console.log(`   🔄 Reprocessing PO ${po.poNumber} for validation...`);
+          
+          // Reset to pending_validation to trigger reprocessing
+          await db
+            .update(purchaseOrders)
+            .set({
+              status: 'pending_validation',
+              customerValidated: false,
+              contactValidated: false,
+              lineItemsValidated: false,
+              validationCompleted: false,
+              errorReason: null,
+              statusChangedAt: now,
+              processingStartedAt: now
+            })
+            .where(eq(purchaseOrders.id, po.id));
+          
+          recovered++;
+          details.push({
+            id: po.id,
+            poNumber: po.poNumber,
+            action: 'reprocess_validation',
+            reason: 'Pending review with incomplete validation → pending_validation'
+          });
+          
+          console.log(`   ✅ PO ${po.poNumber} reset to pending_validation for reprocessing`);
+        }
+      }
+    } else {
+      console.log('   └─ No pending_review POs need validation reprocessing');
     }
 
     // Check for ready_for_netsuite POs without NS payload
@@ -467,6 +538,7 @@ export async function generateDailyReport(): Promise<{
       .select({
         id: purchaseOrders.id,
         poNumber: purchaseOrders.poNumber,
+        status: purchaseOrders.status,
         deadLetterReason: purchaseOrders.deadLetterReason,
         statusChangedAt: purchaseOrders.statusChangedAt,
         lastError: purchaseOrders.lastError,
