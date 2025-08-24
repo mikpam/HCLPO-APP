@@ -284,37 +284,42 @@ export class GeminiService {
 
       const prompt = `Analyze the provided document to determine its primary function: Is it a purchase order (including sample orders/requests) or something else?
 
-**LENIENT CLASSIFICATION - DEFAULT TO PURCHASE ORDER WHEN IN DOUBT**
+**EXTREMELY LENIENT CLASSIFICATION - ALMOST ALWAYS DEFAULT TO PURCHASE ORDER**
 
-**STRONG PURCHASE ORDER SIGNALS (If ANY present = likely PO):**
+**STRONG PURCHASE ORDER SIGNALS (If ANY present = PURCHASE ORDER):**
 - Contains "PO" or "P.O." or "PO#" or "PO:" anywhere in the document
-- Contains "Purchase Order" or "Order" or "Sample" in a business context
+- Contains "Purchase Order" or "Order" or "Sample" in a business context  
 - Shows any items/products with quantities or prices
 - Has shipping or delivery information
 - References a vendor/supplier and buyer/customer
 - Contains any order number or reference number
+- Has any product codes, SKUs, or item numbers
+- Contains pricing, totals, or amounts
+- References delivery, shipping, or in-hands dates
 
-**REJECT as "not a purchase order" if document is:**
-- Artwork/logo/design file (even with business text) - check for design elements, graphics, logos
-- Image files that are primarily visual/graphical without structured order data
-- PURE invoice asking for payment on already delivered items  
-- PURE shipping label or tracking info for already shipped packages
-- PURE marketing material or catalog with no specific order
-- Files with "artwork", "logo", "design", "proof" in filename or prominent content
+**ONLY REJECT if document is CLEARLY:**
+- Pure artwork/logo file with NO text content
+- Pure marketing material with NO specific order information
+- Empty or corrupted file
+- Pure image file with only graphics/pictures and NO text
 
-**SCORING (BE LENIENT - Need only 2 of these):**
-1. Any reference number (PO#, order#, reference#, etc.)
-2. Company names (buyer OR seller)
-3. Any product/item mentions
-4. Any quantities or amounts
-5. Any dates (order date, ship date, need by date)
-6. Any shipping/delivery information
+**EXTREMELY LENIENT SCORING (Need only 1 of these):**
+1. Any reference number (even if unclear)
+2. Any company or person names
+3. Any product/item mentions (even vague)
+4. Any numbers that could be quantities
+5. Any dates
+6. Any addresses
+7. Any email addresses
+8. Any phone numbers
 
-**IMPORTANT - ERR ON THE SIDE OF INCLUSION:**
-- If document mentions ordering, requesting, or needing items = PURCHASE ORDER
+**CRITICAL - DEFAULT TO INCLUSION:**
+- If document has ANY business text = PURCHASE ORDER
+- If document has tables or structured data = PURCHASE ORDER
 - If unclear or mixed content = PURCHASE ORDER
-- If low quality scan but seems business-related = PURCHASE ORDER
-- Only reject if 100% certain it's not an order
+- If low quality scan but has text = PURCHASE ORDER
+- If filename suggests it's a PO = PURCHASE ORDER
+- Only reject if ABSOLUTELY CERTAIN it's not an order (99.9% confidence)
 
 **Response Format:**
 
