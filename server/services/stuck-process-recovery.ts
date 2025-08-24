@@ -11,6 +11,7 @@
 import { db } from '../db';
 import { purchaseOrders } from '@shared/schema';
 import { and, eq, sql, inArray, lt, or, isNull } from 'drizzle-orm';
+import { generateNSPayload } from './ns-payload-generator';
 
 // Configuration
 const TIMEOUT_MINUTES = {
@@ -223,6 +224,105 @@ export async function checkAndRecoverStuckProcesses(): Promise<{
         action: 'dead_lettered',
         reason: 'Error state > 24 hours'
       });
+    }
+
+    // Check for ready_for_netsuite POs without NS payload
+    console.log('   📦 Checking for ready_for_netsuite POs missing NS payload...');
+    const posWithoutNSPayload = await db
+      .select({
+        id: purchaseOrders.id,
+        poNumber: purchaseOrders.poNumber,
+        status: purchaseOrders.status,
+        nsPayload: purchaseOrders.nsPayload,
+        extractedData: purchaseOrders.extractedData,
+        lineItems: purchaseOrders.lineItems,
+        customerMeta: purchaseOrders.customerMeta,
+        contactMeta: purchaseOrders.contactMeta,
+        shipToAddress: purchaseOrders.shipToAddress,
+        emailIntent: purchaseOrders.emailIntent,
+        extractionSourceFile: purchaseOrders.extractionSourceFile,
+        emlFilePath: purchaseOrders.emlFilePath,
+        shippingMethod: purchaseOrders.shippingMethod,
+        shippingCarrier: purchaseOrders.shippingCarrier
+      })
+      .from(purchaseOrders)
+      .where(
+        and(
+          eq(purchaseOrders.status, 'ready_for_netsuite'),
+          isNull(purchaseOrders.nsPayload)
+        )
+      );
+    
+    if (posWithoutNSPayload.length > 0) {
+      console.log(`   └─ Found ${posWithoutNSPayload.length} POs needing NS payload generation`);
+      
+      for (const po of posWithoutNSPayload) {
+        try {
+          console.log(`   🔄 Generating NS payload for PO ${po.poNumber}...`);
+          const nsPayload = await generateNSPayload(po as any);
+          
+          if (nsPayload) {
+            await db
+              .update(purchaseOrders)
+              .set({
+                nsPayload: nsPayload,
+                statusChangedAt: now
+              })
+              .where(eq(purchaseOrders.id, po.id));
+            
+            recovered++;
+            details.push({
+              id: po.id,
+              poNumber: po.poNumber,
+              action: 'ns_payload_generated',
+              reason: 'Generated missing NS payload for ready_for_netsuite PO'
+            });
+            
+            console.log(`   ✅ NS payload generated for PO ${po.poNumber}`);
+          } else {
+            // If payload generation fails, downgrade status
+            await db
+              .update(purchaseOrders)
+              .set({
+                status: 'pending_review',
+                errorReason: 'NS_PAYLOAD_GENERATION_FAILED',
+                statusChangedAt: now
+              })
+              .where(eq(purchaseOrders.id, po.id));
+            
+            console.log(`   ⚠️ Failed to generate NS payload for PO ${po.poNumber}, downgraded to pending_review`);
+            
+            details.push({
+              id: po.id,
+              poNumber: po.poNumber,
+              action: 'status_downgraded',
+              reason: 'NS payload generation failed, moved to pending_review'
+            });
+          }
+        } catch (error) {
+          console.error(`   ❌ Error generating NS payload for PO ${po.poNumber}:`, error);
+          
+          // Downgrade status on error
+          await db
+            .update(purchaseOrders)
+            .set({
+              status: 'pending_review',
+              errorReason: 'NS_PAYLOAD_GENERATION_ERROR',
+              lastError: error instanceof Error ? error.message : 'Unknown error',
+              statusChangedAt: now
+            })
+            .where(eq(purchaseOrders.id, po.id));
+          
+          details.push({
+            id: po.id,
+            poNumber: po.poNumber,
+            action: 'status_downgraded',
+            reason: 'NS payload generation error, moved to pending_review'
+          });
+        }
+      }
+    } else {
+      console.log('   └─ All ready_for_netsuite POs have NS payloads');
     }
 
     const summary = `Recovered ${recovered} stuck POs, moved ${deadLettered} to dead letter queue`;

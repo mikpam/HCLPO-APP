@@ -1161,18 +1161,47 @@ async function processEmailThroughValidationSystem(messageToProcess: any, update
       
       // Generate NS payload if validation is complete and ready for NetSuite
       let nsPayload = null;
+      let errorReason = null;
+      
       if (finalStatus === 'ready_for_netsuite') {
         console.log(`   📦 Generating NetSuite payload for PO ${purchaseOrder.poNumber}...`);
-        try {
-          // Get the complete PO with all validation data
-          const completePO = await storage.getPurchaseOrder(purchaseOrder.id);
-          if (completePO) {
-            nsPayload = await generateNSPayload(completePO);
-            console.log(`   ✅ NS payload generated successfully`);
+        
+        // Try to generate NS payload with retry logic
+        let retryCount = 0;
+        const maxRetries = 2;
+        
+        while (retryCount <= maxRetries && !nsPayload) {
+          try {
+            // Get the complete PO with all validation data
+            const completePO = await storage.getPurchaseOrder(purchaseOrder.id);
+            if (completePO) {
+              nsPayload = await generateNSPayload(completePO);
+              console.log(`   ✅ NS payload generated successfully`);
+            } else {
+              throw new Error('Could not retrieve complete PO data');
+            }
+          } catch (error) {
+            retryCount++;
+            console.error(`   ❌ Failed to generate NS payload (attempt ${retryCount}/${maxRetries + 1}):`, error);
+            
+            if (retryCount <= maxRetries) {
+              console.log(`   🔄 Retrying NS payload generation...`);
+              await new Promise(resolve => setTimeout(resolve, 1000)); // Wait 1 second before retry
+            } else {
+              // If all retries failed, downgrade status and set error reason
+              console.error(`   ⚠️ NS payload generation failed after ${maxRetries + 1} attempts`);
+              finalStatus = 'pending_review';
+              errorReason = 'NS_PAYLOAD_GENERATION_FAILED';
+              console.log(`   📉 Downgrading status to pending_review due to NS payload generation failure`);
+            }
           }
-        } catch (error) {
-          console.error(`   ❌ Failed to generate NS payload:`, error);
-          // Continue without NS payload - don't block the process
+        }
+        
+        // Double-check: only allow ready_for_netsuite if NS payload exists
+        if (finalStatus === 'ready_for_netsuite' && !nsPayload) {
+          console.log(`   ⚠️ NS payload missing - cannot set ready_for_netsuite status`);
+          finalStatus = 'pending_review';
+          errorReason = 'NS_PAYLOAD_MISSING';
         }
       }
       
@@ -1181,7 +1210,8 @@ async function processEmailThroughValidationSystem(messageToProcess: any, update
         status: finalStatus,
         validationCompleted: true,
         lineItemsValidated: lineItemsValidated, // Set based on whether SKU validation ran
-        nsPayload: nsPayload // Store the NS payload
+        nsPayload: nsPayload, // Store the NS payload
+        errorReason: errorReason // Store error reason if NS payload generation failed
       });
       
       console.log(`   🎯 Final status assigned: ${finalStatus}`);
