@@ -169,6 +169,21 @@ export class HybridCustomerValidator {
 
     // Priority 2: By Email (exact)
     if (input.customerEmail) {
+      // Special handling for 4allpromos.com emails
+      if (input.customerEmail.toLowerCase().includes('@4allpromos.com')) {
+        console.log(`   🎯 Hardcoded email match for @4allpromos.com`);
+        const fourAllPromosMatch = await db
+          .select()
+          .from(customers)
+          .where(sql`LOWER(company_name) LIKE '%4allpromos%' OR LOWER(company_name) LIKE '%4 all promos%'`)
+          .limit(1);
+        
+        if (fourAllPromosMatch.length > 0) {
+          console.log(`   ✅ Hardcoded match found: ${fourAllPromosMatch[0].companyName}`);
+          return this.mapToCandidate(fourAllPromosMatch[0]);
+        }
+      }
+      
       const emailMatches = await db
         .select()
         .from(customers)
@@ -185,8 +200,24 @@ export class HybridCustomerValidator {
       }
     }
 
-    // Priority 3: By Domain with brand overrides
+    // Priority 3: Hardcoded domain recognition
     if (input.senderDomain) {
+      // Special handling for 4allpromos.com
+      if (input.senderDomain.toLowerCase() === '4allpromos.com') {
+        console.log(`   🎯 Hardcoded domain match for 4allpromos.com`);
+        const fourAllPromosMatch = await db
+          .select()
+          .from(customers)
+          .where(sql`LOWER(company_name) LIKE '%4allpromos%' OR LOWER(company_name) LIKE '%4 all promos%'`)
+          .limit(1);
+        
+        if (fourAllPromosMatch.length > 0) {
+          console.log(`   ✅ Hardcoded match found: ${fourAllPromosMatch[0].companyName}`);
+          return this.mapToCandidate(fourAllPromosMatch[0]);
+        }
+      }
+      
+      // General domain matching
       const domainMatches = await db
         .select()
         .from(customers)
