@@ -1297,7 +1297,8 @@ async function processPendingPO(pendingPO: any) {
     const purchaseOrder = extractedData?.purchaseOrder || extractedData || {};
     const customer = purchaseOrder.customer || {};
     const contact = purchaseOrder.contact || {};
-    const lineItems = purchaseOrder.lineItems || [];
+    // Line items can be at either location in the extracted data
+    const lineItems = purchaseOrder.lineItems || extractedData?.lineItems || [];
     
     const validationInput = {
       customer: {
@@ -1328,13 +1329,22 @@ async function processPendingPO(pendingPO: any) {
     console.log(`   ✅ Validation completed:`, {
       customer: validationResult.customer.matched ? 'Found' : 'Not found',
       contact: validationResult.contact.matched ? 'Found' : 'Not found',
-      items: `${validationResult.items.validItems.length}/${validationResult.items.totalItems} valid`,
-      finalStatus: validationResult.finalStatus
+      items: `${validationResult.items.validCount}/${validationResult.items.totalCount} valid`,
+      status: validationResult.status
     });
 
     // Update PO with complete validation results
-    const finalStatus = validationResult.finalStatus;
-    const errorReason = validationResult.errorReason;
+    const finalStatus = validationResult.status;
+    let errorReason: string | null = null;
+    
+    // Determine error reason based on status
+    if (finalStatus === 'new_customer') {
+      errorReason = 'Customer not found in database';
+    } else if (finalStatus === 'missing_contact') {
+      errorReason = 'Contact not found for customer';
+    } else if (finalStatus === 'invalid_items') {
+      errorReason = `Invalid items: ${validationResult.items.totalCount - validationResult.items.validCount} of ${validationResult.items.totalCount} items could not be validated`;
+    }
     
     // Build metadata for all validation results
     const customerMeta: any = {};
@@ -1345,8 +1355,8 @@ async function processPendingPO(pendingPO: any) {
     if (validationResult.customer.matched) {
       customerMeta.customer_number = validationResult.customer.customerNumber;
       customerMeta.customer_name = validationResult.customer.customerName;
-      customerMeta.method = validationResult.customer.matchedBy;
-      customerMeta.confidence = validationResult.customer.matchScore;
+      customerMeta.method = validationResult.customer.method;
+      customerMeta.confidence = validationResult.customer.confidence;
       hasCustomer = true;
       console.log(`   ✅ Customer found: ${validationResult.customer.customerName} (${validationResult.customer.customerNumber})`);
     } else {
@@ -1362,9 +1372,9 @@ async function processPendingPO(pendingPO: any) {
     if (validationResult.contact.matched) {
       contactMeta.contact_name = validationResult.contact.contactName;
       contactMeta.contact_email = validationResult.contact.contactEmail;
-      contactMeta.contact_id = validationResult.contact.contactId;
-      contactMeta.method = validationResult.contact.matchedBy;
-      contactMeta.confidence = validationResult.contact.matchScore;
+      contactMeta.contact_id = validationResult.contact.data?.contactId;
+      contactMeta.method = validationResult.contact.method;
+      contactMeta.confidence = validationResult.contact.confidence;
       hasContact = true;
       console.log(`   ✅ Contact found: ${validationResult.contact.contactName}`);
     } else {
@@ -1372,20 +1382,31 @@ async function processPendingPO(pendingPO: any) {
     }
 
     // Check items validation results
-    if (validationResult.items.totalItems > 0) {
-      lineItemsValidated = validationResult.items.validItems.length === validationResult.items.totalItems;
-      console.log(`   📦 Items validation: ${validationResult.items.validItems.length}/${validationResult.items.totalItems} valid`);
+    if (validationResult.items.totalCount > 0) {
+      lineItemsValidated = validationResult.items.validCount === validationResult.items.totalCount;
+      console.log(`   📦 Items validation: ${validationResult.items.validCount}/${validationResult.items.totalCount} valid`);
     }
 
     // Generate NS payload if ready
     let nsPayload = null;
     if (finalStatus === 'ready_for_netsuite') {
       console.log(`   📦 Generating NetSuite payload for PO ${pendingPO.poNumber}...`);
-      nsPayload = await generateNSPayload({
-        purchaseOrder: pendingPO,
-        extractedData: extractedData,
-        validationResults: validationResult
-      });
+      
+      // Update the PO with validated data before generating NS payload
+      const updatedPO = {
+        ...pendingPO,
+        customerValidated: validationResult.customer.matched,
+        contactValidated: validationResult.contact.matched,
+        lineItemsValidated: lineItemsValidated,
+        customerMeta: customerMeta,
+        contactMeta: contactMeta,
+        extractedData: {
+          ...extractedData,
+          validatedItems: validationResult.items.data
+        }
+      };
+      
+      nsPayload = await generateNSPayload(updatedPO);
       console.log(`   ✅ NetSuite payload generated successfully`);
     }
 
@@ -1400,7 +1421,11 @@ async function processPendingPO(pendingPO: any) {
         validationCompleted: true,
         customerMeta: customerMeta,
         contactMeta: contactMeta,
-        itemsData: validationResult.items,
+        // Store items validation data in extractedData
+        extractedData: {
+          ...extractedData,
+          validatedItems: validationResult.items.data
+        },
         nsPayload: nsPayload,
         errorReason: errorReason,
         statusChangedAt: new Date(),

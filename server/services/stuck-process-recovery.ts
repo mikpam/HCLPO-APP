@@ -226,6 +226,66 @@ export async function checkAndRecoverStuckProcesses(): Promise<{
       });
     }
 
+    // Check for validation_failed POs that can be retried
+    console.log('   🔄 Checking for validation_failed POs that can be retried...');
+    const validationFailedPOs = await db
+      .select({
+        id: purchaseOrders.id,
+        poNumber: purchaseOrders.poNumber,
+        extractedData: purchaseOrders.extractedData,
+        failureCount: purchaseOrders.failureCount,
+        lastError: purchaseOrders.lastError
+      })
+      .from(purchaseOrders)
+      .where(
+        and(
+          eq(purchaseOrders.status, 'validation_failed'),
+          // Has extraction data
+          sql`${purchaseOrders.extractedData} IS NOT NULL`,
+          // Not exceeded max failures
+          or(
+            isNull(purchaseOrders.failureCount),
+            lt(purchaseOrders.failureCount, MAX_FAILURES)
+          )
+        )
+      );
+    
+    if (validationFailedPOs.length > 0) {
+      console.log(`   └─ Found ${validationFailedPOs.length} validation_failed POs that can be retried`);
+      
+      for (const po of validationFailedPOs) {
+        console.log(`   🔄 Resetting validation_failed PO ${po.poNumber} for retry...`);
+        
+        // Reset to pending_validation to trigger reprocessing
+        await db
+          .update(purchaseOrders)
+          .set({
+            status: 'pending_validation',
+            customerValidated: false,
+            contactValidated: false,
+            lineItemsValidated: false,
+            validationCompleted: false,
+            errorReason: null,
+            failureCount: (po.failureCount || 0) + 1,
+            statusChangedAt: now,
+            processingStartedAt: now
+          })
+          .where(eq(purchaseOrders.id, po.id));
+        
+        recovered++;
+        details.push({
+          id: po.id,
+          poNumber: po.poNumber,
+          action: 'retry_validation',
+          reason: 'Validation failed → pending_validation for retry'
+        });
+        
+        console.log(`   ✅ PO ${po.poNumber} reset to pending_validation for retry`);
+      }
+    } else {
+      console.log('   └─ No validation_failed POs available for retry');
+    }
+
     // Check for pending_review POs that have data but incomplete validation
     console.log('   🔄 Checking for pending_review POs with incomplete validation...');
     const pendingReviewPOs = await db
