@@ -1,0 +1,46 @@
+{
+    "action":"createSalesOrder",
+    "customerId":"UNKNOWN",
+    "customer":
+    {
+        "customer_name":"Kaeser & Blair Inc",
+        "customer_number":"C5571"
+    },
+    "purchaseOrderNumber":"50821197",
+    "lineItems":
+    [
+        {
+            "sku":"L151-LA214-02",
+            "quantity":250,
+            "itemColor":"RED",
+            "unitPrice":0.87,
+            "totalPrice":217.5,
+            "description":"3/4\" ORIGINAL FAST TRACK LANYARD IN RED WITH \"SACRED HEART\" LOGO IN WHITE WITH BULLDOG CLIP ATTACHMENT.",
+            "imprintColor":"WHITE"
+        },
+        {
+            "sku":"SETUP",
+            "quantity":1,
+            "itemColor":"",
+            "unitPrice":48,
+            "totalPrice":48,
+            "description":"SET-UP",
+            "imprintColor":""            
+        },
+        {
+            "sku":"PROOF",
+            "quantity":1,
+            "itemColor":"",
+            "unitPrice":0,
+            "totalPrice":0,
+            "description":"PROOF",
+            "imprintColor":""
+        }
+    ],
+    "shipMethod":"FedEx Ground",
+    "externalId":"50821197",
+    "attachmentUrls":
+    [
+        "https://storage.googleapis.com/replit-objstore-67c7708b-782b-4f7f-b3bb-900b9c06112d/.private/attachments/2025-08-25_198e1765c76b7aed_order_50821197_po.pdf?X-Goog-Algorithm=GOOG4-RSA-SHA256&X-Goog-Credential=heimdall-production%40replit-user-deployments.iam.gserviceaccount.com%2F20250825%2Fauto%2Fstorage%2Fgoog4_request&X-Goog-Date=20250825T140432Z&X-Goog-Expires=604799&X-Goog-Signature=37f48887120f802e219771329916b3a32ff3621b62e57c078f5173726eb64d7fe9c58880c476936147dc62fc993edc4fdff4ec951493a8c3c94ef5b2d59f2c2aec9a525b3afb41aa4ecd451921e95b099d9078753a0773cc17d93c484077812da0e747e51bcb5f5cf9a5d49189dca90d7ecbcc065e160f1141c6fc338483ef61309ebd8dddee75c2d26c75fe8537358355b4f6cf5acd3d13533d3590c984493833478693e6a3f04eba71c7c5598c297d03e46592c7919f708c78399d323f0322dc58c95a904f63e9907cee1e3193686d50f81c32e857a6bf0e8b60e59ac5ec90fcb0f215ed59091ab740ed128b4e63f457bd836475bc2e0a29f430093944073b&X-Goog-SignedHeaders=host","https://storage.googleapis.com/replit-objstore-67c7708b-782b-4f7f-b3bb-900b9c06112d/.private/emails/198e1765c76b7aed_2025-08-25_KB%20Purchase%20Order%2050821197.eml?X-Goog-Algorithm=GOOG4-RSA-SHA256&X-Goog-Credential=heimdall-production%40replit-user-deployments.iam.gserviceaccount.com%2F20250825%2Fauto%2Fstorage%2Fgoog4_request&X-Goog-Date=20250825T140433Z&X-Goog-Expires=604799&X-Goog-Signature=74611b3d27b75739bd3559d6beba9add4962a0b89f95c5615e1de136b249f470be0d272f15cd8ccaaf562ed75f45c6cdb307a046fe04422c4396fd42286fb84b0f89371b2ac21cd6f0038afaa590a99b8dd4884cf5f64f173ef3b6a4d4d48af64a2d176c1931fcb92dad7697a7d49d5a52db7dad5e9ad954787a0c69a89b21a4d701ecdb13faa0960b594eb1dd9342e8b4780085905f9c67b4029426843a1cb91e2a3b21418e3fa22c7f8e4a3b0b7438485b0b3b0734cfc29bff0e9ff3a94625deb224e2db214692d87bea5bdf87a88f1a002234415c2b71447dd6f9dd1983e3896016b1e2f69553004065796cfb7f65feaee499770e19483d13311b080dab3e&X-Goog-SignedHeaders=host"
+    ]
+}

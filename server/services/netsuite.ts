@@ -17,20 +17,61 @@ export interface NetSuiteCustomer {
 }
 
 export interface NetSuiteLineItem {
-  item: string;
+  item?: string;
+  sku?: string;
   quantity: number;
   rate?: number;
   amount?: number;
+  unitPrice?: number;
+  totalPrice?: number;
   description?: string;
+  itemColor?: string;
+  imprintColor?: string;
 }
 
 export interface NetSuiteSalesOrder {
   customer: string | NetSuiteCustomer;
   lineItems: NetSuiteLineItem[];
   shipMethod?: string;
+  shippingMethod?: string;
+  shippingCarrier?: string;
   shipDate?: string;
   memo?: string;
   externalId?: string;
+  purchaseOrderNumber?: string;
+  poNumber?: string;
+  orderDate?: string;
+  inHandsDate?: string;
+  requiredShipDate?: string;
+  salesPersonName?: string;
+  salesPersonEmail?: string;
+  specialInstructions?: string;
+  emailIntent?: string;
+  shipTo?: {
+    name?: string;
+    company?: string;
+    address1?: string;
+    address2?: string;
+    city?: string;
+    state?: string;
+    zipCode?: string;
+    country?: string;
+  };
+  vendor?: {
+    name?: string;
+    address1?: string;
+    city?: string;
+    state?: string;
+    zipCode?: string;
+    country?: string;
+  };
+  subtotals?: {
+    grandTotal?: number;
+    merchandiseSubtotal?: number;
+    additionalChargesSubtotal?: number;
+  };
+  sourceDocumentUrl?: string;
+  emlUrl?: string;
 }
 
 export interface NetSuiteCreateResult {
@@ -194,7 +235,7 @@ export class NetSuiteService {
       }
 
       // Map shipping method with FedEx Ground as default
-      const shipMethod = this.mapShippingMethod(orderData.shipMethod);
+      const shipMethod = this.mapShippingMethod(orderData.shipMethod || orderData.shippingMethod);
 
       // Process line items with SKU mapping
       const processedLineItems = await this.processLineItems(orderData.lineItems);
@@ -206,10 +247,25 @@ export class NetSuiteService {
         purchaseOrderNumber: orderData.externalId || orderData.poNumber || orderData.purchaseOrderNumber, // Use available PO number
         lineItems: processedLineItems,
         shipMethod,
+        externalId: orderData.externalId,
+        attachmentUrls: attachmentUrls || [],  // Include object storage URLs
+        
+        // Preserve all comprehensive data from NS payload
+        shipTo: orderData.shipTo,
+        vendor: orderData.vendor,
+        orderDate: orderData.orderDate,
+        inHandsDate: orderData.inHandsDate,
+        requiredShipDate: orderData.requiredShipDate,
+        salesPersonName: orderData.salesPersonName,
+        salesPersonEmail: orderData.salesPersonEmail,
+        specialInstructions: orderData.specialInstructions,
+        emailIntent: orderData.emailIntent,
+        subtotals: orderData.subtotals,
+        shippingCarrier: orderData.shippingCarrier,
         shipDate: orderData.shipDate,
         memo: orderData.memo,
-        externalId: orderData.externalId,
-        attachmentUrls: attachmentUrls || []  // Include object storage URLs
+        sourceDocumentUrl: orderData.sourceDocumentUrl,
+        emlUrl: orderData.emlUrl
       };
 
       // Log the payload for debugging
@@ -267,9 +323,11 @@ export class NetSuiteService {
     for (const item of items) {
       let processedItem = { ...item };
 
+      // Preserve all item fields (sku, colors, prices, etc.)
       // Try to map FinalSKU first
-      if (item.item) {
-        const mappedItem = await this.findItemBySKU(item.item);
+      if (item.item || item.sku) {
+        const skuToMap = item.item || item.sku || '';
+        const mappedItem = await this.findItemBySKU(skuToMap);
         if (mappedItem) {
           processedItem.item = mappedItem;
         } else {
