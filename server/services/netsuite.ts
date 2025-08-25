@@ -301,6 +301,52 @@ export class NetSuiteService {
     }
   }
 
+  // Send raw NS payload directly to NetSuite without any processing
+  async sendRawPayload(nsPayload: any): Promise<NetSuiteCreateResult> {
+    try {
+      console.log('📤 Sending raw NS payload to NetSuite...');
+      
+      // Extract the nested purchaseOrder if it exists
+      const payloadToSend = nsPayload.purchaseOrder || nsPayload;
+      
+      // Add the action field required by NetSuite
+      const finalPayload = {
+        action: 'createSalesOrder',
+        ...payloadToSend
+      };
+      
+      // Log the payload for debugging
+      console.log('📦 Raw NetSuite Payload:', JSON.stringify(finalPayload, null, 2));
+      
+      // Send directly to NetSuite
+      const result = await this.makeRestletCall('POST', finalPayload);
+      
+      // Handle response
+      if (result === 'success' || result.text === 'success') {
+        console.log('✅ NetSuite RESTlet responded with success');
+        return {
+          success: true,
+          internalId: 'TEST-' + Date.now(),
+          externalId: payloadToSend.externalId || payloadToSend.purchaseOrderNumber,
+          error: undefined
+        };
+      }
+      
+      return {
+        success: result.success || false,
+        internalId: result.internalId,
+        externalId: result.externalId,
+        error: result.error
+      };
+    } catch (error) {
+      console.error('Error sending raw payload to NetSuite:', error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Unknown error'
+      };
+    }
+  }
+
   private mapShippingMethod(method?: string): string {
     if (!method) return 'FedEx Ground';
 

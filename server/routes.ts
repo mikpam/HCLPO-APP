@@ -2228,38 +2228,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
       console.log(`   └─ NS Payload available: ${!!purchaseOrder.nsPayload}`);
       
       try {
-        // Actually send to NetSuite (using the imported singleton instance)
+        // Send NS payload directly to NetSuite without processing
         const nsPayload = purchaseOrder.nsPayload as any;
         
-        // Extract the actual purchase order data from the nested structure
-        const orderData = nsPayload.purchaseOrder || nsPayload;
+        console.log(`   └─ Sending raw NS payload to NetSuite...`);
         
-        // Prepare attachment URLs if available - extract from the purchaseOrder object
-        const attachmentUrls: string[] = [];
-        const sourceUrl = orderData.sourceDocumentUrl || nsPayload.sourceDocumentUrl;
-        const emlUrl = orderData.emlUrl || nsPayload.emlUrl;
-        
-        if (sourceUrl && sourceUrl.startsWith('https://')) {
-          attachmentUrls.push(sourceUrl);
-        }
-        if (emlUrl && emlUrl.startsWith('https://')) {
-          attachmentUrls.push(emlUrl);
-        }
-        
-        // Log the URLs for debugging
-        if (!sourceUrl?.startsWith('https://')) {
-          console.log(`   ⚠️ Invalid source URL: ${sourceUrl}`);
-        }
-        if (!emlUrl?.startsWith('https://')) {
-          console.log(`   ⚠️ Invalid eml URL: ${emlUrl}`);
-        }
-        
-        console.log(`   └─ Calling NetSuite API with ${attachmentUrls.length} attachments...`);
-        console.log(`   └─ Customer: ${orderData.customer?.company || orderData.customer || 'Unknown'}`);
-        console.log(`   └─ Line Items: ${orderData.lineItems?.length || 0}`);
-        
-        // Call NetSuite API with the correct data structure
-        const netsuiteResult = await netsuiteService.createSalesOrder(orderData, attachmentUrls);
+        // Call NetSuite API with the raw payload
+        const netsuiteResult = await netsuiteService.sendRawPayload(nsPayload);
         
         if (netsuiteResult.success) {
           console.log(`   ✅ Successfully created sales order in NetSuite`);
