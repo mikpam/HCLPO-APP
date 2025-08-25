@@ -64,40 +64,61 @@ async function processEmailWithValidationSystem() {
       // No new emails, check for pending POs that need customer validation
       console.log(`📋 No new emails found, checking for pending POs...`);
       
+      // Process ALL pending POs, not just one
       const pendingPOs = await db
         .select()
         .from(purchaseOrdersTable)
         .where(
           or(
             eq(purchaseOrdersTable.status, 'pending'),
-            eq(purchaseOrdersTable.status, 'pending_validation')
+            eq(purchaseOrdersTable.status, 'pending_validation'),
+            eq(purchaseOrdersTable.status, 'pending_review') // Also process pending_review POs
           )
         )
-        .limit(1);
+        .limit(10); // Process up to 10 pending POs per cycle to avoid timeout
       
       if (pendingPOs.length > 0) {
-        const pendingPO = pendingPOs[0];
-        console.log(`🔄 Found pending PO ${pendingPO.poNumber} (status: ${pendingPO.status}), starting validation...`);
+        console.log(`🔄 Found ${pendingPOs.length} pending POs to process...`);
         
-        updateProcessingStatus({
-          currentStep: "customer_validation",
-          currentEmail: `Processing pending PO: ${pendingPO.poNumber}`,
-          emailNumber: 1,
-          totalEmails: 1
-        });
-        
-        // Process the pending PO through customer validation
-        const result = await processPendingPO(pendingPO);
+        const results = [];
+        for (let i = 0; i < pendingPOs.length; i++) {
+          const pendingPO = pendingPOs[i];
+          console.log(`\n📦 Processing pending PO ${i + 1}/${pendingPOs.length}: ${pendingPO.poNumber} (status: ${pendingPO.status})`);
+          
+          updateProcessingStatus({
+            currentStep: "customer_validation",
+            currentEmail: `Processing pending PO: ${pendingPO.poNumber}`,
+            emailNumber: i + 1,
+            totalEmails: pendingPOs.length
+          });
+          
+          try {
+            // Process the pending PO through customer validation
+            const result = await processPendingPO(pendingPO);
+            results.push({
+              poNumber: pendingPO.poNumber,
+              success: true,
+              result
+            });
+          } catch (error) {
+            console.error(`   ❌ Failed to process PO ${pendingPO.poNumber}:`, error);
+            results.push({
+              poNumber: pendingPO.poNumber,
+              success: false,
+              error: error.message
+            });
+          }
+        }
         
         releaseProcessingLock({
           currentStep: "completed",
-          currentEmail: `Processed pending PO: ${pendingPO.poNumber}`
+          currentEmail: `Processed ${pendingPOs.length} pending POs`
         });
         
         return {
-          message: `Processed pending PO: ${pendingPO.poNumber}`,
-          processed: 1,
-          details: result
+          message: `Processed ${pendingPOs.length} pending POs`,
+          processed: pendingPOs.length,
+          details: results
         };
       }
       
@@ -2747,6 +2768,108 @@ export async function registerRoutes(app: Express): Promise<Server> {
   } catch (error) {
     console.error('Error serving agents documentation:', error);
     res.status(500).json({ error: 'Failed to load documentation' });
+  }
+});
+
+// Manual endpoint to force batch processing of stuck POs
+app.post("/api/processing/force-batch-process", async (req, res) => {
+  console.log("🚀 FORCE BATCH PROCESSING: Manual trigger for stuck POs");
+  
+  // Try to acquire lock
+  const lockAcquired = tryAcquireProcessingLock('force_batch', 'Manual batch processing of stuck POs');
+  if (!lockAcquired) {
+    return res.status(409).json({
+      success: false,
+      message: "Another processing operation is in progress"
+    });
+  }
+  
+  try {
+    // Get ALL stuck POs
+    const stuckPOs = await db
+      .select()
+      .from(purchaseOrdersTable)
+      .where(
+        or(
+          eq(purchaseOrdersTable.status, 'pending'),
+          eq(purchaseOrdersTable.status, 'pending_validation'),
+          eq(purchaseOrdersTable.status, 'pending_review')
+        )
+      );
+    
+    if (stuckPOs.length === 0) {
+      releaseProcessingLock({
+        currentStep: "completed",
+        currentEmail: "No stuck POs to process"
+      });
+      return res.json({
+        success: true,
+        message: "No stuck POs found",
+        processed: 0
+      });
+    }
+    
+    console.log(`📦 BATCH PROCESSING: Found ${stuckPOs.length} stuck POs to process`);
+    
+    const results = [];
+    for (let i = 0; i < stuckPOs.length; i++) {
+      const po = stuckPOs[i];
+      console.log(`\n🔄 Processing PO ${i + 1}/${stuckPOs.length}: ${po.poNumber} (${po.status})`);
+      
+      updateProcessingStatus({
+        currentStep: "batch_processing",
+        currentEmail: `Processing stuck PO ${i + 1}/${stuckPOs.length}: ${po.poNumber}`,
+        emailNumber: i + 1,
+        totalEmails: stuckPOs.length
+      });
+      
+      try {
+        const result = await processPendingPO(po);
+        results.push({
+          poNumber: po.poNumber,
+          oldStatus: po.status,
+          success: true,
+          result
+        });
+        console.log(`   ✅ Successfully processed PO ${po.poNumber}`);
+      } catch (error) {
+        console.error(`   ❌ Failed to process PO ${po.poNumber}:`, error);
+        results.push({
+          poNumber: po.poNumber,
+          oldStatus: po.status,
+          success: false,
+          error: error.message
+        });
+      }
+    }
+    
+    releaseProcessingLock({
+      currentStep: "completed",
+      currentEmail: `Batch processed ${stuckPOs.length} stuck POs`
+    });
+    
+    const successCount = results.filter(r => r.success).length;
+    console.log(`\n✅ BATCH PROCESSING COMPLETE: ${successCount}/${stuckPOs.length} POs processed successfully`);
+    
+    res.json({
+      success: true,
+      message: `Processed ${successCount} of ${stuckPOs.length} stuck POs`,
+      total: stuckPOs.length,
+      processed: successCount,
+      failed: stuckPOs.length - successCount,
+      results
+    });
+    
+  } catch (error) {
+    console.error("❌ BATCH PROCESSING ERROR:", error);
+    releaseProcessingLock({
+      currentStep: "error",
+      currentEmail: "Batch processing failed"
+    });
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
   }
 });
 
